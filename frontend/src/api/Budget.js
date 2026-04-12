@@ -1,0 +1,499 @@
+/**
+ * frontend/src/api/Budget.js — Budget Logic Layer
+ * ─────────────────────────────────────────────────────────────────────────────
+ * Now handles all three kinds: expense, income, savings.
+ * Tab switcher: All | Expenses | Income | Savings
+ * All tab  → Option B (3 KPI cards + grouped bar chart + grouped rows)
+ * Other tabs → filtered detailed view
+ * ─────────────────────────────────────────────────────────────────────────────
+ */
+
+import { useState, useEffect, useCallback, useMemo } from "react";
+
+import {
+  PERIOD_OPTIONS,
+  BUDGET_CATEGORY_DEFAULTS,
+  BUDGET_SPENT,
+} from "../data/MockData";
+
+import {
+  getBudgetCategories,
+  updateBudgetCategories,
+  getBudgetActuals,
+} from "./budget.axios";
+
+// ── Re-exports ────────────────────────────────────────────────────────────────
+
+export { PERIOD_OPTIONS };
+
+// ── Constants ─────────────────────────────────────────────────────────────────
+
+const IS_DEMO = import.meta.env.VITE_DEMO_MODE === "true";
+
+const PERIOD_MAP = {
+  "This Month": "this_month",
+  "Last Month": "last_month",
+  "Last 3 Months": "last_3_months",
+};
+
+export const BUDGET_TABS = [
+  { id: "all", label: "All" },
+  { id: "expense", label: "Expenses" },
+  { id: "income", label: "Income" },
+  { id: "savings", label: "Savings" },
+];
+
+// ── Formatters ────────────────────────────────────────────────────────────────
+
+export function formatAmount(n) {
+  return (
+    "$" +
+    n.toLocaleString("en-US", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    })
+  );
+}
+
+export function formatAmountK(n) {
+  if (n >= 1_000) return "$" + (n / 1_000).toFixed(1) + "k";
+  return formatAmount(n);
+}
+
+export function shortName(name) {
+  const MAP = {
+    "Housing / Rent": "Housing",
+    "Food & Dining": "Food",
+    Transport: "Transport",
+    Shopping: "Shopping",
+    Health: "Health",
+    Entertainment: "Entertain.",
+    Utilities: "Utilities",
+    Savings: "Savings",
+    "Debt Payments": "Debt Pmts",
+    Other: "Other",
+  };
+  return MAP[name] ?? name.slice(0, 10);
+}
+
+export function periodMultiplier(period) {
+  return period === "Last 3 Months" ? 3 : 1;
+}
+
+// ── Chart config builders ─────────────────────────────────────────────────────
+
+/** Grouped bar chart for a single kind (Expenses, Income, or Savings tab) */
+export function getBudgetChartConfig(rows) {
+  const labels = rows.map((r) => shortName(r.name));
+  const planned = rows.map((r) => +r.scaledPlanned.toFixed(2));
+  const actual = rows.map((r) => r.actual);
+
+  return {
+    type: "bar",
+    data: {
+      labels,
+      datasets: [
+        {
+          label: "Planned",
+          data: planned,
+          backgroundColor: rows.map((r) => r.color + "30"),
+          borderRadius: 4,
+          barPercentage: 0.75,
+          categoryPercentage: 0.7,
+          order: 2,
+        },
+        {
+          label: "Actual",
+          data: actual,
+          backgroundColor: rows.map((r, i) =>
+            actual[i] > planned[i] ? "#EF4444" : r.color,
+          ),
+          borderRadius: 4,
+          barPercentage: 0.75,
+          categoryPercentage: 0.7,
+          order: 1,
+        },
+      ],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: { duration: 0 }, // FIX #9: no animation so tab switches are instant
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: "#1E2435",
+          titleColor: "#F1F5F9",
+          bodyColor: "#94A3B8",
+          borderColor: "rgba(255,255,255,0.1)",
+          borderWidth: 0.5,
+          padding: 10,
+          callbacks: {
+            label: (ctx) =>
+              ` ${ctx.dataset.label}: ${formatAmountK(ctx.parsed.y)}`,
+          },
+        },
+      },
+      scales: {
+        x: {
+          grid: { display: false },
+          border: { color: "rgba(255,255,255,0.06)" },
+          ticks: { color: "#5E6E85", font: { size: 10 } },
+        },
+        y: {
+          grid: { color: "rgba(255,255,255,0.04)" },
+          border: { color: "rgba(255,255,255,0.06)" },
+          ticks: {
+            color: "#5E6E85",
+            font: { size: 10 },
+            callback: (v) => formatAmountK(v),
+          },
+        },
+      },
+    },
+  };
+}
+
+/** Grouped bar chart for the All tab — three side-by-side bars per group */
+export function getAllTabChartConfig(expenseRows, incomeRows, savingsRows) {
+  // Show one bar group per kind with totals
+  const labels = ["Expenses", "Income", "Savings"];
+  const planned = [
+    expenseRows.reduce((s, r) => s + r.scaledPlanned, 0),
+    incomeRows.reduce((s, r) => s + r.scaledPlanned, 0),
+    savingsRows.reduce((s, r) => s + r.scaledPlanned, 0),
+  ];
+  const actual = [
+    expenseRows.reduce((s, r) => s + r.actual, 0),
+    incomeRows.reduce((s, r) => s + r.actual, 0),
+    savingsRows.reduce((s, r) => s + r.actual, 0),
+  ];
+  const colors = ["#F97316", "#10B981", "#A78BFA"];
+
+  return {
+    type: "bar",
+    data: {
+      labels,
+      datasets: [
+        {
+          label: "Planned",
+          data: planned,
+          backgroundColor: colors.map((c) => c + "30"),
+          borderRadius: 4,
+          barPercentage: 0.7,
+          categoryPercentage: 0.6,
+          order: 2,
+        },
+        {
+          label: "Actual",
+          data: actual,
+          backgroundColor: colors,
+          borderRadius: 4,
+          barPercentage: 0.7,
+          categoryPercentage: 0.6,
+          order: 1,
+        },
+      ],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: { duration: 0 }, // FIX #9: no animation so tab switches are instant
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: "#1E2435",
+          titleColor: "#F1F5F9",
+          bodyColor: "#94A3B8",
+          borderColor: "rgba(255,255,255,0.1)",
+          borderWidth: 0.5,
+          padding: 10,
+          callbacks: {
+            label: (ctx) =>
+              ` ${ctx.dataset.label}: ${formatAmountK(ctx.parsed.y)}`,
+          },
+        },
+      },
+      scales: {
+        x: {
+          grid: { display: false },
+          border: { color: "rgba(255,255,255,0.06)" },
+          ticks: { color: "#5E6E85", font: { size: 11 } },
+        },
+        y: {
+          grid: { color: "rgba(255,255,255,0.04)" },
+          border: { color: "rgba(255,255,255,0.06)" },
+          ticks: {
+            color: "#5E6E85",
+            font: { size: 10 },
+            callback: (v) => formatAmountK(v),
+          },
+        },
+      },
+    },
+  };
+}
+
+// ── Demo actuals helper ───────────────────────────────────────────────────────
+
+const DEMO_INCOME_SPENT = {
+  "This Month": [4200, 0, 0, 0],
+  "Last Month": [4070, 650, 0, 32.5],
+  "Last 3 Months": [12340, 650, 0, 32.5],
+};
+const DEMO_SAVINGS_SPENT = {
+  "This Month": [300],
+  "Last Month": [0],
+  "Last 3 Months": [300],
+};
+
+// ── useBudget — PRIMARY HOOK ──────────────────────────────────────────────────
+
+export function useBudget() {
+  const [allCategories, setAllCategories] = useState([]);
+  const [actuals, setActuals] = useState([]);
+  const [period, setPeriod] = useState("This Month");
+  const [budgetTab, setBudgetTab] = useState("all");
+  const [loading, setLoading] = useState(!IS_DEMO);
+  const [error, setError] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [showModal, setShowModal] = useState(false);
+
+  // ── Demo seed ─────────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (!IS_DEMO) return;
+    // Build demo category list from MockData defaults + system income + savings
+    const expenseCats = BUDGET_CATEGORY_DEFAULTS.map((c) => ({
+      ...c,
+      kind: "expense",
+    }));
+    const incomeCats = [
+      { name: "Salary", color: "#10B981", planned: 4200, kind: "income" },
+      { name: "Side Income", color: "#10B981", planned: 500, kind: "income" },
+      { name: "Refund", color: "#38BDF8", planned: 0, kind: "income" },
+      { name: "Other Income", color: "#475569", planned: 0, kind: "income" },
+    ];
+    const savingsCats = [
+      { name: "Savings", color: "#A78BFA", planned: 300, kind: "savings" },
+    ];
+    setAllCategories([...expenseCats, ...incomeCats, ...savingsCats]);
+  }, []);
+
+  // ── Fetchers ──────────────────────────────────────────────────────────────
+  const fetchCategories = useCallback(async () => {
+    if (IS_DEMO) return;
+    try {
+      const res = await getBudgetCategories();
+      setAllCategories(res.data); // now includes kind field
+    } catch (err) {
+      setError("Could not load budget categories.");
+      console.error(err);
+    }
+  }, []);
+
+  const fetchActuals = useCallback(async (activePeriod) => {
+    if (IS_DEMO) return;
+    const p = PERIOD_MAP[activePeriod] ?? "this_month";
+    try {
+      const res = await getBudgetActuals(p);
+      setActuals(res.data); // [{ category, type, spent }]
+    } catch (err) {
+      setError("Could not load spending actuals.");
+      console.error(err);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (IS_DEMO) return;
+    async function init() {
+      setLoading(true);
+      await Promise.all([fetchCategories(), fetchActuals(period)]);
+      setLoading(false);
+    }
+    init();
+  }, []);
+
+  useEffect(() => {
+    if (!IS_DEMO) fetchActuals(period);
+  }, [period, fetchActuals]);
+
+  // ── Derived rows per kind ─────────────────────────────────────────────────
+  const mult = periodMultiplier(period);
+
+  function buildRows(kind) {
+    const cats = allCategories.filter((c) => c.kind === kind);
+
+    if (IS_DEMO) {
+      if (kind === "expense") {
+        const spentArr = BUDGET_SPENT[period] ?? [];
+        return cats.map((c, i) => ({
+          ...c,
+          actual: spentArr[i] ?? 0,
+          scaledPlanned: (c.planned ?? 0) * mult,
+        }));
+      }
+      if (kind === "income") {
+        const spentArr = DEMO_INCOME_SPENT[period] ?? [];
+        return cats.map((c, i) => ({
+          ...c,
+          actual: spentArr[i] ?? 0,
+          scaledPlanned: (c.planned ?? 0) * mult,
+        }));
+      }
+      if (kind === "savings") {
+        const spentArr = DEMO_SAVINGS_SPENT[period] ?? [];
+        return cats.map((c, i) => ({
+          ...c,
+          actual: spentArr[i] ?? 0,
+          scaledPlanned: (c.planned ?? 0) * mult,
+        }));
+      }
+    }
+
+    return cats.map((c) => {
+      const match = actuals.find((a) => a.category === c.name);
+      return {
+        ...c,
+        actual: match ? match.spent : 0,
+        scaledPlanned: (c.planned ?? 0) * mult,
+      };
+    });
+  }
+
+  const expenseRows = useMemo(
+    () => buildRows("expense"),
+    [allCategories, actuals, period, mult],
+  );
+  const incomeRows = useMemo(
+    () => buildRows("income"),
+    [allCategories, actuals, period, mult],
+  );
+  const savingsRows = useMemo(
+    () => buildRows("savings"),
+    [allCategories, actuals, period, mult],
+  );
+
+  // ── Stats per kind ────────────────────────────────────────────────────────
+  function buildStats(rows, label) {
+    const totalPlanned = rows.reduce((s, r) => s + r.scaledPlanned, 0);
+    const totalActual = rows.reduce((s, r) => s + r.actual, 0);
+    const overCount = rows.filter(
+      (r) => r.scaledPlanned > 0 && r.actual > r.scaledPlanned,
+    ).length;
+    const remaining = Math.max(totalPlanned - totalActual, 0);
+    const overallPct =
+      totalPlanned > 0 ? Math.min((totalActual / totalPlanned) * 100, 100) : 0;
+    return { totalPlanned, totalActual, overCount, remaining, overallPct };
+  }
+
+  const expenseStats = useMemo(
+    () => buildStats(expenseRows, "expense"),
+    [expenseRows],
+  );
+  const incomeStats = useMemo(
+    () => buildStats(incomeRows, "income"),
+    [incomeRows],
+  );
+  const savingsStats = useMemo(
+    () => buildStats(savingsRows, "savings"),
+    [savingsRows],
+  );
+
+  // ── Active rows and stats for current tab ─────────────────────────────────
+  const activeRows =
+    budgetTab === "expense"
+      ? expenseRows
+      : budgetTab === "income"
+        ? incomeRows
+        : budgetTab === "savings"
+          ? savingsRows
+          : [...expenseRows, ...incomeRows, ...savingsRows];
+
+  const activeStats =
+    budgetTab === "expense"
+      ? expenseStats
+      : budgetTab === "income"
+        ? incomeStats
+        : budgetTab === "savings"
+          ? savingsStats
+          : null; // All tab uses individual kind stats
+
+  // ── Handlers ─────────────────────────────────────────────────────────────
+  function openModal() {
+    setShowModal(true);
+  }
+  function closeModal() {
+    setShowModal(false);
+  }
+
+  async function handleSave(updatedCategories) {
+    if (IS_DEMO) {
+      setAllCategories((prev) => {
+        const map = Object.fromEntries(
+          updatedCategories.map((c) => [c.name, c]),
+        );
+        return prev.map((c) =>
+          map[c.name]
+            ? { ...c, planned: map[c.name].planned, color: map[c.name].color }
+            : c,
+        );
+      });
+      closeModal();
+      return;
+    }
+
+    setSaving(true);
+    setError(null);
+    try {
+      const payload = updatedCategories.map((c, i) => ({
+        name: c.name,
+        color: c.color,
+        planned: c.planned,
+        sort_order: i,
+        kind: c.kind,
+      }));
+      const res = await updateBudgetCategories(payload);
+      setAllCategories(res.data);
+      await fetchActuals(period);
+      closeModal();
+    } catch (err) {
+      setError("Could not save budget. Please try again.");
+      console.error(err);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return {
+    // All categories split by kind
+    expenseRows,
+    incomeRows,
+    savingsRows,
+    expenseStats,
+    incomeStats,
+    savingsStats,
+
+    // Active tab data
+    activeRows,
+    activeStats,
+    allCategories,
+
+    // Tab + period
+    budgetTab,
+    setBudgetTab,
+    period,
+    setPeriod,
+
+    // UI state
+    loading,
+    error,
+    setError,
+    saving,
+    showModal,
+    openModal,
+    closeModal,
+    handleSave,
+
+    isDemo: IS_DEMO,
+  };
+}

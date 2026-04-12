@@ -1,0 +1,1013 @@
+/* ============================================================
+   FinanceOS — Global Stylesheet
+   Tailwind CSS v4  |  Design System v1.0
+   Reference: DESIGN_SYSTEM.md before adding anything here.
+   ============================================================ */
+
+@import "tailwindcss";
+
+/* ── 1. Design Tokens ─────────────────────────────────────────
+   All tokens live here. Every color, size, and spacing value
+   used in the app must come from this block.
+   @theme registers them as Tailwind utilities automatically:
+     --color-bg-base  →  bg-bg-base, text-bg-base, etc.
+     --spacing-page   →  p-page, gap-page, etc.
+   ──────────────────────────────────────────────────────────── */
+
+@theme {
+  /* --- Backgrounds ----------------------------------------- */
+  --color-bg-base: #0b0d16;
+  --color-bg-sidebar: #0e1020;
+  --color-bg-card: #141826;
+  --color-bg-input: #1a1f30;
+  --color-bg-tooltip: #1e2435;
+  /* hover & fill variants kept as raw vars (used in JS too)   */
+
+  /* --- Text ------------------------------------------------- */
+  --color-text-primary: #f1f5f9;
+  --color-text-secondary: #94a3b8;
+  --color-text-muted: #475569;
+  --color-text-hint: #5e6e85;
+
+  /* --- Semantic (meaning-driven — never decorative) --------- */
+  --color-income: #10b981; /* green  — income / success / primary CTA */
+  --color-expense: #f97316; /* orange — expense / warning / over-budget */
+  --color-danger: #ef4444; /* red    — debt / critical / overdue       */
+  --color-savings: #a78bfa; /* purple — goals / savings                 */
+  --color-info: #38bdf8; /* blue   — bank / transfer / info          */
+  --color-neutral: #475569; /* slate  — disabled / other               */
+
+  /* --- Category (charts — use in this order) ---------------- */
+  --color-cat-housing: #6366f1;
+  --color-cat-dining: #10b981;
+  --color-cat-transport: #f97316;
+  --color-cat-shopping: #38bdf8;
+  --color-cat-health: #a78bfa;
+  --color-cat-other: #475569;
+  /* Aliases so components can map category strings to colors   */
+  --color-cat-groceries: #38bdf8;
+  --color-cat-utilities: #a78bfa;
+  --color-cat-entertainment: #f97316;
+  --color-cat-savings: #a78bfa;
+
+  /* --- Typography ------------------------------------------- */
+  --font-family-base: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+
+  --font-size-page-title: 21px;
+  --font-size-subtitle: 13px;
+  --font-size-section: 14px;
+  --font-size-body: 13px;
+  --font-size-meta: 11px;
+  --font-size-kpi: 22px;
+  --font-size-badge: 11px;
+  --font-size-axis: 11px;
+
+  /* --- Spacing scale (matches DESIGN_SYSTEM.md §4) ---------- */
+  --spacing-1: 4px;
+  --spacing-2: 6px;
+  --spacing-3: 8px;
+  --spacing-4: 10px;
+  --spacing-5: 12px;
+  --spacing-6: 14px;
+  --spacing-7: 16px;
+  --spacing-8: 18px;
+  --spacing-9: 20px;
+  --spacing-10: 24px;
+  --spacing-11: 28px; /* page outer padding */
+  --spacing-12: 48px; /* empty state top padding */
+
+  /* --- Border radii ----------------------------------------- */
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-pill: 20px;
+  --radius-full: 9999px;
+
+  /* --- Sidebar ---------------------------------------------- */
+  --sidebar-width: 210px;
+
+  /* --- Chart container heights ------------------------------ */
+  --chart-h-line: 200px;
+  --chart-h-donut: 135px;
+  --chart-h-bar: 180px;
+  --chart-h-debt: 220px;
+  --chart-h-trend: 200px;
+}
+
+/* ── Raw CSS vars (also exposed for Chart.js JS consumption) ──
+   These can't live in @theme because they aren't single values.
+   Reference them in JS as: getComputedStyle(el).getPropertyValue('--border-default')
+   ──────────────────────────────────────────────────────────── */
+:root {
+  --border-default: 0.5px solid rgba(255, 255, 255, 0.07);
+  --border-subtle: 0.5px solid rgba(255, 255, 255, 0.05);
+  --border-sidebar: 0.5px solid rgba(255, 255, 255, 0.06);
+  --border-emphasis: 0.5px solid rgba(255, 255, 255, 0.1);
+  --border-input-focus: 0.5px solid rgba(255, 255, 255, 0.18);
+
+  --bg-hover: rgba(255, 255, 255, 0.04);
+  --bg-hover-row: rgba(255, 255, 255, 0.03);
+
+  /* Badge bg opacity variants */
+  --badge-bg-income: rgba(16, 185, 129, 0.12);
+  --badge-bg-expense: rgba(249, 115, 22, 0.1);
+  --badge-bg-danger: rgba(239, 68, 68, 0.12);
+  --badge-bg-savings: rgba(167, 139, 250, 0.12);
+  --badge-bg-info: rgba(56, 189, 248, 0.12);
+  --badge-bg-neutral: rgba(71, 85, 105, 0.15);
+  --badge-bg-paid: rgba(16, 185, 129, 0.12);
+  --badge-bg-unpaid: rgba(71, 85, 105, 0.15);
+  --badge-bg-duesoon: rgba(249, 115, 22, 0.12);
+  --badge-bg-overdue: rgba(239, 68, 68, 0.12);
+
+  /* Chart fill opacity variants */
+  --chart-fill-income: rgba(16, 185, 129, 0.06);
+  --chart-fill-expense: rgba(249, 115, 22, 0.05);
+
+  /* Nav active */
+  --nav-active-bg: rgba(16, 185, 129, 0.08);
+}
+
+/* ── 2. Global Reset & Base ───────────────────────────────────
+   Minimal reset on top of Tailwind's preflight.
+   ──────────────────────────────────────────────────────────── */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: var(--font-family-base);
+  font-size: var(--font-size-body);
+  color: var(--color-text-primary);
+  background-color: var(--color-bg-base);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Remove default button / input chrome */
+button,
+input,
+select,
+textarea {
+  font-family: inherit;
+  font-size: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+/* Calendar icon tint on dark inputs */
+input[type="date"]::-webkit-calendar-picker-indicator {
+  filter: invert(0.45);
+}
+
+/* Select option background */
+select option {
+  background-color: var(--color-bg-input);
+  color: var(--color-text-primary);
+}
+
+/* ── 3. Application Shell ─────────────────────────────────────
+   The outermost layout: sidebar + main area.
+   ──────────────────────────────────────────────────────────── */
+
+.app-shell {
+  display: flex;
+  height: 100vh;
+  overflow: hidden;
+}
+
+.app-sidebar {
+  width: var(--sidebar-width);
+  flex-shrink: 0;
+  background-color: var(--color-bg-sidebar);
+  border-right: var(--border-sidebar);
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+}
+
+.app-main {
+  flex: 1;
+  overflow-y: auto;
+  background-color: var(--color-bg-base);
+  padding: var(--spacing-11); /* 28px all sides — never vary */
+}
+
+/* ── 4. Sidebar Components ────────────────────────────────────*/
+
+.sidebar-logo {
+  padding: 22px 20px 18px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  letter-spacing: -0.3px;
+}
+
+.sidebar-logo span {
+  color: var(--color-income); /* green accent on logo mark */
+}
+
+.sidebar-section-label {
+  padding: 10px 20px 6px;
+  font-size: 10px;
+  color: #334155;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+}
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 20px;
+  font-size: 13px;
+  color: var(--color-text-hint);
+  border-right: 2px solid transparent;
+  transition:
+    color 0.15s,
+    background 0.15s;
+  user-select: none;
+}
+
+.nav-item:hover {
+  color: #cbd5e1;
+  background: var(--bg-hover);
+}
+
+.nav-item.active {
+  color: var(--color-income);
+  background: var(--nav-active-bg);
+  border-right-color: var(--color-income);
+}
+
+/* Nav icon — always 15×15, inherits color */
+.nav-icon {
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  fill: none;
+}
+
+/* Alert count badge in nav */
+.nav-badge {
+  margin-left: auto;
+  background: var(--color-danger);
+  color: #fff;
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: var(--radius-full);
+  font-weight: 500;
+  line-height: 1.4;
+}
+
+/* User avatar row at bottom of sidebar */
+.sidebar-user {
+  margin-top: auto;
+  padding: 16px 20px;
+  border-top: var(--border-default);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.sidebar-user-info .name {
+  font-size: 13px;
+  color: var(--color-text-primary);
+  font-weight: 500;
+}
+
+.sidebar-user-info .role {
+  font-size: 11px;
+  color: var(--color-text-hint);
+  margin-top: 1px;
+}
+
+/* ── 5. Page Structure ────────────────────────────────────────
+   Every view: header → summary cards → main content.
+   ──────────────────────────────────────────────────────────── */
+
+.page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: var(--spacing-10); /* 24px */
+}
+
+.page-title {
+  font-size: var(--font-size-page-title); /* 21px */
+  font-weight: 600;
+  color: var(--color-text-primary);
+  letter-spacing: -0.5px;
+  margin: 0;
+}
+
+.page-subtitle {
+  font-size: var(--font-size-subtitle); /* 13px */
+  color: var(--color-text-hint);
+  margin: 4px 0 0;
+}
+
+.page-header-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+/* ── 6. Grid Layouts ──────────────────────────────────────────*/
+
+/* 4-col KPI row */
+.grid-kpi {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--spacing-5); /* 12px */
+  margin-bottom: var(--spacing-5);
+}
+
+/* 3-col summary stat row */
+.grid-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--spacing-5);
+  margin-bottom: var(--spacing-5);
+}
+
+/* 2-col chart + secondary (1.9 : 1) */
+.grid-chart-secondary {
+  display: grid;
+  grid-template-columns: minmax(0, 1.9fr) minmax(0, 1fr);
+  gap: var(--spacing-5);
+  margin-bottom: var(--spacing-5);
+}
+
+/* Even 2-col */
+.grid-two-col {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--spacing-5);
+  margin-bottom: var(--spacing-5);
+}
+
+/* 3-col savings goals */
+.grid-goals {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  margin-bottom: var(--spacing-5);
+}
+
+/* ── 7. Card ──────────────────────────────────────────────────
+   The single reusable surface. No shadow — border only.
+   Never nest .card inside .card.
+   ──────────────────────────────────────────────────────────── */
+
+.card {
+  background: var(--color-bg-card);
+  border-radius: var(--radius-lg); /* 12px */
+  border: var(--border-default);
+  padding: var(--spacing-9); /* 20px */
+  margin-bottom: var(--spacing-5); /* 12px gap between stacked cards */
+}
+
+/* Compact variant — 18px padding for tight stat blocks */
+.card-compact {
+  padding: 18px;
+}
+
+/* ── 8. KPI Stat Card ─────────────────────────────────────────*/
+
+.kpi-label {
+  font-size: 11px;
+  color: var(--color-text-hint);
+  letter-spacing: 0.5px;
+  font-weight: 400;
+  text-transform: uppercase;
+  margin-bottom: 10px;
+}
+
+.kpi-value {
+  font-size: var(--font-size-kpi); /* 22px */
+  font-weight: 600;
+  color: var(--color-text-primary);
+  letter-spacing: -0.5px;
+  line-height: 1.1;
+}
+
+.kpi-value.income {
+  color: var(--color-income);
+}
+.kpi-value.expense {
+  color: var(--color-expense);
+}
+.kpi-value.danger {
+  color: var(--color-danger);
+}
+.kpi-value.savings {
+  color: var(--color-savings);
+}
+.kpi-value.info {
+  color: var(--color-info);
+}
+
+.kpi-delta {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  margin-top: 8px;
+}
+
+.kpi-delta .arrow-up {
+  color: var(--color-income);
+}
+.kpi-delta .arrow-down {
+  color: var(--color-expense);
+}
+.kpi-delta .vs-label {
+  color: var(--color-text-muted);
+}
+
+/* ── 9. Section Header (inside cards) ────────────────────────*/
+
+.section-header {
+  font-size: var(--font-size-section); /* 14px */
+  font-weight: 500;
+  color: var(--color-text-primary);
+  margin: 0 0 var(--spacing-8) 0; /* 18px bottom */
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* ── 10. Buttons ──────────────────────────────────────────────*/
+
+/* Primary CTA */
+.btn-primary {
+  background: var(--color-income);
+  color: #022c22;
+  border: none;
+  border-radius: var(--radius-md);
+  padding: 8px 14px;
+  font-size: 13px;
+  font-weight: 500;
+  transition: opacity 0.15s;
+  white-space: nowrap;
+}
+
+.btn-primary:hover {
+  opacity: 0.88;
+}
+.btn-primary:active {
+  opacity: 0.75;
+}
+.btn-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Secondary (import, export, cancel) */
+.btn-secondary {
+  background: var(--color-bg-card);
+  border: var(--border-emphasis);
+  color: #cbd5e1;
+  border-radius: var(--radius-md);
+  padding: 8px 14px;
+  font-size: 13px;
+  font-weight: 400;
+  transition:
+    background 0.15s,
+    color 0.15s;
+  white-space: nowrap;
+}
+
+.btn-secondary:hover {
+  background: var(--bg-hover);
+  color: var(--color-text-primary);
+}
+
+/* Ghost / inline link */
+.btn-ghost {
+  background: none;
+  border: none;
+  color: var(--color-income);
+  font-size: 12px;
+  padding: 0;
+  transition: opacity 0.15s;
+}
+
+.btn-ghost:hover {
+  opacity: 0.75;
+}
+
+/* Danger ghost (delete / dismiss) */
+.btn-danger {
+  background: none;
+  border: none;
+  color: var(--color-text-muted);
+  font-size: 13px;
+  padding: 4px 6px;
+  border-radius: var(--radius-sm);
+  transition: color 0.15s;
+}
+
+.btn-danger:hover {
+  color: var(--color-danger);
+}
+
+/* ── 11. Form Elements ────────────────────────────────────────*/
+
+.field-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.field-label {
+  font-size: 11px;
+  color: var(--color-text-hint);
+  font-weight: 400;
+  letter-spacing: 0.5px;
+}
+
+.input {
+  background: var(--color-bg-input);
+  border: var(--border-default);
+  border-radius: var(--radius-md);
+  padding: 8px 12px;
+  font-size: 13px;
+  color: var(--color-text-primary);
+  outline: none;
+  width: 100%;
+  transition: border-color 0.15s;
+}
+
+.input::placeholder {
+  color: var(--color-text-hint);
+}
+
+.input:focus {
+  border: var(--border-input-focus);
+}
+
+/* Grid helpers used inside forms */
+.form-grid-3 {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--spacing-5); /* 12px */
+  margin-bottom: var(--spacing-5);
+}
+
+.form-grid-2-1-1 {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--spacing-5);
+  margin-bottom: var(--spacing-7); /* 16px */
+}
+
+.form-actions {
+  display: flex;
+  gap: 8px;
+}
+
+/* ── 12. Filter / Period Pill Group ──────────────────────────*/
+
+.pill-group {
+  display: flex;
+  gap: 2px;
+  background: var(--color-bg-card);
+  padding: 4px;
+  border-radius: 22px;
+  border: var(--border-default);
+}
+
+.pill {
+  background: transparent;
+  border: none;
+  color: var(--color-text-hint);
+  padding: 5px 12px;
+  border-radius: var(--radius-pill);
+  font-size: 12px;
+  font-weight: 400;
+  cursor: pointer;
+  transition:
+    color 0.15s,
+    background 0.15s;
+  white-space: nowrap;
+}
+
+.pill:hover:not(.active) {
+  color: #cbd5e1;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.pill.active {
+  background: var(--color-income);
+  color: #022c22;
+  font-weight: 500;
+}
+
+/* ── 13. Status / Type Badges ─────────────────────────────────
+   All badges: padding 2px 8px, radius 10px, font-size 11px,
+   font-weight 500. Never use borders.
+   ──────────────────────────────────────────────────────────── */
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+  font-size: var(--font-size-badge);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.badge-income {
+  background: var(--badge-bg-income);
+  color: var(--color-income);
+}
+.badge-expense {
+  background: var(--badge-bg-expense);
+  color: var(--color-expense);
+}
+.badge-danger {
+  background: var(--badge-bg-danger);
+  color: var(--color-danger);
+}
+.badge-savings {
+  background: var(--badge-bg-savings);
+  color: var(--color-savings);
+}
+.badge-info {
+  background: var(--badge-bg-info);
+  color: var(--color-info);
+}
+.badge-neutral {
+  background: var(--badge-bg-neutral);
+  color: var(--color-text-secondary);
+}
+
+/* Bill-specific status badges */
+.badge-paid {
+  background: var(--badge-bg-paid);
+  color: var(--color-income);
+}
+.badge-unpaid {
+  background: var(--badge-bg-unpaid);
+  color: var(--color-text-secondary);
+}
+.badge-due-soon {
+  background: var(--badge-bg-duesoon);
+  color: var(--color-expense);
+}
+.badge-overdue {
+  background: var(--badge-bg-overdue);
+  color: var(--color-danger);
+}
+
+/* Count badge (e.g. "12" next to section header title) */
+.count-badge {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--color-text-secondary);
+  border-radius: var(--radius-full);
+  padding: 2px 10px;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+/* ── 14. Transaction / List Row ──────────────────────────────*/
+
+.tx-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: var(--border-subtle);
+  border-radius: var(--radius-sm);
+  transition:
+    background 0.12s,
+    padding-inline 0.12s;
+}
+
+.tx-row:last-child {
+  border-bottom: none;
+}
+
+.tx-row:hover {
+  background: var(--bg-hover-row);
+  padding-left: 6px;
+  padding-right: 6px;
+}
+
+/* Avatar / initials circle */
+.avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+}
+
+/* Table-style column headers */
+.col-header {
+  font-size: 11px;
+  color: var(--color-text-muted);
+  font-weight: 400;
+  letter-spacing: 0.5px;
+}
+
+.tx-name {
+  font-size: 13px;
+  color: var(--color-text-primary);
+  font-weight: 400;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tx-meta {
+  font-size: 11px;
+  color: var(--color-text-muted);
+  margin-top: 2px;
+}
+
+.tx-date {
+  font-size: 13px;
+  color: var(--color-text-muted);
+}
+
+/* Amount — income = green, expense = white (NOT red) */
+.tx-amount {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.tx-amount.income {
+  color: var(--color-income);
+}
+.tx-amount.expense {
+  color: var(--color-text-primary);
+}
+
+/* Category dot (used in custom chart legends too) */
+.cat-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+/* ── 14b. Transaction Table Column Layout ────────────────────
+   Fixed column widths defined here — never in JSX.
+   ──────────────────────────────────────────────────────────── */
+
+.tx-header-row {
+  padding-bottom: 8px;
+  border-bottom: var(--border-default);
+  pointer-events: none; /* header row is not interactive */
+}
+
+.tx-col-avatar {
+  width: 36px;
+  flex-shrink: 0;
+}
+.tx-col-desc {
+  flex: 1 1 200px;
+  min-width: 0;
+}
+.tx-col-cat {
+  flex: 0 0 130px;
+}
+.tx-col-date {
+  flex: 0 0 110px;
+}
+.tx-col-type {
+  flex: 0 0 90px;
+}
+.tx-col-amount {
+  flex: 0 0 110px;
+  text-align: right;
+}
+.tx-col-action {
+  flex: 0 0 48px;
+  text-align: right;
+}
+
+/* Row of pill groups with gap between them */
+.pill-group-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+
+/* ── 15. Progress Bar ─────────────────────────────────────────*/
+
+.progress-track {
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+/* Budget bar — 5–7px */
+.progress-track.budget {
+  height: 6px;
+  border-radius: 4px;
+}
+
+/* Savings goal bar — 8px (slightly larger) */
+.progress-track.goal {
+  height: 8px;
+  border-radius: 6px;
+}
+
+.progress-fill {
+  height: 100%;
+  border-radius: inherit;
+  transition: width 0.3s ease;
+}
+
+.progress-fill.over-budget {
+  background: var(--color-expense);
+}
+
+/* ── 16. Error Banner ─────────────────────────────────────────*/
+
+.error-banner {
+  background: rgba(239, 68, 68, 0.1);
+  border: 0.5px solid rgba(239, 68, 68, 0.3);
+  color: var(--color-danger);
+  border-radius: var(--radius-md);
+  padding: 10px 14px;
+  margin-bottom: 16px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 13px;
+}
+
+.error-banner button {
+  background: none;
+  border: none;
+  color: var(--color-danger);
+  font-size: 16px;
+  line-height: 1;
+  padding: 0;
+}
+
+/* ── 17. Empty State ──────────────────────────────────────────*/
+
+.empty-state {
+  text-align: center;
+  padding-top: var(--spacing-12); /* 48px */
+  padding-bottom: 32px;
+}
+
+.empty-state .empty-icon {
+  font-size: 32px;
+  margin-bottom: 12px;
+}
+
+.empty-state .empty-title {
+  font-size: 15px;
+  color: var(--color-text-primary);
+  font-weight: 500;
+  margin-bottom: 6px;
+}
+
+.empty-state .empty-body {
+  font-size: 13px;
+  color: var(--color-text-hint);
+  margin-bottom: 16px;
+}
+
+/* ── 18. Loading Skeleton ─────────────────────────────────────
+   Pulse on a #1A1F30 block matching expected content shape.
+   Never use spinners for data loading < 500ms.
+   ──────────────────────────────────────────────────────────── */
+
+@keyframes skeleton-pulse {
+  0%,
+  100% {
+    opacity: 0.5;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.skeleton {
+  background: var(--color-bg-input);
+  border-radius: var(--radius-md);
+  animation: skeleton-pulse 1.6s ease-in-out infinite;
+}
+
+.skeleton-text {
+  height: 13px;
+  border-radius: 4px;
+}
+
+.skeleton-kpi {
+  height: 22px;
+  border-radius: 4px;
+  width: 60%;
+}
+
+/* ── 19. Chart Containers ─────────────────────────────────────*/
+
+.chart-wrap {
+  position: relative;
+}
+
+.chart-wrap.line {
+  height: var(--chart-h-line);
+}
+.chart-wrap.donut {
+  height: var(--chart-h-donut);
+}
+.chart-wrap.bar {
+  height: var(--chart-h-bar);
+}
+.chart-wrap.debt {
+  height: var(--chart-h-debt);
+}
+.chart-wrap.trend {
+  height: var(--chart-h-trend);
+}
+
+/* Custom chart legend (never use Chart.js built-in) */
+.chart-legend {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.chart-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--color-text-secondary);
+}
+
+/* ── 20. Responsive Breakpoints ──────────────────────────────*/
+
+/* Collapse sidebar to icons only */
+@media (max-width: 900px) {
+  .app-sidebar {
+    width: 48px;
+  }
+
+  .nav-item span,
+  .sidebar-logo .logo-text,
+  .sidebar-section-label,
+  .sidebar-user-info {
+    display: none;
+  }
+
+  .nav-item {
+    justify-content: center;
+    padding: 12px;
+    gap: 0;
+  }
+}
+
+/* 4-col KPI → 2×2 */
+@media (max-width: 700px) {
+  .grid-kpi {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* Everything → single column */
+@media (max-width: 600px) {
+  .grid-stats,
+  .grid-chart-secondary,
+  .grid-two-col,
+  .grid-goals,
+  .form-grid-3,
+  .form-grid-2-1-1 {
+    grid-template-columns: 1fr;
+  }
+}
