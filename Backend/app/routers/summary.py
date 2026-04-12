@@ -1,15 +1,6 @@
 """
-backend/app/routers/summary.py
-─────────────────────────────────────────────────────────────────────────────
-Dashboard summary endpoints.
-
-  GET /summary?period=           → KPI card values
-  GET /cashflow?period=          → Month-by-month income + expense arrays
-  GET /expenses/breakdown?period= → Per-category spending totals for donut
-
-FIX #4: Cashflow now includes savings transactions in the expenses total
-so the chart reflects all money flowing out of the user's main account.
-─────────────────────────────────────────────────────────────────────────────
+backend/app/routers/summary.py — AUTH UPDATE
+All transaction queries now filter by current_user.
 """
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -21,6 +12,7 @@ import calendar
 
 from ..database import get_db
 from ..models import Transaction
+from ..dependencies import get_current_user
 
 router = APIRouter(tags=["summary"])
 
@@ -78,10 +70,11 @@ def _validate_period(period: str):
         )
 
 
-def _total(db: Session, tx_type: str, start: date, end: date) -> float:
+def _total(db: Session, user_id: str, tx_type: str, start: date, end: date) -> float:
     result = (
         db.query(func.sum(Transaction.amount))
         .filter(
+            Transaction.user_id == user_id,
             Transaction.type == tx_type,
             Transaction.date >= start,
             Transaction.date <= end,
@@ -91,11 +84,11 @@ def _total(db: Session, tx_type: str, start: date, end: date) -> float:
     return float(result or 0)
 
 
-def _total_types(db: Session, tx_types: list, start: date, end: date) -> float:
-    """Sum transactions for multiple types within a date range."""
+def _total_types(db: Session, user_id: str, tx_types: list, start: date, end: date) -> float:
     result = (
         db.query(func.sum(Transaction.amount))
         .filter(
+            Transaction.user_id == user_id,
             Transaction.type.in_(tx_types),
             Transaction.date >= start,
             Transaction.date <= end,
@@ -105,34 +98,33 @@ def _total_types(db: Session, tx_types: list, start: date, end: date) -> float:
     return float(result or 0)
 
 
-def _total_for_month(db: Session, tx_type: str, year: int, month: int) -> float:
+def _total_for_month(db: Session, user_id: str, tx_type: str, year: int, month: int) -> float:
     start    = date(year, month, 1)
     last_day = calendar.monthrange(year, month)[1]
     end      = date(year, month, last_day)
-    return _total(db, tx_type, start, end)
+    return _total(db, user_id, tx_type, start, end)
 
 
-def _total_types_for_month(db: Session, tx_types: list, year: int, month: int) -> float:
-    """Sum multiple transaction types within a single calendar month."""
+def _total_types_for_month(db: Session, user_id: str, tx_types: list, year: int, month: int) -> float:
     start    = date(year, month, 1)
     last_day = calendar.monthrange(year, month)[1]
     end      = date(year, month, last_day)
-    return _total_types(db, tx_types, start, end)
+    return _total_types(db, user_id, tx_types, start, end)
 
 
 @router.get("/summary")
 def get_summary(
     period: str = Query("this_month"),
+    current_user: str = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     _validate_period(period)
 
     start, end = _period_bounds(period)
-    income   = _total(db, "income",  start, end)
-    expenses = _total(db, "expense", start, end)
-    savings  = _total(db, "savings", start, end)
+    income   = _total(db, current_user, "income",  start, end)
+    expenses = _total(db, current_user, "expense", start, end)
+    savings  = _total(db, current_user, "savings", start, end)
 
-    # Net = income minus all outflows (expense + savings)
     net_balance  = income - expenses - savings
     savings_rate = round(((income - expenses) / income * 100), 1) if income > 0 else 0.0
 
@@ -140,9 +132,9 @@ def get_summary(
     prev_end   = start - timedelta(days=1)
     prev_start = prev_end - timedelta(days=span_days - 1)
 
-    prev_income   = _total(db, "income",  prev_start, prev_end)
-    prev_expenses = _total(db, "expense", prev_start, prev_end)
-    prev_savings  = _total(db, "savings", prev_start, prev_end)
+    prev_income   = _total(db, current_user, "income",  prev_start, prev_end)
+    prev_expenses = _total(db, current_user, "expense", prev_start, prev_end)
+    prev_savings  = _total(db, current_user, "savings", prev_start, prev_end)
     prev_net      = prev_income - prev_expenses - prev_savings
     prev_rate     = round(((prev_income - prev_expenses) / prev_income * 100), 1) if prev_income > 0 else 0.0
 
@@ -168,26 +160,20 @@ def get_summary(
 @router.get("/cashflow")
 def get_cashflow(
     period: str = Query("this_month"),
+    current_user: str = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """
-    Month-by-month income and expense totals for the cash flow line chart.
-    FIX #4: expenses now includes savings contributions so the chart reflects
-    all money flowing out of the user's main account each month.
-    """
     _validate_period(period)
 
     months = _month_range(period)
-
     labels   = []
     income   = []
     expenses = []
 
     for year, month in months:
         labels.append(_month_label(year, month))
-        income.append(round(_total_for_month(db, "income", year, month), 2))
-        # expenses = regular expenses + savings contributions (all outflows)
-        outflow = _total_types_for_month(db, ["expense", "savings"], year, month)
+        income.append(round(_total_for_month(db, current_user, "income", year, month), 2))
+        outflow = _total_types_for_month(db, current_user, ["expense", "savings"], year, month)
         expenses.append(round(outflow, 2))
 
     return {"labels": labels, "income": income, "expenses": expenses}
@@ -196,6 +182,7 @@ def get_cashflow(
 @router.get("/expenses/breakdown")
 def get_expense_breakdown(
     period: str = Query("this_month"),
+    current_user: str = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     _validate_period(period)
@@ -208,6 +195,7 @@ def get_expense_breakdown(
             func.sum(Transaction.amount).label("total"),
         )
         .filter(
+            Transaction.user_id == current_user,
             Transaction.type.in_(["expense", "savings"]),
             Transaction.date >= start,
             Transaction.date <= end,
@@ -221,7 +209,13 @@ def get_expense_breakdown(
         return {"labels": [], "values": [], "colors": []}
 
     from ..models import Category
-    cat_colors = {c.name: c.color for c in db.query(Category).all()}
+    from sqlalchemy import or_
+    cat_colors = {
+        c.name: c.color
+        for c in db.query(Category).filter(
+            or_(Category.user_id == current_user, Category.user_id.is_(None))
+        ).all()
+    }
 
     labels = []
     values = []

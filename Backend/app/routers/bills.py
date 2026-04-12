@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 from ..database import get_db
 from ..models import Bill, BudgetCategory, Transaction
 from ..services.entity_sync import entity_to_transaction
+from ..dependencies import get_current_user
 from pydantic import BaseModel
 from datetime import date as DateType
 from typing import Optional
@@ -33,9 +34,10 @@ class BillUpdate(BaseModel):
 def get_bills(
     status: Optional[str] = Query(None),
     category: Optional[str] = Query(None),
+    current_user: str = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    q = db.query(Bill)
+    q = db.query(Bill).filter(Bill.user_id == current_user)
     if status:
         q = q.filter(Bill.status == status.lower())
     if category:
@@ -44,10 +46,13 @@ def get_bills(
 
 
 @router.post("/", status_code=201)
-def create_bill(data: BillCreate, db: Session = Depends(get_db)):
-    # Create the budget_categories backbone row immediately.
-    # transaction_id is null until the bill is marked paid.
+def create_bill(
+    data: BillCreate,
+    current_user: str = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     budget_cat = BudgetCategory(
+        user_id=current_user,
         transaction_id=None,
         transaction_name=data.name.strip(),
         transaction_payment_method=None,
@@ -60,6 +65,7 @@ def create_bill(data: BillCreate, db: Session = Depends(get_db)):
     db.flush()
 
     bill = Bill(
+        user_id=current_user,
         name=data.name,
         amount=data.amount,
         due_date=data.due_date,
@@ -76,13 +82,22 @@ def create_bill(data: BillCreate, db: Session = Depends(get_db)):
 
 
 @router.put("/{bill_id}")
-def update_bill(bill_id: str, data: BillUpdate, db: Session = Depends(get_db)):
+def update_bill(
+    bill_id: str,
+    data: BillUpdate,
+    current_user: str = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     try:
         parsed_id = uuid.UUID(bill_id)
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid ID format")
 
-    bill = db.query(Bill).filter(Bill.id == parsed_id).first()
+    # Ownership check
+    bill = db.query(Bill).filter(
+        Bill.id == parsed_id,
+        Bill.user_id == current_user,
+    ).first()
     if not bill:
         raise HTTPException(status_code=404, detail="Bill not found")
 
@@ -120,6 +135,7 @@ def update_bill(bill_id: str, data: BillUpdate, db: Session = Depends(get_db)):
         and bill.transaction_id is None
     ):
         draft = Transaction(
+            user_id=current_user,
             date=DateType.today(),
             description=bill.name,
             category=bill.category or "Other",
@@ -161,19 +177,26 @@ def update_bill(bill_id: str, data: BillUpdate, db: Session = Depends(get_db)):
 
 
 @router.delete("/{bill_id}")
-def delete_bill(bill_id: str, db: Session = Depends(get_db)):
+def delete_bill(
+    bill_id: str,
+    current_user: str = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     try:
         parsed_id = uuid.UUID(bill_id)
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid ID format")
 
-    bill = db.query(Bill).filter(Bill.id == parsed_id).first()
+    # Ownership check
+    bill = db.query(Bill).filter(
+        Bill.id == parsed_id,
+        Bill.user_id == current_user,
+    ).first()
     if not bill:
         raise HTTPException(status_code=404, detail="Bill not found")
 
     budget_cat_id = bill.budget_category_id
 
-    # Delete linked transaction first
     if bill.transaction_id:
         tx = db.query(Transaction).filter(
             Transaction.id == bill.transaction_id
@@ -185,7 +208,6 @@ def delete_bill(bill_id: str, db: Session = Depends(get_db)):
     db.delete(bill)
     db.flush()
 
-    # Delete backbone row
     if budget_cat_id:
         hub = db.query(BudgetCategory).filter(
             BudgetCategory.id == budget_cat_id

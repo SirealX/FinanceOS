@@ -1,20 +1,22 @@
 """
 backend/app/routers/budget.py
 ─────────────────────────────────────────────────────────────────────────────
-Budget reads planned amounts from the categories table for all three kinds:
-expense, income, and savings.
+AUTH UPDATE
+  Categories query now returns:
+    system rows  (user_id IS NULL)  — visible to every user
+    user rows    (user_id = caller) — visible only to that user
 
-/budget/categories  → all three kinds with planned amounts and kind field
-/budget/actuals     → actual spending/income/savings grouped by category
-/budget/categories  PUT → bulk update planned amounts (expense + income + savings)
+  Actuals query filters transactions by user_id.
 ─────────────────────────────────────────────────────────────────────────────
 """
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from ..database import get_db
 from ..models import Category, Transaction
+from ..dependencies import get_current_user
 from pydantic import BaseModel
 from datetime import date, timedelta
 from typing import List, Optional
@@ -40,15 +42,12 @@ class BulkUpdateRequest(BaseModel):
 
 def _period_bounds(period: str):
     today = date.today()
-
     if period == "this_month":
         return today.replace(day=1), today
-
     if period == "last_month":
         first_this = today.replace(day=1)
         end = first_this - timedelta(days=1)
         return end.replace(day=1), end
-
     if period == "last_3_months":
         month = today.month - 2
         year = today.year
@@ -56,7 +55,6 @@ def _period_bounds(period: str):
             month += 12
             year -= 1
         return date(year, month, 1), today
-
     return today.replace(day=1), today
 
 
@@ -78,14 +76,17 @@ def _serialize_cat(r: Category) -> dict:
 @router.get("/categories")
 def get_budget_categories(
     kind: Optional[str] = Query(None),
+    current_user: str = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """
-    Return all categories (expense + income + savings) with planned amounts.
-    Optional ?kind= filter to narrow to one kind.
+    Returns system categories (user_id IS NULL) plus the caller's own
+    custom categories, optionally filtered by kind.
     """
     q = db.query(Category).filter(
-        Category.kind.in_(["expense", "income", "savings"])
+        Category.kind.in_(["expense", "income", "savings"]),
+        # System rows (NULL) are shared; user rows are private
+        or_(Category.user_id == current_user, Category.user_id.is_(None)),
     )
     if kind and kind in ("expense", "income", "savings"):
         q = q.filter(Category.kind == kind)
@@ -96,16 +97,21 @@ def get_budget_categories(
 
 @router.put("/categories")
 def update_budget_categories(
-    data: BulkUpdateRequest, db: Session = Depends(get_db)
+    data: BulkUpdateRequest,
+    current_user: str = Depends(get_current_user),
+    db: Session = Depends(get_db),
 ):
     """
-    Bulk update planned amounts. Handles all three kinds.
+    Bulk update planned amounts.
+    System categories: anyone can update planned amounts (shared budget templates).
+    User categories: only the owner can update them.
     """
     for i, cat_in in enumerate(data.categories):
         kind = cat_in.kind or "expense"
         cat = db.query(Category).filter(
             Category.name == cat_in.name,
             Category.kind == kind,
+            or_(Category.user_id == current_user, Category.user_id.is_(None)),
         ).first()
         if cat:
             cat.planned_amount = cat_in.planned
@@ -116,7 +122,10 @@ def update_budget_categories(
 
     rows = (
         db.query(Category)
-        .filter(Category.kind.in_(["expense", "income", "savings"]))
+        .filter(
+            Category.kind.in_(["expense", "income", "savings"]),
+            or_(Category.user_id == current_user, Category.user_id.is_(None)),
+        )
         .order_by(Category.sort_order, Category.name)
         .all()
     )
@@ -127,17 +136,9 @@ def update_budget_categories(
 def get_budget_actuals(
     period: str = Query("this_month"),
     kind:   Optional[str] = Query(None),
+    current_user: str = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """
-    Actual amounts per category for the given period.
-    Returns all three types (expense, income, savings) unless ?kind= is set.
-
-    expense + savings → summed as "spent"
-    income            → summed as "earned"
-    Both are returned under the same "spent" key so the frontend can compare
-    against planned regardless of kind.
-    """
     if period not in ("this_month", "last_month", "last_3_months"):
         raise HTTPException(
             status_code=400,
@@ -146,7 +147,6 @@ def get_budget_actuals(
 
     start, end = _period_bounds(period)
 
-    # Determine which transaction types to include
     if kind == "income":
         type_filter = ["income"]
     elif kind == "savings":
@@ -154,7 +154,6 @@ def get_budget_actuals(
     elif kind == "expense":
         type_filter = ["expense"]
     else:
-        # All — include everything
         type_filter = ["expense", "income", "savings"]
 
     results = (
@@ -164,6 +163,7 @@ def get_budget_actuals(
             func.sum(Transaction.amount).label("total"),
         )
         .filter(
+            Transaction.user_id == current_user,
             Transaction.type.in_(type_filter),
             Transaction.date >= start,
             Transaction.date <= end,
@@ -183,13 +183,16 @@ def get_budget_actuals(
 
 
 @router.post("/seed-missing")
-def seed_missing_budget_categories(db: Session = Depends(get_db)):
-    """
-    Returns all budget-relevant categories. Safe to call multiple times.
-    """
+def seed_missing_budget_categories(
+    current_user: str = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     cats = (
         db.query(Category)
-        .filter(Category.kind.in_(["expense", "income", "savings"]))
+        .filter(
+            Category.kind.in_(["expense", "income", "savings"]),
+            or_(Category.user_id == current_user, Category.user_id.is_(None)),
+        )
         .all()
     )
     return {"synced": len(cats)}

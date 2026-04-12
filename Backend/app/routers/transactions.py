@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 from ..database import get_db
 from ..models import Transaction, BudgetCategory
 from ..services.entity_sync import transaction_to_entity, reverse_transaction
+from ..dependencies import get_current_user
 from pydantic import BaseModel
 from datetime import date as DataType
 from typing import Optional
@@ -31,8 +32,18 @@ class TransactionUpdate(BaseModel):
 
 
 @router.get("/drafts/count")
-def get_draft_count(db: Session = Depends(get_db)):
-    count = db.query(Transaction).filter(Transaction.is_draft == True).count()
+def get_draft_count(
+    current_user: str = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    count = (
+        db.query(Transaction)
+        .filter(
+            Transaction.user_id == current_user,
+            Transaction.is_draft == True,
+        )
+        .count()
+    )
     return {"count": count}
 
 
@@ -43,9 +54,11 @@ def get_transactions(
     is_draft:  Optional[bool]     = Query(None),
     date_from: Optional[DataType] = Query(None),
     date_to:   Optional[DataType] = Query(None),
+    current_user: str = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    q = db.query(Transaction)
+    q = db.query(Transaction).filter(Transaction.user_id == current_user)
+
     if category:              q = q.filter(Transaction.category == category)
     if type:                  q = q.filter(Transaction.type == type)
     if is_draft is not None:  q = q.filter(Transaction.is_draft == is_draft)
@@ -84,14 +97,17 @@ def get_transactions(
 
 
 @router.post("/", status_code=201)
-def create_transaction(data: TransactionCreate, db: Session = Depends(get_db)):
-    # Savings transactions can only be created from the Savings tab
+def create_transaction(
+    data: TransactionCreate,
+    current_user: str = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     if data.type == "savings":
         raise HTTPException(
             status_code=400,
             detail="Savings transactions can only be created from the Savings tab.",
         )
-    tx = Transaction(**data.dict(), source="manual")
+    tx = Transaction(**data.dict(), source="manual", user_id=current_user)
     db.add(tx)
     db.commit()
     db.refresh(tx)
@@ -102,6 +118,7 @@ def create_transaction(data: TransactionCreate, db: Session = Depends(get_db)):
 def update_transaction(
     transaction_id: str,
     data: TransactionUpdate,
+    current_user: str = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     try:
@@ -109,7 +126,11 @@ def update_transaction(
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid ID format")
 
-    tx = db.query(Transaction).filter(Transaction.id == parsed_id).first()
+    # Ownership check — user can only edit their own transactions
+    tx = db.query(Transaction).filter(
+        Transaction.id == parsed_id,
+        Transaction.user_id == current_user,
+    ).first()
     if not tx:
         raise HTTPException(status_code=404, detail="Transaction not found")
 
@@ -118,7 +139,6 @@ def update_transaction(
     for key, value in data.dict(exclude_unset=True).items():
         if key == "budget_category_id":
             continue
-        # Lock category and type for debt and savings transactions
         if key in ("category", "type") and tx.budget_category_id:
             hub = db.query(BudgetCategory).filter(
                 BudgetCategory.id == tx.budget_category_id
@@ -127,11 +147,9 @@ def update_transaction(
                 continue
         setattr(tx, key, value)
 
-    # Auto-clear draft when payment method is confirmed
     if data.payment_method and data.payment_method.strip() and tx.is_draft:
         tx.is_draft = False
 
-    # Sync payment method to backbone row
     if data.payment_method is not None and tx.budget_category_id:
         hub = db.query(BudgetCategory).filter(
             BudgetCategory.id == tx.budget_category_id
@@ -141,37 +159,33 @@ def update_transaction(
 
     db.commit()
     db.refresh(tx)
-
-    # Push changes back to budget_categories and the linked entity
     transaction_to_entity(tx, old_amount, db)
-
     return tx
 
 
 @router.delete("/{transaction_id}")
-def delete_transaction(transaction_id: str, db: Session = Depends(get_db)):
+def delete_transaction(
+    transaction_id: str,
+    current_user: str = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     try:
         parsed_id = uuid.UUID(transaction_id)
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid ID format")
 
-    tx = db.query(Transaction).filter(Transaction.id == parsed_id).first()
+    # Ownership check
+    tx = db.query(Transaction).filter(
+        Transaction.id == parsed_id,
+        Transaction.user_id == current_user,
+    ).first()
     if not tx:
         raise HTTPException(status_code=404, detail="Transaction not found")
 
-    # ── Reverse linked entity effects BEFORE deleting the transaction ─────────
-    # Bill      → unmarks as paid, unlinks hub (hub row kept)
-    # Debt      → adds amount back to balance, deletes hub row
-    # Savings   → subtracts amount from goal, deletes hub row
-    # Plain tx  → no entity to reverse, just delete
     reverse_transaction(tx, db)
 
-    # Now safe to delete the transaction row itself
-    # (reverse_transaction may have already deleted the hub row for debt/savings,
-    # so we nullify the FK first to avoid constraint errors)
     tx.budget_category_id = None
     db.commit()
-
     db.delete(tx)
     db.commit()
     return {"message": "Transaction deleted"}

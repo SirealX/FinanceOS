@@ -1,24 +1,27 @@
 """
 services/entity_sync.py
 ─────────────────────────────────────────────────────────────────────────────
+AUTH UPDATE
+  All entity lookups (Bill, Debt, SavingsGoal) now filter by user_id taken
+  from the hub row. This prevents a bug where two users with identically
+  named bills/debts/goals could accidentally affect each other's records
+  during sync operations.
+
+  The hub row always carries user_id (set at creation time in the router),
+  so it is the authoritative source of ownership for every sync call.
+
 Three sync functions:
 
   entity_to_transaction(budget_cat, db)
       Direction: entity → transaction.
       Called when a bill/debt/savings event changes on its own tab.
-      Pushes updated values to the linked transaction if one exists.
 
   transaction_to_entity(tx, old_amount, db)
       Direction: transaction → entity.
       Called after a transaction is edited from the Transactions tab.
-      Syncs budget_categories and the linked entity (bill/debt/savings).
 
   reverse_transaction(tx, db)
       Called before a transaction is DELETED from the Transactions tab.
-      Reverses whatever the transaction originally did to its linked entity:
-        Bill      → unmarks as paid, unlinks hub (hub row kept)
-        Debt      → adds amount back to balance, deletes hub row
-        Savings   → subtracts amount from current_amount, deletes hub row
 ─────────────────────────────────────────────────────────────────────────────
 """
 
@@ -31,8 +34,7 @@ from ..models import BudgetCategory, Transaction, Bill, Debt, SavingsGoal
 def entity_to_transaction(budget_cat: BudgetCategory, db: Session) -> None:
     """
     Pushes current budget_categories values to the linked transaction.
-    Called when a bill is edited, or when a bill is marked paid/unpaid.
-    Does nothing if transaction_id is null (transaction not yet created).
+    No user_id filter needed here — we already have the exact transaction FK.
     """
     if not budget_cat.transaction_id:
         return
@@ -73,17 +75,18 @@ def transaction_to_entity(
 
     new_amount = float(tx.amount)
 
-    # ── Sync budget_categories ────────────────────────────────────────────────
     hub.amount = tx.amount
     hub.date   = tx.date
 
     if hub.type.startswith("Bill:"):
-        # Category CAN change on bill transactions — sync both directions
         hub.categories_name = tx.category
 
-        # Also sync bill.category and bill.amount back to the Bill row
         bill_name = hub.type[len("Bill: "):]
-        bill = db.query(Bill).filter(Bill.name == bill_name).first()
+        # AUTH: scope lookup to this user — prevents cross-user name collision
+        bill = db.query(Bill).filter(
+            Bill.name == bill_name,
+            Bill.user_id == hub.user_id,
+        ).first()
         if bill:
             bill.category = tx.category
             bill.amount   = tx.amount
@@ -91,12 +94,10 @@ def transaction_to_entity(
         db.commit()
 
     elif hub.type.startswith("Debt:"):
-        # Category is locked for debt transactions
         db.commit()
         _adjust_debt(hub, old_amount, new_amount, db)
 
     elif hub.type.startswith("Savings:"):
-        # Category is locked for savings transactions
         db.commit()
         _adjust_savings(hub, old_amount, new_amount, db)
 
@@ -110,13 +111,6 @@ def reverse_transaction(tx: Transaction, db: Session) -> None:
     """
     Called BEFORE a transaction is deleted from the Transactions tab.
     Reverses what the transaction originally did to its linked entity.
-
-    Bill    → unmarks bill as paid, unlinks hub (hub row is kept —
-              it was created with the bill, not the payment)
-    Debt    → adds amount back to debt balance, deletes hub row
-              (hub row was created for this payment specifically)
-    Savings → subtracts amount from goal current_amount, deletes hub row
-              (hub row was created for this contribution specifically)
     """
     if not tx.budget_category_id:
         return
@@ -131,34 +125,39 @@ def reverse_transaction(tx: Transaction, db: Session) -> None:
     amount = float(tx.amount)
 
     if hub.type.startswith("Bill:"):
-        # Unmark the bill as paid
         bill_name = hub.type[len("Bill: "):]
-        bill = db.query(Bill).filter(Bill.name == bill_name).first()
+        # AUTH: scope to user
+        bill = db.query(Bill).filter(
+            Bill.name == bill_name,
+            Bill.user_id == hub.user_id,
+        ).first()
         if bill:
             bill.status         = "unpaid"
             bill.transaction_id = None
 
-        # Unlink hub — keep the hub row (it belongs to the bill lifecycle)
         hub.transaction_id             = None
         hub.transaction_payment_method = None
         db.commit()
 
     elif hub.type.startswith("Debt:"):
-        # Add the payment amount back to the debt balance
         debt_name = hub.type[len("Debt: "):]
-        debt = db.query(Debt).filter(Debt.name == debt_name).first()
+        # AUTH: scope to user
+        debt = db.query(Debt).filter(
+            Debt.name == debt_name,
+            Debt.user_id == hub.user_id,
+        ).first()
         if debt:
             debt.balance = float(debt.balance) + amount
 
-        # Delete the hub row — it was created for this payment only
         db.delete(hub)
         db.commit()
 
     elif hub.type.startswith("Savings:"):
-        # Subtract the contribution from the goal's current amount
         goal_name = hub.type[len("Savings: "):]
+        # AUTH: scope to user
         goal = db.query(SavingsGoal).filter(
-            SavingsGoal.goal_name == goal_name
+            SavingsGoal.goal_name == goal_name,
+            SavingsGoal.user_id == hub.user_id,
         ).first()
         if goal:
             goal.current_amount = max(
@@ -166,7 +165,6 @@ def reverse_transaction(tx: Transaction, db: Session) -> None:
                 float(goal.current_amount) - amount,
             )
 
-        # Delete the hub row — it was created for this contribution only
         db.delete(hub)
         db.commit()
 
@@ -179,14 +177,17 @@ def _adjust_debt(
     new_amount: float,
     db: Session,
 ) -> None:
-    """Reverse the old payment, apply the new payment to the debt balance."""
     debt_name = hub.type[len("Debt: "):]
-    debt = db.query(Debt).filter(Debt.name == debt_name).first()
+    # AUTH: scope to user
+    debt = db.query(Debt).filter(
+        Debt.name == debt_name,
+        Debt.user_id == hub.user_id,
+    ).first()
     if not debt:
         return
 
-    debt.balance = float(debt.balance) + old_amount           # undo old payment
-    debt.balance = max(0.0, float(debt.balance) - new_amount) # apply new payment
+    debt.balance = float(debt.balance) + old_amount
+    debt.balance = max(0.0, float(debt.balance) - new_amount)
     db.commit()
 
 
@@ -196,20 +197,21 @@ def _adjust_savings(
     new_amount: float,
     db: Session,
 ) -> None:
-    """Reverse the old contribution, apply the new contribution to the goal."""
     goal_name = hub.type[len("Savings: "):]
+    # AUTH: scope to user
     goal = db.query(SavingsGoal).filter(
-        SavingsGoal.goal_name == goal_name
+        SavingsGoal.goal_name == goal_name,
+        SavingsGoal.user_id == hub.user_id,
     ).first()
     if not goal:
         return
 
     goal.current_amount = max(
         0.0,
-        float(goal.current_amount) - old_amount,       # undo old contribution
+        float(goal.current_amount) - old_amount,
     )
     goal.current_amount = min(
-        float(goal.current_amount) + new_amount,        # apply new contribution
+        float(goal.current_amount) + new_amount,
         float(goal.target_amount),
     )
     db.commit()

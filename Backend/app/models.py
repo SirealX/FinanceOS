@@ -8,6 +8,7 @@ from .database import Base
 class Transaction(Base):
     __tablename__ = "transactions"
     id                 = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id            = Column(UUID(as_uuid=True), nullable=True, index=True)
     date               = Column(Date, nullable=False)
     description        = Column(String(255))
     category           = Column(String(100))
@@ -38,13 +39,15 @@ class BudgetCategory(Base):
     """
     __tablename__ = "budget_categories"
     id                         = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    # ── AUTH ──────────────────────────────────────────────────────────────────
+    user_id                    = Column(UUID(as_uuid=True), nullable=True, index=True)
     transaction_id             = Column(UUID(as_uuid=True),
                                         ForeignKey("transactions.id", ondelete="SET NULL"),
                                         nullable=True)
     transaction_name           = Column(String(255), nullable=False)
     transaction_payment_method = Column(String(50), nullable=True)
-    categories_name            = Column(String(100), nullable=False)  # soft ref to categories.name
-    type                       = Column(String(255), nullable=False)   # "Bill: X" / "Debt: X" / "Savings: X"
+    categories_name            = Column(String(100), nullable=False)
+    type                       = Column(String(255), nullable=False)
     amount                     = Column(Numeric(10, 2), nullable=False)
     date                       = Column(Date, nullable=False)
 
@@ -52,6 +55,8 @@ class BudgetCategory(Base):
 class Bill(Base):
     __tablename__ = "bills"
     id                 = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    # ── AUTH ──────────────────────────────────────────────────────────────────
+    user_id            = Column(UUID(as_uuid=True), nullable=True, index=True)
     name               = Column(String(100))
     amount             = Column(Numeric(10, 2))
     due_date           = Column(Date)
@@ -69,17 +74,22 @@ class Bill(Base):
 
 class Debt(Base):
     __tablename__ = "debts"
-    id            = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    name          = Column(String(100))
-    balance       = Column(Numeric(10, 2))
-    interest_rate = Column(Numeric(5, 2))
-    min_payment   = Column(Numeric(10, 2))
-    priority_rank = Column(Integer)
+    id               = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    # ── AUTH ──────────────────────────────────────────────────────────────────
+    user_id          = Column(UUID(as_uuid=True), nullable=True, index=True)
+    name             = Column(String(100))
+    balance          = Column(Numeric(10, 2))
+    original_balance = Column(Numeric(10, 2), nullable=True)  # tracks starting balance
+    interest_rate    = Column(Numeric(5, 2))
+    min_payment      = Column(Numeric(10, 2))
+    priority_rank    = Column(Integer)
 
 
 class SavingsGoal(Base):
     __tablename__ = "savings_goals"
     id             = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    # ── AUTH ──────────────────────────────────────────────────────────────────
+    user_id        = Column(UUID(as_uuid=True), nullable=True, index=True)
     goal_name      = Column(String(100))
     target_amount  = Column(Numeric(10, 2))
     current_amount = Column(Numeric(10, 2))
@@ -87,9 +97,24 @@ class SavingsGoal(Base):
 
 
 class Category(Base):
+    """
+    Two kinds of rows live in this table:
+
+    1. System categories  (user_id = NULL)
+       Shared across all users. Seeded once via POST /categories/seed.
+       Cannot be deleted or renamed.
+
+    2. User categories  (user_id = <uuid>)
+       Created by a specific user. Visible only to that user.
+
+    Queries always filter:  WHERE (user_id = :uid OR user_id IS NULL)
+    so every user sees system rows + their own custom rows.
+    """
     __tablename__ = "categories"
     id             = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    name           = Column(String(100), unique=True, nullable=False)
+    # ── AUTH: NULL = system / shared, UUID = user-specific ───────────────────
+    user_id        = Column(UUID(as_uuid=True), nullable=True, index=True)
+    name           = Column(String(100), nullable=False)
     color          = Column(String(20), nullable=False, default="#475569")
     kind           = Column(
         Enum("expense", "income", "savings", name="category_kind"),
@@ -101,8 +126,14 @@ class Category(Base):
 
 
 class Preferences(Base):
+    """
+    One row per user (keyed by user_id).
+    GET /preferences auto-creates the default row on first call.
+    """
     __tablename__ = "preferences"
     id          = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    # ── AUTH ──────────────────────────────────────────────────────────────────
+    user_id     = Column(UUID(as_uuid=True), nullable=True, unique=True, index=True)
     currency    = Column(String(10),  nullable=False, default="USD")
     date_format = Column(String(20),  nullable=False, default="MMM D, YYYY")
     month_start = Column(Integer,     nullable=False, default=1)
