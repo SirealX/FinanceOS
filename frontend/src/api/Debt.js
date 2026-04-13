@@ -9,6 +9,7 @@
  */
 
 import { useState, useEffect, useCallback, useMemo } from "react";
+import { useAuth } from "../context/Authcontexts";
 import { DEBT_TYPES, INITIAL_DEBTS } from "../data/MockData";
 import { getDebts, createDebt, updateDebt, deleteDebt, payDebt } from "./debts";
 import { useSettings } from "../context/SettingsContext";
@@ -18,8 +19,6 @@ import { useSettings } from "../context/SettingsContext";
 export { DEBT_TYPES };
 
 // ── Constants ─────────────────────────────────────────────────────────────────
-
-const IS_DEMO = import.meta.env.VITE_DEMO_MODE === "true";
 
 export const SIM_MAX_MONTHS = 360;
 
@@ -195,7 +194,8 @@ function buildPayload(form, existingDebt) {
 // ── useDebts — PRIMARY HOOK ───────────────────────────────────────────────────
 
 export function useDebts() {
-  const { currency } = useSettings(); // FIX #6: read currency from context
+  const { isDemo: IS_DEMO } = useAuth();
+  const { currency } = useSettings();
 
   const [debts, setDebts] = useState(IS_DEMO ? INITIAL_DEBTS : []);
   const [loading, setLoading] = useState(!IS_DEMO);

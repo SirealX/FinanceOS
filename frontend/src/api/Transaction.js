@@ -1,19 +1,15 @@
 /**
  * api/Transaction.js — Transactions Logic Layer
  * ─────────────────────────────────────────────────────────────────────────────
- * All non-rendering logic for the Transactions view.
- * No JSX in this file.
- *
- * FIX (colors): getCategoryConfig from SettingsContext is now exposed in the
- * hook return so Transactions.jsx can use live category colors instead of the
- * hardcoded CATEGORY_CONFIG from MockData.
- *
- * SAVINGS RULE: Savings transactions can only be created from the Savings tab.
+ * AUTH UPDATE: IS_DEMO now comes from AuthContext (useAuth().isDemo) instead
+ * of the build-time VITE_DEMO_MODE env var. This allows the "View Demo"
+ * button on the login page to work at runtime without a separate build.
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { useSettings } from "../context/SettingsContext";
+import { useAuth } from "../context/Authcontexts";
 
 import {
   DEMO_TODAY,
@@ -35,8 +31,6 @@ import {
 export { PERIOD_OPTIONS, CATEGORY_CONFIG, PAYMENT_METHODS };
 
 // ── Constants ─────────────────────────────────────────────────────────────────
-
-const IS_DEMO = import.meta.env.VITE_DEMO_MODE === "true";
 
 export const BLANK_FORM = {
   description: "",
@@ -179,7 +173,8 @@ function normalizeTransaction(raw) {
 // ── useTransactions — PRIMARY HOOK ────────────────────────────────────────────
 
 export function useTransactions() {
-  // FIX (colors): pull getCategoryConfig so we can expose live colors
+  // AUTH: IS_DEMO is now runtime state from AuthContext
+  const { isDemo: IS_DEMO } = useAuth();
   const { allCategories, getCategoryConfig } = useSettings();
 
   const [transactions, setTransactions] = useState(
@@ -218,7 +213,7 @@ export function useTransactions() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [IS_DEMO]);
 
   useEffect(() => {
     fetchTransactions();
@@ -382,7 +377,6 @@ export function useTransactions() {
     handleTypeChange,
     categoryGroups,
     validCategoryNames,
-    // FIX (colors): expose live color lookup so Transactions.jsx can use it
     getCategoryConfig,
     isDemo: IS_DEMO,
   };

@@ -6,6 +6,7 @@
  */
 
 import { useState, useEffect, useCallback, useMemo } from "react";
+import { useAuth } from "../context/Authcontexts";
 import { useNav } from "../context/NavContext";
 import { useSettings } from "../context/SettingsContext";
 import client from "./client";
@@ -23,8 +24,6 @@ import {
 } from "../data/MockData";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
-
-const IS_DEMO = import.meta.env.VITE_DEMO_MODE === "true";
 
 const PERIOD_MAP = {
   "This Month": "this_month",
@@ -249,6 +248,7 @@ const EMPTY_DONUT = { labels: [], values: [], colors: [] };
 // ── useDashboard ──────────────────────────────────────────────────────────────
 
 export function useDashboard() {
+  const { isDemo: IS_DEMO } = useAuth();
   const [period, setPeriod] = useState("This Month");
   const navigate = useNav();
   const { getAllCategoryConfig, formatAmount } = useSettings();

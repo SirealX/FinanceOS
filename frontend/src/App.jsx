@@ -8,14 +8,14 @@ import Debts from "./pages/Debts";
 import Savings from "./pages/Savings";
 import Alerts from "./pages/Alerts";
 import Settings from "./pages/Settings";
+import Login from "./pages/Login";
 
 import { NavProvider } from "./context/NavContext";
 import { SettingsProvider } from "./context/SettingsContext";
+import { AuthProvider, useAuth } from "./context/Authcontexts";
 
 import { DEMO_USER } from "./data/MockData";
 import client from "./api/client";
-
-const IS_DEMO = import.meta.env.VITE_DEMO_MODE === "true";
 
 // ── Nav item icon definitions ─────────────────────────────────────────────────
 
@@ -47,7 +47,7 @@ const NAV_ITEMS_CONFIG = [
       </svg>
     ),
     component: <Transactions />,
-    showDraftBadge: true, // ← pulls live draft count
+    showDraftBadge: true,
   },
   {
     id: "budget",
@@ -161,34 +161,39 @@ const NAV_ITEMS_CONFIG = [
   },
 ];
 
-// ── App Shell ─────────────────────────────────────────────────────────────────
+// ── App Shell (rendered only when authenticated or in demo mode) ───────────────
 
-export default function App() {
+function AppShell() {
+  const { user, isDemo, signOut } = useAuth();
   const [activeId, setActiveId] = useState("dashboard");
   const [draftCount, setDraftCount] = useState(0);
 
-  // FIX #3: Poll draft count every 5 seconds (was 30s) for near-real-time
-  // badge updates. Also refreshes immediately on every tab navigation so
-  // confirming a payment method clears the badge without waiting for the next poll.
+  // Sidebar user display — real user email or demo label
+  const sidebarUser = isDemo
+    ? { initials: "DU", name: DEMO_USER.name, role: "Demo Mode" }
+    : {
+        initials: (user?.email?.[0] ?? "U").toUpperCase(),
+        name: user?.email ?? "User",
+        role: "Personal",
+      };
+
   async function fetchDraftCount() {
-    if (IS_DEMO) return;
+    if (isDemo) return;
     try {
       const res = await client.get("/transactions/drafts/count");
       setDraftCount(res.data.count ?? 0);
     } catch {
-      // silently ignore — badge just shows 0
+      // silently ignore
     }
   }
 
-  // Poll on an interval
   useEffect(() => {
-    if (IS_DEMO) return;
+    if (isDemo) return;
     fetchDraftCount();
     const interval = setInterval(fetchDraftCount, 5_000);
     return () => clearInterval(interval);
-  }, []);
+  }, [isDemo]);
 
-  // Refresh immediately on every tab change
   function handleNavigate(id) {
     setActiveId(id);
     fetchDraftCount();
@@ -204,13 +209,28 @@ export default function App() {
           <aside className="app-sidebar">
             <div className="sidebar-logo">
               <span>Finance</span>OS
+              {isDemo && (
+                <span
+                  style={{
+                    marginLeft: 8,
+                    fontSize: 10,
+                    fontWeight: 500,
+                    background: "rgba(167,139,250,0.15)",
+                    color: "#A78BFA",
+                    padding: "1px 7px",
+                    borderRadius: 10,
+                    letterSpacing: "0.3px",
+                  }}
+                >
+                  DEMO
+                </span>
+              )}
             </div>
 
             <div className="sidebar-section-label">Main Menu</div>
 
             <nav>
               {NAV_ITEMS_CONFIG.map((item) => {
-                // Transactions nav item shows live draft count
                 const badge = item.showDraftBadge
                   ? draftCount > 0
                     ? draftCount
@@ -241,23 +261,76 @@ export default function App() {
               })}
             </nav>
 
+            {/* User row + sign out */}
             <div className="sidebar-user">
               <div
                 className="avatar"
                 style={{
                   width: 32,
                   height: 32,
-                  background: "rgba(16,185,129,0.13)",
-                  color: "var(--color-income)",
+                  background: isDemo
+                    ? "rgba(167,139,250,0.13)"
+                    : "rgba(16,185,129,0.13)",
+                  color: isDemo
+                    ? "var(--color-savings)"
+                    : "var(--color-income)",
                   fontSize: 11,
+                  flexShrink: 0,
                 }}
               >
-                {DEMO_USER.initials}
+                {sidebarUser.initials}
               </div>
-              <div className="sidebar-user-info">
-                <div className="name">{DEMO_USER.name}</div>
-                <div className="role">{DEMO_USER.role}</div>
+              <div
+                className="sidebar-user-info"
+                style={{ flex: 1, minWidth: 0 }}
+              >
+                <div
+                  className="name"
+                  style={{
+                    whiteSpace: "nowrap",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                  }}
+                >
+                  {sidebarUser.name}
+                </div>
+                <div className="role">{sidebarUser.role}</div>
               </div>
+              {/* Sign out / Exit demo */}
+              <button
+                title={isDemo ? "Exit demo" : "Sign out"}
+                onClick={signOut}
+                style={{
+                  background: "none",
+                  border: "none",
+                  color: "var(--color-text-muted)",
+                  cursor: "pointer",
+                  padding: "4px",
+                  borderRadius: 6,
+                  display: "flex",
+                  alignItems: "center",
+                  flexShrink: 0,
+                  transition: "color 0.15s",
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.color = "#CBD5E1")}
+                onMouseLeave={(e) =>
+                  (e.currentTarget.style.color = "var(--color-text-muted)")
+                }
+              >
+                <svg
+                  viewBox="0 0 15 15"
+                  width="14"
+                  height="14"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.6"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="M5.5 7.5H13M10 4.5l3 3-3 3" />
+                  <path d="M8 2H3a1 1 0 0 0-1 1v9a1 1 0 0 0 1 1h5" />
+                </svg>
+              </button>
             </div>
           </aside>
 
@@ -266,5 +339,57 @@ export default function App() {
         </div>
       </SettingsProvider>
     </NavProvider>
+  );
+}
+
+// ── Root — handles auth state before rendering anything ───────────────────────
+
+function Root() {
+  const { user, isDemo, loading } = useAuth();
+
+  if (loading) {
+    return (
+      <div
+        style={{
+          minHeight: "100vh",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          background: "#0B0D16",
+        }}
+      >
+        {/* Minimal pulse — no spinner, just the logo */}
+        <div
+          style={{
+            fontSize: 18,
+            fontWeight: 600,
+            color: "#F1F5F9",
+            opacity: 0.5,
+            letterSpacing: "-0.3px",
+            animation: "skeleton-pulse 1.6s ease-in-out infinite",
+          }}
+        >
+          <span style={{ color: "#10B981" }}>Finance</span>OS
+        </div>
+      </div>
+    );
+  }
+
+  // Not authenticated and not in demo mode → show login page
+  if (!user && !isDemo) {
+    return <Login />;
+  }
+
+  // Authenticated or demo mode → show the full app
+  return <AppShell />;
+}
+
+// ── Default export — wraps everything with AuthProvider ───────────────────────
+
+export default function App() {
+  return (
+    <AuthProvider>
+      <Root />
+    </AuthProvider>
   );
 }

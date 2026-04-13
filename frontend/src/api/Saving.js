@@ -32,6 +32,7 @@
  */
 
 import { useState, useEffect, useCallback, useMemo } from "react";
+import { useAuth } from "../context/Authcontexts";
 
 import {
   DEMO_TODAY,
@@ -58,8 +59,6 @@ export { SAVINGS_EMOJI_PRESETS };
 // ─────────────────────────────────────────────────────────────────────────────
 // 2. CONSTANTS
 // ─────────────────────────────────────────────────────────────────────────────
-
-const IS_DEMO = import.meta.env.VITE_DEMO_MODE === "true";
 
 /** Canonical "today" for deadline calculations. */
 const TODAY = new Date(DEMO_TODAY + "T00:00:00");
@@ -175,6 +174,7 @@ export function useSavings() {
   // Add-funds modal state
   const [fundsGoal, setFundsGoal] = useState(null); // goal being funded; null = closed
   const [fundsForm, setFundsForm] = useState(BLANK_FUNDS_FORM);
+  const { isDemo: IS_DEMO } = useAuth();
   const { fetchCategories } = useSettings();
 
   // ── Fetch (live mode only) ──────────────────────────────────────────────────

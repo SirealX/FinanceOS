@@ -9,6 +9,7 @@
  */
 
 import { useState, useEffect, useCallback, useMemo } from "react";
+import { useAuth } from "../context/Authcontexts";
 
 import {
   PERIOD_OPTIONS,
@@ -27,8 +28,6 @@ import {
 export { PERIOD_OPTIONS };
 
 // ── Constants ─────────────────────────────────────────────────────────────────
-
-const IS_DEMO = import.meta.env.VITE_DEMO_MODE === "true";
 
 const PERIOD_MAP = {
   "This Month": "this_month",
@@ -250,6 +249,7 @@ const DEMO_SAVINGS_SPENT = {
 // ── useBudget — PRIMARY HOOK ──────────────────────────────────────────────────
 
 export function useBudget() {
+  const { isDemo: IS_DEMO } = useAuth();
   const [allCategories, setAllCategories] = useState([]);
   const [actuals, setActuals] = useState([]);
   const [period, setPeriod] = useState("This Month");

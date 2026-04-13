@@ -8,6 +8,7 @@
  */
 
 import { useState, useEffect, useCallback, useMemo } from "react";
+import { useAuth } from "../context/Authcontexts";
 
 import { DEMO_TODAY, BILL_FREQUENCIES, INITIAL_BILLS } from "../data/MockData";
 import { getBills, createBill, updateBill, deleteBill } from "./bills";
@@ -19,7 +20,6 @@ export { BILL_FREQUENCIES };
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-const IS_DEMO = import.meta.env.VITE_DEMO_MODE === "true";
 const TODAY = new Date(DEMO_TODAY + "T00:00:00");
 
 export const BLANK_FORM = {
@@ -142,6 +142,7 @@ function normalizeBill(raw) {
 // ── useBills — PRIMARY HOOK ───────────────────────────────────────────────────
 
 export function useBills() {
+  const { isDemo: IS_DEMO } = useAuth();
   const { expenseCategories, getCategoryConfig } = useSettings();
 
   const [bills, setBills] = useState(IS_DEMO ? INITIAL_BILLS : []);
