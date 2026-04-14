@@ -283,7 +283,7 @@ export function useDashboard() {
         client.get(`/cashflow?period=${p}`),
         client.get(`/expenses/breakdown?period=${p}`),
         client.get(`/budget/actuals?period=${p}&kind=expense`), // FIX #5: expense only
-        client.get(`/transactions/?date_from=${_periodStart(activePeriod)}`),
+        client.get(`/transactions/?date_from=${_periodStart(activePeriod)}&date_to=${_periodEnd(activePeriod)}`),
         client.get("/budget/categories?kind=expense"), // FIX #5 + #10: in parallel
       ]);
 
@@ -338,14 +338,17 @@ export function useDashboard() {
   const kpi = IS_DEMO
     ? DASHBOARD_KPI[period]
     : {
-        netBalance: kpiData.net_balance,
-        income: kpiData.income,
-        expenses: kpiData.expenses,
-        savingsRate: kpiData.savings_rate,
-        netDelta: kpiData.net_delta,
-        incomeDelta: kpiData.income_delta,
-        expensesDelta: kpiData.expenses_delta,
-        savingsDelta: kpiData.savings_delta,
+        netBalance:      kpiData.net_balance,
+        openingBalance:  kpiData.opening_balance ?? 0,
+        closingBalance:  kpiData.closing_balance ?? kpiData.net_balance,
+        income:          kpiData.income,
+        expenses:        kpiData.expenses,
+        savingsRate:     kpiData.savings_rate,
+        netDelta:        kpiData.net_delta,
+        incomeDelta:     kpiData.income_delta,
+        expensesDelta:   kpiData.expenses_delta,
+        savingsDelta:    kpiData.savings_delta,
+        closingDelta:    kpiData.closing_delta ?? kpiData.net_delta,
       };
 
   const donutLegend = useMemo(() => {
@@ -403,4 +406,21 @@ function _periodStart(period) {
   return new Date(today.getFullYear(), today.getMonth(), 1)
     .toISOString()
     .slice(0, 10);
+}
+
+/**
+ * FIX: Returns the inclusive last day of the selected period.
+ * Without this, the dashboard recent-transactions fetch for "Last Month"
+ * had no upper bound and returned this month's transactions too.
+ */
+function _periodEnd(period) {
+  const today = new Date();
+  if (period === "This Month") return today.toISOString().slice(0, 10);
+  if (period === "Last Month") {
+    // Last day of last month = day 0 of this month
+    const d = new Date(today.getFullYear(), today.getMonth(), 0);
+    return d.toISOString().slice(0, 10);
+  }
+  // Last 3 Months — ends today
+  return today.toISOString().slice(0, 10);
 }

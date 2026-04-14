@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 from ..database import get_db
 from ..models import Transaction, BudgetCategory
 from ..services.entity_sync import transaction_to_entity, reverse_transaction
+from ..services.payment_utils import infer_payment_method
 from ..dependencies import get_current_user
 from pydantic import BaseModel
 from datetime import date as DataType
@@ -161,6 +162,50 @@ def update_transaction(
     db.refresh(tx)
     transaction_to_entity(tx, old_amount, db)
     return tx
+
+
+@router.post("/backfill-payment-method")
+def backfill_payment_method(
+    current_user: str = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    One-shot fix for transactions that were imported without a payment method.
+
+    Finds every transaction owned by the current user where payment_method is
+    NULL, infers the correct value from the description using the same logic
+    as the import wizard, saves it, and clears the is_draft flag.
+
+    Safe to call multiple times — only rows with NULL payment_method are
+    touched; already-set values are never overwritten.
+    """
+    transactions = (
+        db.query(Transaction)
+        .filter(
+            Transaction.user_id == current_user,
+            Transaction.payment_method.is_(None),
+        )
+        .all()
+    )
+
+    updated = 0
+    for tx in transactions:
+        inferred = infer_payment_method(tx.description or "")
+        tx.payment_method = inferred
+        tx.is_draft = False
+        updated += 1
+
+    if updated:
+        db.commit()
+
+    return {
+        "updated_count": updated,
+        "message": (
+            f"{updated} transaction(s) updated with inferred payment methods."
+            if updated
+            else "No transactions needed updating — all already have a payment method."
+        ),
+    }
 
 
 @router.delete("/{transaction_id}")

@@ -180,52 +180,42 @@ def get_budget_actuals(
     db: Session = Depends(get_db),
 ):
     if period not in ("this_month", "last_month", "last_3_months"):
-        raise HTTPException(
-            status_code=400,
-            detail="period must be one of: this_month, last_month, last_3_months",
-        )
+        raise HTTPException(status_code=400, detail=f"Invalid period '{period}'.")
 
-    start, end = _period_bounds(period)
+    date_from, date_to = _period_bounds(period)
 
-    if kind == "income":
-        type_filter = ["income"]
-    elif kind == "savings":
-        type_filter = ["savings"]
-    elif kind == "expense":
-        type_filter = ["expense"]
-    else:
-        type_filter = ["expense", "income", "savings"]
-
-    results = (
+    # Build the aggregation query — sum amounts per category+type for this user
+    q = (
         db.query(
             Transaction.category,
             Transaction.type,
-            func.sum(Transaction.amount).label("total"),
+            func.sum(Transaction.amount).label("spent"),
         )
         .filter(
             Transaction.user_id == current_user,
-            Transaction.type.in_(type_filter),
-            Transaction.date >= start,
-            Transaction.date <= end,
+            Transaction.date    >= date_from,
+            Transaction.date    <= date_to,
+            Transaction.category.isnot(None),
+            Transaction.type.isnot(None),
         )
-        .group_by(Transaction.category, Transaction.type)
-        .all()
+    )
+
+    # Optional kind filter — map kind → transaction type(s)
+    # "expense" kind → expense type, "income" kind → income type,
+    # "savings" kind → savings type
+    if kind and kind in ("expense", "income", "savings"):
+        q = q.filter(Transaction.type == kind)
+
+    rows = (
+        q.group_by(Transaction.category, Transaction.type)
+         .all()
     )
 
     return [
         {
             "category": row.category,
             "type":     row.type,
-            "spent":    float(row.total),
+            "spent":    float(row.spent or 0),
         }
-        for row in results
+        for row in rows
     ]
-
-
-@router.post("/seed-missing")
-def seed_missing_budget_categories(
-    current_user: str = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    cats = get_budget_categories(kind=None, current_user=current_user, db=db)
-    return {"synced": len(cats)}

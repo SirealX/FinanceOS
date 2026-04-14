@@ -2,7 +2,7 @@
  * api/Settings.js — Settings Logic Layer
  */
 
-import { useState, useCallback } from "react";
+import { useState } from "react";
 import { useSettings } from "../context/SettingsContext";
 import {
   CURRENCIES,
@@ -88,23 +88,9 @@ export function validateCategoryName(name, existingCats, editingId = null) {
   return { valid: true, error: null };
 }
 
-// ── Export / Import stubs ─────────────────────────────────────────────────────
-
-export async function exportTransactionsCSV() {
-  console.info("exportTransactionsCSV: stub");
-}
-export async function exportTransactionsExcel() {
-  console.info("exportTransactionsExcel: stub");
-}
-export async function exportMonthlyPDF() {
-  console.info("exportMonthlyPDF: stub");
-}
-export async function importTransactionsCSV(f) {
-  console.info("importTransactionsCSV: stub", f?.name);
-}
-export async function importTransactionsExcel(f) {
-  console.info("importTransactionsExcel: stub", f?.name);
-}
+// Export and import are handled by ExportModal and ImportWizard components.
+// See: frontend/src/components/ExportModal.jsx
+//      frontend/src/pages/ImportWizard.jsx
 
 // ── useSettingsPage ───────────────────────────────────────────────────────────
 
@@ -209,21 +195,6 @@ export function useSettingsPage() {
     }
   }
 
-  // ── Export / Import ────────────────────────────────────────────────────────
-
-  const handleExportCSV = useCallback(exportTransactionsCSV, []);
-  const handleExportExcel = useCallback(exportTransactionsExcel, []);
-  const handleExportPDF = useCallback(exportMonthlyPDF, []);
-
-  function handleImportCSV(e) {
-    const f = e.target.files?.[0];
-    if (f) importTransactionsCSV(f);
-  }
-  function handleImportExcel(e) {
-    const f = e.target.files?.[0];
-    if (f) importTransactionsExcel(f);
-  }
-
   // ── Danger Zone ────────────────────────────────────────────────────────────
 
   function requestDangerAction(id) {
@@ -282,11 +253,6 @@ export function useSettingsPage() {
     openEditCat,
     handleSaveCat,
     handleDeleteCat,
-    handleExportCSV,
-    handleExportExcel,
-    handleExportPDF,
-    handleImportCSV,
-    handleImportExcel,
     requestDangerAction,
     confirmDangerAction,
     cancelDangerAction,

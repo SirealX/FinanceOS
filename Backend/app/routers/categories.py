@@ -55,6 +55,7 @@ SYSTEM_CATEGORIES = [
     { "name": "Refund",          "color": "#38BDF8", "kind": "income",  "sort_order": 11 },
     { "name": "Other Income",    "color": "#475569", "kind": "income",  "sort_order": 12 },
     { "name": "Savings",         "color": "#A78BFA", "kind": "savings", "sort_order": 13 },
+    { "name": "ATM Withdrawal",  "color": "#64748B", "kind": "expense", "sort_order": 14 },
 ]
 
 
@@ -82,14 +83,39 @@ def get_categories(
     current_user: str = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    """
+    Returns categories visible to the caller, deduplicated by (name, kind).
+
+    When the user has saved budget amounts (PUT /budget/categories), the backend
+    creates user-specific override rows with the same name as system rows.
+    Without deduplication, every dropdown would show both the system row AND the
+    user's copy — the exact duplicate problem reported pre-launch.
+
+    Priority: user-specific rows win; system rows are only returned when the
+    user has no override for that (name, kind) pair.
+    """
     if kind and kind not in VALID_KINDS:
         raise HTTPException(status_code=400, detail=f"Invalid kind '{kind}'.")
 
-    q = _user_filter(db.query(Category), current_user)
+    # 1. Fetch the caller's own rows
+    user_q = db.query(Category).filter(Category.user_id == current_user)
     if kind:
-        q = q.filter(Category.kind == kind)
+        user_q = user_q.filter(Category.kind == kind)
+    user_rows = user_q.all()
 
-    return [_serialize(r) for r in q.order_by(Category.sort_order, Category.name).all()]
+    # 2. Track which (name, kind) pairs are already covered by a user row
+    overridden = {(r.name, r.kind) for r in user_rows}
+
+    # 3. Fetch system rows, skipping any that the user has already overridden
+    sys_q = db.query(Category).filter(Category.user_id.is_(None))
+    if kind:
+        sys_q = sys_q.filter(Category.kind == kind)
+    system_rows = [r for r in sys_q.all() if (r.name, r.kind) not in overridden]
+
+    all_rows = user_rows + system_rows
+    all_rows.sort(key=lambda r: (r.sort_order, r.name))
+
+    return [_serialize(r) for r in all_rows]
 
 
 @router.post("/", status_code=201)

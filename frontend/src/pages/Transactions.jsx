@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 
 import {
   PERIOD_OPTIONS,
@@ -9,6 +9,9 @@ import {
   initials,
   useTransactions,
 } from "../api/Transaction";
+
+import ImportWizard from "./ImportWizard";
+import ExportModal from "../components/ExportModal";
 
 // ── Icons ─────────────────────────────────────────────────────────────────────
 
@@ -524,6 +527,9 @@ export default function Transactions() {
     getCategoryConfig, // FIX (colors): live color lookup
   } = useTransactions();
 
+  const [showImport, setShowImport] = useState(false);
+  const [showExport, setShowExport] = useState(false);
+
   if (loading) {
     return (
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
@@ -544,7 +550,12 @@ export default function Transactions() {
           </p>
         </div>
         <div className="page-header-actions">
-          <button className="btn-secondary">↑ Import CSV</button>
+          <button className="btn-secondary" onClick={() => setShowImport(true)}>
+            ↑ Import
+          </button>
+          <button className="btn-secondary" onClick={() => setShowExport(true)}>
+            ↓ Export
+          </button>
           <button className="btn-primary" onClick={openAdd}>
             + Add Transaction
           </button>
@@ -724,7 +735,7 @@ export default function Transactions() {
         )}
       </div>
 
-      {/* ── Modal ── */}
+      {/* ── Add/Edit Modal ── */}
       {showModal && (
         <TxModal
           form={form}
@@ -736,6 +747,24 @@ export default function Transactions() {
           onClose={closeModal}
           categoryGroups={categoryGroups}
         />
+      )}
+
+      {/* ── Import Wizard ── */}
+      {showImport && (
+        <ImportWizard
+          onClose={() => setShowImport(false)}
+          onImportComplete={() => {
+            setShowImport(false);
+            // Re-fetch transactions after successful import
+            window.location.reload();
+          }}
+          categoryGroups={categoryGroups}
+        />
+      )}
+
+      {/* ── Export Modal ── */}
+      {showExport && (
+        <ExportModal onClose={() => setShowExport(false)} />
       )}
     </>
   );

@@ -2,7 +2,7 @@
  * Settings.jsx — Presentation Layer
  */
 
-import { useState, useRef } from "react";
+import { useState } from "react";
 
 import {
   CURRENCIES,
@@ -14,6 +14,9 @@ import {
   hexToRgba,
   useSettingsPage,
 } from "../api/Settings";
+
+import ExportModal from "../components/ExportModal";
+import ImportWizard from "./ImportWizard";
 
 // ── SectionLabel ──────────────────────────────────────────────────────────────
 
@@ -398,26 +401,6 @@ function CategoryRow({ cat, onEdit, onDelete }) {
   );
 }
 
-// ── ImportButton ──────────────────────────────────────────────────────────────
-
-function ImportButton({ label, accept, onChange }) {
-  const ref = useRef(null);
-  return (
-    <>
-      <input
-        ref={ref}
-        type="file"
-        accept={accept}
-        style={{ display: "none" }}
-        onChange={onChange}
-      />
-      <button className="btn-secondary" onClick={() => ref.current?.click()}>
-        {label}
-      </button>
-    </>
-  );
-}
-
 // ── Settings — default export ─────────────────────────────────────────────────
 
 export default function Settings() {
@@ -446,16 +429,28 @@ export default function Settings() {
     openEditCat,
     handleSaveCat,
     handleDeleteCat,
-    handleExportCSV,
-    handleExportExcel,
-    handleExportPDF,
-    handleImportCSV,
-    handleImportExcel,
     dangerPending,
     requestDangerAction,
     confirmDangerAction,
     cancelDangerAction,
   } = useSettingsPage();
+
+  // Build categoryGroups for the ImportWizard (same shape as Transactions page)
+  const categoryGroups = [
+    expenseCategories.length > 0 && {
+      header: "── Expenses ──────────────",
+      options: expenseCategories.map((c) => c.name),
+    },
+    incomeCategories.length > 0 && {
+      header: "── Income ────────────────",
+      options: incomeCategories.map((c) => c.name),
+    },
+  ].filter(Boolean);
+
+  // ── Import / Export modal state ────────────────────────────────────────────
+  const [showExportCSV, setShowExportCSV] = useState(false);
+  const [showExportXML, setShowExportXML] = useState(false);
+  const [showImport,    setShowImport]    = useState(false);
 
   return (
     <>
@@ -723,37 +718,54 @@ export default function Settings() {
       {/* ── Data & Export ── */}
       <div className="card" style={{ marginBottom: 12 }}>
         <h2 className="section-header">Data & Export</h2>
+
         <SectionLabel>Export</SectionLabel>
-        <div
+        <p
           style={{
-            display: "flex",
-            gap: 10,
-            marginBottom: 20,
-            flexWrap: "wrap",
+            fontSize: 12,
+            color: "var(--color-text-muted)",
+            marginBottom: 12,
+            marginTop: -6,
           }}
         >
-          <button className="btn-secondary" onClick={handleExportCSV}>
-            ↓ Export Transactions (CSV)
+          Download your transactions for the last 3 months. Maximum range per export.
+        </p>
+        <div style={{ display: "flex", gap: 10, marginBottom: 20, flexWrap: "wrap" }}>
+          <button className="btn-secondary" onClick={() => setShowExportCSV(true)}>
+            ↓ Export Transactions (.CSV)
           </button>
-          <button className="btn-secondary" onClick={handleExportExcel}>
-            ↓ Export Transactions (Excel)
+          <button className="btn-secondary" onClick={() => setShowExportXML(true)}>
+            ↓ Export Transactions (.XML)
           </button>
-          <button className="btn-secondary" onClick={handleExportPDF}>
-            ↓ Monthly Report (PDF)
+          <button
+            className="btn-secondary"
+            disabled
+            title="PDF monthly reports are coming in a future update"
+            style={{ opacity: 0.45, cursor: "not-allowed" }}
+          >
+            ↓ Monthly Report (PDF) — coming soon
           </button>
         </div>
+
         <SectionLabel>Import</SectionLabel>
+        <p
+          style={{
+            fontSize: 12,
+            color: "var(--color-text-muted)",
+            marginBottom: 12,
+            marginTop: -6,
+          }}
+        >
+          Import bank statements from Bancolombia (XLSX) or any bank (CSV).
+          A 5-step wizard guides you through mapping, review, and confirmation.
+        </p>
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-          <ImportButton
-            label="↑ Import from CSV"
-            accept=".csv"
-            onChange={handleImportCSV}
-          />
-          <ImportButton
-            label="↑ Import from Excel"
-            accept=".xlsx,.xls"
-            onChange={handleImportExcel}
-          />
+          <button
+            className="btn-secondary"
+            onClick={() => setShowImport(true)}
+          >
+            ↑ Import Bank Statement (CSV / XLSX)
+          </button>
         </div>
       </div>
 
@@ -871,6 +883,32 @@ export default function Settings() {
           isEditing={catModal.mode === "edit"}
           onSave={handleSaveCat}
           onClose={() => setCatModal(null)}
+        />
+      )}
+
+      {/* ── Export Modals ── */}
+      {showExportCSV && (
+        <ExportModal
+          defaultFormat="csv"
+          onClose={() => setShowExportCSV(false)}
+        />
+      )}
+      {showExportXML && (
+        <ExportModal
+          defaultFormat="xml"
+          onClose={() => setShowExportXML(false)}
+        />
+      )}
+
+      {/* ── Import Wizard ── */}
+      {showImport && (
+        <ImportWizard
+          onClose={() => setShowImport(false)}
+          onImportComplete={() => {
+            setShowImport(false);
+            window.location.reload();
+          }}
+          categoryGroups={categoryGroups}
         />
       )}
     </>

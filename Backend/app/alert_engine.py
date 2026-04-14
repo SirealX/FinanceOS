@@ -614,39 +614,43 @@ def _fmt(amount: Optional[Decimal]) -> str:
 
 def _estimate_spendable_balance(user_id: str, db: Session) -> Optional[Decimal]:
     """
-    Very simple balance estimate:
-    total income this month − total expenses this month (non-draft).
-    Returns None if no income data exists yet.
-    """
-    today     = date.today()
-    month_key = today.strftime("%Y-%m")
+    Running (carry-over aware) balance estimate.
 
-    income = (
+    Sums ALL non-draft income ever recorded, then subtracts ALL non-draft
+    expenses and savings up to today.  This correctly reflects money carried
+    over from previous months — if January had a £500 surplus that surplus
+    is included in February's spendable balance.
+
+    Returns None if the user has no income records at all (new account).
+    """
+    today = date.today()
+
+    total_income = (
         db.query(func.sum(Transaction.amount))
         .filter(
-            Transaction.user_id == user_id,
-            Transaction.type    == "income",
+            Transaction.user_id  == user_id,
+            Transaction.type     == "income",
             Transaction.is_draft == False,
-            func.to_char(Transaction.date, "YYYY-MM") == month_key,
+            Transaction.date     <= today,
         )
         .scalar()
     ) or Decimal("0")
 
-    if income == 0:
+    if total_income == 0:
         return None
 
-    expenses = (
+    total_outflow = (
         db.query(func.sum(Transaction.amount))
         .filter(
-            Transaction.user_id == user_id,
-            Transaction.type    == "expense",
+            Transaction.user_id  == user_id,
+            Transaction.type.in_(["expense", "savings"]),
             Transaction.is_draft == False,
-            func.to_char(Transaction.date, "YYYY-MM") == month_key,
+            Transaction.date     <= today,
         )
         .scalar()
     ) or Decimal("0")
 
-    return income - expenses
+    return total_income - total_outflow
 
 
 def _dispatch_immediate(alert: Alert, prefs: AlertPreferences) -> None:

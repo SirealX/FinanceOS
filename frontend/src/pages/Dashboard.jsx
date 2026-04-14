@@ -355,11 +355,12 @@ export default function Dashboard() {
 
       {/* ══ ZONE 2: KPI Cards ══ */}
       <div className="grid-kpi" style={{ marginBottom: 12 }}>
+        {/* BALANCE — carry-over aware closing balance (opening + this period) */}
         <KpiCard
-          label="NET BALANCE"
-          value={formatAmount(kpi.netBalance)}
-          delta={kpi.netDelta}
-          colorClass=""
+          label="BALANCE"
+          value={formatAmount(kpi.closingBalance)}
+          delta={kpi.closingDelta}
+          colorClass={kpi.closingBalance >= 0 ? "" : "expense"}
           icon={<NetBalanceIcon />}
         />
         <KpiCard
