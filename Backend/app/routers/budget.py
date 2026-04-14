@@ -80,19 +80,41 @@ def get_budget_categories(
     db: Session = Depends(get_db),
 ):
     """
-    Returns system categories (user_id IS NULL) plus the caller's own
-    custom categories, optionally filtered by kind.
+    Returns categories visible to the caller.  Priority rules:
+      1. User-specific rows (user_id == current_user) take precedence.
+      2. System rows (user_id IS NULL) fill in any (name, kind) pair the user
+         has not yet overridden — they are NOT returned when a user row exists
+         for the same (name, kind) combination.
+    This prevents duplicate rows and ensures planned amounts are per-user.
     """
-    q = db.query(Category).filter(
-        Category.kind.in_(["expense", "income", "savings"]),
-        # System rows (NULL) are shared; user rows are private
-        or_(Category.user_id == current_user, Category.user_id.is_(None)),
+    user_rows = (
+        db.query(Category)
+        .filter(
+            Category.user_id == current_user,
+            Category.kind.in_(["expense", "income", "savings"]),
+        )
+        .all()
     )
-    if kind and kind in ("expense", "income", "savings"):
-        q = q.filter(Category.kind == kind)
+    overridden = {(r.name, r.kind) for r in user_rows}
 
-    rows = q.order_by(Category.sort_order, Category.name).all()
-    return [_serialize_cat(r) for r in rows]
+    system_rows = (
+        db.query(Category)
+        .filter(
+            Category.user_id.is_(None),
+            Category.kind.in_(["expense", "income", "savings"]),
+        )
+        .all()
+    )
+    # Only include system rows that the user has not overridden
+    visible_system = [r for r in system_rows if (r.name, r.kind) not in overridden]
+
+    all_rows = user_rows + visible_system
+
+    if kind and kind in ("expense", "income", "savings"):
+        all_rows = [r for r in all_rows if r.kind == kind]
+
+    all_rows.sort(key=lambda r: (r.sort_order, r.name))
+    return [_serialize_cat(r) for r in all_rows]
 
 
 @router.put("/categories")
@@ -102,34 +124,52 @@ def update_budget_categories(
     db: Session = Depends(get_db),
 ):
     """
-    Bulk update planned amounts.
-    System categories: anyone can update planned amounts (shared budget templates).
-    User categories: only the owner can update them.
+    Bulk update planned amounts — always writes to the caller's own rows.
+    System rows (user_id IS NULL) are NEVER mutated; instead, a user-specific
+    override row is created on first save so each user has isolated budget data.
     """
+    import uuid as _uuid
+
     for i, cat_in in enumerate(data.categories):
         kind = cat_in.kind or "expense"
+
+        # 1. Look for an existing user-specific row
         cat = db.query(Category).filter(
             Category.name == cat_in.name,
             Category.kind == kind,
-            or_(Category.user_id == current_user, Category.user_id.is_(None)),
+            Category.user_id == current_user,
         ).first()
+
         if cat:
+            # Update the user's own row
             cat.planned_amount = cat_in.planned
             cat.color          = cat_in.color
             cat.sort_order     = i
+        else:
+            # No user row yet — find the system template (if any) to inherit
+            # color and system flag, then create a user-specific override.
+            sys_cat = db.query(Category).filter(
+                Category.name == cat_in.name,
+                Category.kind == kind,
+                Category.user_id.is_(None),
+            ).first()
+
+            new_cat = Category(
+                id             = _uuid.uuid4(),
+                user_id        = current_user,
+                name           = cat_in.name,
+                kind           = kind,
+                color          = cat_in.color if cat_in.color else (sys_cat.color if sys_cat else "#475569"),
+                planned_amount = cat_in.planned,
+                sort_order     = i,
+                system         = False,
+            )
+            db.add(new_cat)
 
     db.commit()
 
-    rows = (
-        db.query(Category)
-        .filter(
-            Category.kind.in_(["expense", "income", "savings"]),
-            or_(Category.user_id == current_user, Category.user_id.is_(None)),
-        )
-        .order_by(Category.sort_order, Category.name)
-        .all()
-    )
-    return [_serialize_cat(r) for r in rows]
+    # Return the same merged view as GET /categories
+    return get_budget_categories(kind=None, current_user=current_user, db=db)
 
 
 @router.get("/actuals")
@@ -187,12 +227,5 @@ def seed_missing_budget_categories(
     current_user: str = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    cats = (
-        db.query(Category)
-        .filter(
-            Category.kind.in_(["expense", "income", "savings"]),
-            or_(Category.user_id == current_user, Category.user_id.is_(None)),
-        )
-        .all()
-    )
+    cats = get_budget_categories(kind=None, current_user=current_user, db=db)
     return {"synced": len(cats)}

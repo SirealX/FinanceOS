@@ -60,8 +60,8 @@ export { SAVINGS_EMOJI_PRESETS };
 // 2. CONSTANTS
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** Canonical "today" for deadline calculations. */
-const TODAY = new Date(DEMO_TODAY + "T00:00:00");
+/** Canonical "today" for deadline calculations — always real current date. */
+const TODAY = new Date();
 
 export const BLANK_GOAL_FORM = {
   emoji: "🎯",
@@ -162,6 +162,10 @@ function buildGoalPayload(form) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export function useSavings() {
+  // AUTH: must be first — IS_DEMO is used in the useState initialisers below
+  const { isDemo: IS_DEMO } = useAuth();
+  const { fetchCategories, formatAmount } = useSettings();
+
   const [goals, setGoals] = useState(IS_DEMO ? INITIAL_SAVINGS_GOALS : []);
   const [loading, setLoading] = useState(!IS_DEMO);
   const [error, setError] = useState(null);
@@ -174,8 +178,6 @@ export function useSavings() {
   // Add-funds modal state
   const [fundsGoal, setFundsGoal] = useState(null); // goal being funded; null = closed
   const [fundsForm, setFundsForm] = useState(BLANK_FUNDS_FORM);
-  const { isDemo: IS_DEMO } = useAuth();
-  const { fetchCategories } = useSettings();
 
   // ── Fetch (live mode only) ──────────────────────────────────────────────────
   const fetchGoals = useCallback(async () => {
@@ -360,6 +362,7 @@ export function useSavings() {
     closeFunds,
     handleSaveFunds,
 
+    formatAmount, // currency-aware (from SettingsContext)
     isDemo: IS_DEMO,
   };
 }

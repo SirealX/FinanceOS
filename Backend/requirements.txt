@@ -1,0 +1,21 @@
+# Finance Tracker — Backend Dependencies
+# Install with: pip install -r requirements.txt
+
+# Web framework
+fastapi==0.115.0
+uvicorn[standard]==0.30.6
+
+# Database
+sqlalchemy==2.0.36
+psycopg2-binary==2.9.10
+alembic==1.13.3
+
+# Auth / JWT (Supabase JWT verification)
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+
+# Environment variables
+python-dotenv==1.0.1
+
+# Data validation (included with FastAPI but pinned for clarity)
+pydantic==2.9.2

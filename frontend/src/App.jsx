@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 
 import Dashboard from "./pages/Dashboard";
 import Transactions from "./pages/Transactions";
@@ -167,6 +167,8 @@ function AppShell() {
   const { user, isDemo, signOut } = useAuth();
   const [activeId, setActiveId] = useState("dashboard");
   const [draftCount, setDraftCount] = useState(0);
+  const consecutiveFailures = useRef(0);
+  const pollIntervalRef = useRef(null);
 
   // Sidebar user display — real user email or demo label
   const sidebarUser = isDemo
@@ -182,21 +184,38 @@ function AppShell() {
     try {
       const res = await client.get("/transactions/drafts/count");
       setDraftCount(res.data.count ?? 0);
+      consecutiveFailures.current = 0; // reset on success
     } catch {
-      // silently ignore
+      consecutiveFailures.current += 1;
+      // Stop polling after 3 consecutive failures to avoid flooding the console
+      // when the backend is unreachable. It resumes on the next page/tab navigation.
+      if (consecutiveFailures.current >= 3 && pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current);
+        pollIntervalRef.current = null;
+      }
     }
   }
 
   useEffect(() => {
     if (isDemo) return;
+    consecutiveFailures.current = 0;
     fetchDraftCount();
-    const interval = setInterval(fetchDraftCount, 5_000);
-    return () => clearInterval(interval);
+    pollIntervalRef.current = setInterval(fetchDraftCount, 5_000);
+    return () => {
+      if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+    };
   }, [isDemo]);
 
   function handleNavigate(id) {
     setActiveId(id);
-    fetchDraftCount();
+    // Resume polling if it was suspended due to failures
+    if (!pollIntervalRef.current && !isDemo) {
+      consecutiveFailures.current = 0;
+      fetchDraftCount();
+      pollIntervalRef.current = setInterval(fetchDraftCount, 5_000);
+    } else {
+      fetchDraftCount();
+    }
   }
 
   const activeItem = NAV_ITEMS_CONFIG.find((item) => item.id === activeId);

@@ -195,7 +195,7 @@ function buildPayload(form, existingDebt) {
 
 export function useDebts() {
   const { isDemo: IS_DEMO } = useAuth();
-  const { currency } = useSettings();
+  const { currency, formatAmount } = useSettings();
 
   const [debts, setDebts] = useState(IS_DEMO ? INITIAL_DEBTS : []);
   const [loading, setLoading] = useState(!IS_DEMO);
@@ -374,6 +374,7 @@ export function useDebts() {
     setPayingDebt,
     handlePay,
     sliderParams, // FIX #6: expose to Debts.jsx
+    formatAmount, // currency-aware (from SettingsContext)
     isDemo: IS_DEMO,
   };
 }

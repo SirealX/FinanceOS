@@ -51,7 +51,7 @@ export function formatAmountK(n) {
 // ── Period subtitle ───────────────────────────────────────────────────────────
 
 export function getPeriodSubtitle(period) {
-  const base = new Date(DEMO_TODAY + "T00:00:00");
+  const base = new Date(); // always use real current date
   const year = base.getFullYear();
 
   if (period === "This Month")
@@ -248,7 +248,7 @@ const EMPTY_DONUT = { labels: [], values: [], colors: [] };
 // ── useDashboard ──────────────────────────────────────────────────────────────
 
 export function useDashboard() {
-  const { isDemo: IS_DEMO } = useAuth();
+  const { isDemo: IS_DEMO, user: authUser } = useAuth();
   const [period, setPeriod] = useState("This Month");
   const navigate = useNav();
   const { getAllCategoryConfig, formatAmount } = useSettings();
@@ -258,7 +258,7 @@ export function useDashboard() {
   const [donutData, setDonutData] = useState(EMPTY_DONUT);
   const [budgetRows, setBudgetRows] = useState([]);
   const [recentTxRaw, setRecentTxRaw] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!IS_DEMO);
   const [error, setError] = useState(null);
 
   // ── FIX #10: All API calls in a single Promise.all ─────────────────────────
@@ -367,7 +367,9 @@ export function useDashboard() {
     setPeriod,
     periodOptions: PERIOD_OPTIONS,
     periodSubtitle: getPeriodSubtitle(period),
-    user: DEMO_USER,
+    user: IS_DEMO
+      ? DEMO_USER
+      : { name: authUser?.email ?? "User", email: authUser?.email ?? "" },
     kpi,
     donutLegend,
     budgetRows: IS_DEMO ? DASHBOARD_BUDGET_ROWS : budgetRows,

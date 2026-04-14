@@ -6,6 +6,7 @@ from ..dependencies import get_current_user
 from pydantic import BaseModel
 from datetime import date as DateType
 from typing import Optional
+import uuid
 
 router = APIRouter(prefix="/savings", tags=["savings"])
 
@@ -62,9 +63,14 @@ def update_goal(
     current_user: str = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    try:
+        parsed_id = uuid.UUID(goal_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid ID format")
+
     # Ownership check
     goal = db.query(SavingsGoal).filter(
-        SavingsGoal.id == goal_id,
+        SavingsGoal.id == parsed_id,
         SavingsGoal.user_id == current_user,
     ).first()
     if not goal:
@@ -84,9 +90,14 @@ def log_contribution(
     current_user: str = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    try:
+        parsed_id = uuid.UUID(goal_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid ID format")
+
     # Ownership check
     goal = db.query(SavingsGoal).filter(
-        SavingsGoal.id == goal_id,
+        SavingsGoal.id == parsed_id,
         SavingsGoal.user_id == current_user,
     ).first()
     if not goal:
@@ -140,9 +151,14 @@ def delete_goal(
     current_user: str = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    try:
+        parsed_id = uuid.UUID(goal_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid ID format")
+
     # Ownership check
     goal = db.query(SavingsGoal).filter(
-        SavingsGoal.id == goal_id,
+        SavingsGoal.id == parsed_id,
         SavingsGoal.user_id == current_user,
     ).first()
     if not goal:

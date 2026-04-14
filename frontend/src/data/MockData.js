@@ -30,7 +30,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** Fixed "today" for demo mode. Replace with `new Date()` in production. */
-export const DEMO_TODAY = "2026-04-04";
+export const DEMO_TODAY = "2026-04-13";
 
 /** Display name shown in the sidebar and dashboard greeting. */
 export const DEMO_USER = {

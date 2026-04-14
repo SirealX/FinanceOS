@@ -12,7 +12,7 @@
  *
  * ROUTE LOGIC (handled in App.jsx)
  *   loading          → show spinner
- *   !user && !isDemo → show <Login />
+ *   user && !isDemo → show <Login />
  *   user || isDemo   → show the full app shell
  *
  * IS_DEMO IN HOOK FILES

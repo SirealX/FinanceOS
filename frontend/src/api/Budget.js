@@ -10,6 +10,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { useAuth } from "../context/Authcontexts";
+import { useSettings } from "../context/SettingsContext";
 
 import {
   PERIOD_OPTIONS,
@@ -250,6 +251,7 @@ const DEMO_SAVINGS_SPENT = {
 
 export function useBudget() {
   const { isDemo: IS_DEMO } = useAuth();
+  const { formatAmount } = useSettings();
   const [allCategories, setAllCategories] = useState([]);
   const [actuals, setActuals] = useState([]);
   const [period, setPeriod] = useState("This Month");
@@ -494,6 +496,7 @@ export function useBudget() {
     closeModal,
     handleSave,
 
+    formatAmount, // currency-aware (from SettingsContext)
     isDemo: IS_DEMO,
   };
 }

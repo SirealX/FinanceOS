@@ -32,10 +32,13 @@ export { PERIOD_OPTIONS, CATEGORY_CONFIG, PAYMENT_METHODS };
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
+// Default date for new transactions is always today's real date.
+const _todayISO = () => new Date().toISOString().slice(0, 10);
+
 export const BLANK_FORM = {
   description: "",
   amount: "",
-  date: DEMO_TODAY,
+  date: _todayISO(),
   type: "expense",
   category: "Food & Dining",
   method: "",
@@ -122,7 +125,7 @@ export function formatDate(iso) {
 }
 
 export function periodBounds(filter) {
-  const base = new Date(DEMO_TODAY + "T00:00:00");
+  const base = new Date(); // always use real today for period filtering
   const year = base.getFullYear();
   const month = base.getMonth();
 
@@ -248,7 +251,8 @@ export function useTransactions() {
     const defaultCat =
       flatCategoryNames(allCategories, "expense")[0] ?? "Other";
     setEditingTx(null);
-    setForm({ ...BLANK_FORM, category: defaultCat });
+    // Use today's actual date for new entries (not the module-load date)
+    setForm({ ...BLANK_FORM, date: _todayISO(), category: defaultCat });
     setShowModal(true);
   }
 
@@ -282,6 +286,9 @@ export function useTransactions() {
 
   // ── Save ──────────────────────────────────────────────────────────────────
   async function handleSave() {
+    // Transactions without a payment method are saved as drafts so the user
+    // is reminded to confirm the payment channel later. Once a method is set,
+    // the transaction is fully confirmed (is_draft = false).
     const payload = {
       description: form.description.trim(),
       amount: parseFloat(form.amount),
@@ -289,7 +296,7 @@ export function useTransactions() {
       type: form.type,
       category: form.category,
       payment_method: form.method || null,
-      is_draft: false,
+      is_draft: !form.method,
     };
 
     if (IS_DEMO) {

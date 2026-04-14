@@ -6,16 +6,24 @@ request and returns the caller's user UUID.
 
 HOW SUPABASE AUTH WORKS WITH FASTAPI
   1. The React frontend signs in via @supabase/supabase-js.
-  2. Supabase issues a JWT signed with the project's JWT_SECRET (HS256).
+  2. Supabase issues a JWT signed with an EC private key (ES256).
   3. The frontend sends that token in every API call:
        Authorization: Bearer <token>
-  4. This dependency decodes and verifies the token.
+  4. This dependency fetches the matching EC public key from the Supabase
+     JWKS endpoint and uses it to verify the signature.
   5. The `sub` claim in the payload is the user's UUID — we return that as
      `current_user` in every protected route.
 
 ENVIRONMENT VARIABLES REQUIRED
-  SUPABASE_JWT_SECRET  → Supabase Dashboard → Settings → API → JWT Secret
-                         (the long secret, NOT the anon or service_role key)
+  SUPABASE_URL         → Supabase Dashboard → Settings → API → Project URL
+                         e.g. https://xxxxxxxxxxxx.supabase.co
+  SUPABASE_JWT_SECRET  → Only used as a fallback for HS256 tokens (legacy).
+                         Supabase Dashboard → Settings → API → JWT Secret
+
+ALGORITHM NOTES
+  Supabase uses ES256 (asymmetric EC key pair) by default.
+  The public key is served at {SUPABASE_URL}/.well-known/jwks.json.
+  We fetch the JWKS once at startup and cache it in _JWKS.
 
 USAGE IN A ROUTER
   from ..dependencies import get_current_user
@@ -32,28 +40,97 @@ USAGE IN A ROUTER
 """
 
 import os
+import json
+import urllib.request
+from dotenv import load_dotenv
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from jose import jwt, JWTError
+from jose.exceptions import JOSEError
+
+# Ensure .env is loaded even if this module is imported before database.py
+load_dotenv()
 
 # ── Security scheme ────────────────────────────────────────────────────────────
-# HTTPBearer extracts the token from the Authorization header automatically.
-# auto_error=False means we handle the 401 ourselves with a clearer message.
 security = HTTPBearer(auto_error=False)
 
-# ── JWT config ─────────────────────────────────────────────────────────────────
-SUPABASE_JWT_SECRET = os.getenv("SUPABASE_JWT_SECRET")
-ALGORITHM = "HS256"
+# ── Config ─────────────────────────────────────────────────────────────────────
+SUPABASE_URL = os.getenv("SUPABASE_URL", "").rstrip("/")
+SUPABASE_JWT_SECRET = os.getenv("SUPABASE_JWT_SECRET")  # fallback for HS256
+
 # Supabase sets audience="authenticated" on all user JWTs
 AUDIENCE = "authenticated"
 
 
+# ── JWKS fetch (runs once at startup) ─────────────────────────────────────────
+def _fetch_jwks() -> dict | None:
+    """
+    Download the JWKS from Supabase and cache it.
+    Returns the parsed JSON dict, or None on failure.
+    """
+    if not SUPABASE_URL:
+        print("[dependencies] SUPABASE_URL is not set — JWKS fetch skipped.")
+        return None
+    url = f"{SUPABASE_URL}/auth/v1/.well-known/jwks.json"
+    try:
+        with urllib.request.urlopen(url, timeout=10) as response:
+            data = json.loads(response.read())
+            print(f"[dependencies] JWKS loaded: {len(data.get('keys', []))} key(s)")
+            return data
+    except Exception as exc:
+        print(f"[dependencies] WARNING — could not fetch JWKS from {url}: {exc}")
+        return None
+
+
+_JWKS: dict | None = _fetch_jwks()
+
+
+# ── Key resolution ─────────────────────────────────────────────────────────────
+def _resolve_key(token: str):
+    """
+    Inspect the JWT header and return (key, [algorithm]) ready for jwt.decode().
+
+    Priority:
+      1. If the header says ES256 or RS256 and we have JWKS keys, match by `kid`
+         (or fall back to the first key).
+      2. Otherwise fall back to the HS256 shared secret.
+    """
+    try:
+        header = jwt.get_unverified_header(token)
+    except (JWTError, JOSEError):
+        # Can't read header at all — let decode() produce a proper error
+        return SUPABASE_JWT_SECRET, ["HS256"]
+
+    alg = header.get("alg", "ES256")
+
+    if alg in ("ES256", "RS256") and _JWKS and "keys" in _JWKS:
+        kid = header.get("kid")
+        # Prefer the key whose `kid` matches the token header
+        matched_key = None
+        for k in _JWKS["keys"]:
+            if kid and k.get("kid") == kid:
+                matched_key = k
+                break
+        # If no kid match, use the first available key
+        if matched_key is None and _JWKS["keys"]:
+            matched_key = _JWKS["keys"][0]
+
+        if matched_key:
+            # Pass the raw JWK dict — jwt.decode() will construct the key internally
+            return matched_key, [alg]
+
+    # Fallback: HS256 with the shared secret
+    return SUPABASE_JWT_SECRET, ["HS256"]
+
+
+# ── Dependency ─────────────────────────────────────────────────────────────────
 async def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(security),
 ) -> str:
     """
-    Verifies the Supabase JWT and returns the caller's user UUID (the `sub`
-    claim). Raises HTTP 401 if the token is absent, expired, or invalid.
+    Verifies the Supabase JWT (ES256 via JWKS, or HS256 fallback) and returns
+    the caller's user UUID (the `sub` claim).
+    Raises HTTP 401 if the token is absent, expired, or invalid.
     """
     # ── Missing token ──────────────────────────────────────────────────────────
     if credentials is None:
@@ -63,23 +140,18 @@ async def get_current_user(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    # ── Missing secret — configuration error, not caller error ────────────────
-    if not SUPABASE_JWT_SECRET:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Server misconfiguration: SUPABASE_JWT_SECRET is not set.",
-        )
-
     token = credentials.credentials
+    key, algorithms = _resolve_key(token)
 
+    # ── Verify + decode ────────────────────────────────────────────────────────
     try:
         payload = jwt.decode(
             token,
-            SUPABASE_JWT_SECRET,
-            algorithms=[ALGORITHM],
+            key,
+            algorithms=algorithms,
             audience=AUDIENCE,
         )
-    except JWTError as exc:
+    except (JWTError, JOSEError) as exc:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=f"Invalid or expired token: {exc}",

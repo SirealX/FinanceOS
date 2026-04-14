@@ -20,7 +20,8 @@ export { BILL_FREQUENCIES };
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-const TODAY = new Date(DEMO_TODAY + "T00:00:00");
+// Always use real current date for overdue/due-soon calculations.
+const TODAY = new Date();
 
 export const BLANK_FORM = {
   name: "",
@@ -143,7 +144,7 @@ function normalizeBill(raw) {
 
 export function useBills() {
   const { isDemo: IS_DEMO } = useAuth();
-  const { expenseCategories, getCategoryConfig } = useSettings();
+  const { expenseCategories, getCategoryConfig, formatAmount } = useSettings();
 
   const [bills, setBills] = useState(IS_DEMO ? INITIAL_BILLS : []);
   const [loading, setLoading] = useState(!IS_DEMO);
@@ -368,6 +369,7 @@ export function useBills() {
     billCategoryNames,
     // FIX #2: live color lookup for avatars
     catCfg,
+    formatAmount, // currency-aware (from SettingsContext)
     isDemo: IS_DEMO,
   };
 }

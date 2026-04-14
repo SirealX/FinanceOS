@@ -167,7 +167,10 @@ def update_bill(
         if "name" in update_data:
             hub.transaction_name = update_data["name"]
             hub.type             = f"Bill: {update_data['name']}"
-        hub.date = DateType.today()
+        # Only update the hub date when the bill's due_date itself changes —
+        # do NOT reset it to today on every field edit.
+        if "due_date" in update_data:
+            hub.date = update_data["due_date"]
 
         entity_to_transaction(hub, db)
 

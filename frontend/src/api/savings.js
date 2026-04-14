@@ -1,7 +1,7 @@
 import client from "./client";
 
-export const getSavings = () => client.get("/savings");
-export const createSavingsGoal = (data) => client.post("/savings", data);
+export const getSavings = () => client.get("/savings/");
+export const createSavingsGoal = (data) => client.post("/savings/", data);
 export const updateSavingsGoal = (id, data) =>
   client.put(`/savings/${id}`, data);
 export const logContribution = (id, amount) =>
