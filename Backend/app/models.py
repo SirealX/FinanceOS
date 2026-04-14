@@ -1,5 +1,5 @@
-from sqlalchemy import Column, String, Numeric, Date, DateTime, Boolean, Integer, Enum, ForeignKey, Text
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import Column, String, Numeric, Date, DateTime, Boolean, Integer, Enum, ForeignKey, Text, Time
+from sqlalchemy.dialects.postgresql import UUID, JSONB
 import uuid
 from datetime import datetime
 from .database import Base
@@ -16,9 +16,15 @@ class Transaction(Base):
     amount             = Column(Numeric(10, 2))
     planned_amt        = Column(Numeric(10, 2))
     payment_method     = Column(String(50))
-    source             = Column(Enum("manual", "import", "api_sync", name="source_type"))
+    source             = Column(Enum(
+                             "manual", "import", "api_sync",
+                             "bill_payment", "savings_contribution", "csv_import",
+                             name="source_type"
+                         ))
     created_at         = Column(DateTime, default=datetime.utcnow)
     is_draft           = Column(Boolean, default=False)
+    # reviewed: False for csv_import / api_sync until user reviews; True for manual
+    reviewed           = Column(Boolean, default=True)
     budget_category_id = Column(
         UUID(as_uuid=True),
         ForeignKey("budget_categories.id", ondelete="SET NULL"),
@@ -131,9 +137,59 @@ class Preferences(Base):
     GET /preferences auto-creates the default row on first call.
     """
     __tablename__ = "preferences"
-    id          = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id           = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     # ── AUTH ──────────────────────────────────────────────────────────────────
-    user_id     = Column(UUID(as_uuid=True), nullable=True, unique=True, index=True)
-    currency    = Column(String(10),  nullable=False, default="USD")
-    date_format = Column(String(20),  nullable=False, default="MMM D, YYYY")
-    month_start = Column(Integer,     nullable=False, default=1)
+    user_id      = Column(UUID(as_uuid=True), nullable=True, unique=True, index=True)
+    currency     = Column(String(10),  nullable=False, default="USD")
+    date_format  = Column(String(20),  nullable=False, default="MMM D, YYYY")
+    month_start  = Column(Integer,     nullable=False, default=1)
+    # Updated on every authenticated request — used for session-boundary detection
+    last_seen_at = Column(DateTime, nullable=True)
+
+
+class Alert(Base):
+    """
+    One row per alert event. Persists forever as the canonical record.
+    read_at = NULL means unread.  fired_immediate prevents digest duplication.
+    """
+    __tablename__ = "alerts"
+    id              = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id         = Column(UUID(as_uuid=True), nullable=False, index=True)
+    type            = Column(String(50),  nullable=False)   # bill_due, large_transaction, …
+    tier            = Column(Integer,     nullable=False)   # 1, 2, or 3
+    title           = Column(String(255), nullable=False)
+    body            = Column(Text,        nullable=False)
+    severity        = Column(String(20),  nullable=False, default="info")  # info|warning|critical
+    entity_type     = Column(String(50),  nullable=True)   # bill | debt | savings_goal | transaction
+    entity_id       = Column(String(100), nullable=True)   # UUID of the linked entity
+    source          = Column(String(50),  nullable=False, default="scheduler")
+    created_at      = Column(DateTime,    nullable=False, default=datetime.utcnow)
+    read_at         = Column(DateTime,    nullable=True)   # NULL = unread
+    fired_immediate = Column(Boolean,     nullable=False, default=False)
+    digest_date     = Column(Date,        nullable=True)   # date it was included in a digest
+
+
+class AlertPreferences(Base):
+    """
+    Per-user notification channel settings, thresholds, and delivery options.
+    One row per user; auto-created with defaults on first access.
+    """
+    __tablename__ = "alert_preferences"
+    id                    = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id               = Column(UUID(as_uuid=True), nullable=False, unique=True, index=True)
+    # ── Telegram ──────────────────────────────────────────────────────────────
+    telegram_chat_id      = Column(String(100), nullable=True)
+    telegram_enabled      = Column(Boolean, nullable=False, default=False)
+    telegram_consented    = Column(Boolean, nullable=False, default=False)
+    telegram_active_mode  = Column(Boolean, nullable=False, default=False)
+    # ── PWA Push ──────────────────────────────────────────────────────────────
+    pwa_push_enabled      = Column(Boolean, nullable=False, default=False)
+    pwa_push_subscription = Column(JSONB,   nullable=True)
+    # ── Digest ────────────────────────────────────────────────────────────────
+    digest_enabled        = Column(Boolean, nullable=False, default=True)
+    digest_time           = Column(Time,    nullable=False, default="09:00:00")
+    # ── Tier 1 thresholds ─────────────────────────────────────────────────────
+    immediate_enabled     = Column(Boolean,         nullable=False, default=True)
+    bill_due_days         = Column(Integer,         nullable=False, default=3)
+    large_tx_threshold    = Column(Numeric(12, 2),  nullable=True)   # NULL = disabled
+    low_balance_floor     = Column(Numeric(12, 2),  nullable=True)   # NULL = disabled

@@ -17,9 +17,14 @@
 | `SECRET_KEY`             | `/backend/.env`  | ⬜ Add when auth is built                          |
 | `PLAID_CLIENT_ID`        | `/backend/.env`  | ⬜ Phase 5                                         |
 | `PLAID_SECRET`           | `/backend/.env`  | ⬜ Phase 5                                         |
-| `TWILIO_ACCOUNT_SID`     | `/backend/.env`  | ⬜ Phase 5                                         |
-| `TWILIO_AUTH_TOKEN`      | `/backend/.env`  | ⬜ Phase 5                                         |
-| `TWILIO_WHATSAPP_NUMBER` | `/backend/.env`  | ⬜ Phase 5                                         |
+| `TWILIO_ACCOUNT_SID`     | `/backend/.env`  | ❌ Removed — replaced by Telegram + PWA Push       |
+| `TWILIO_AUTH_TOKEN`      | `/backend/.env`  | ❌ Removed — replaced by Telegram + PWA Push       |
+| `TWILIO_WHATSAPP_NUMBER` | `/backend/.env`  | ❌ Removed — replaced by Telegram + PWA Push       |
+| `TELEGRAM_BOT_TOKEN`     | `/backend/.env` + Render | ⬜ 🔑 Add after creating bot via @BotFather (ALERTS_SPEC §12A) |
+| `VAPID_PUBLIC_KEY`       | `/backend/.env` + Render + `/frontend/.env` + Vercel | ⬜ 🔑 Add after running `npx web-push generate-vapid-keys` (ALERTS_SPEC §12B) |
+| `VAPID_PRIVATE_KEY`      | `/backend/.env` + Render only | ⬜ 🔑 Add after VAPID key generation — never expose to frontend |
+| `VAPID_CONTACT_EMAIL`    | `/backend/.env` + Render only | ⬜ 🔑 Add after VAPID key generation |
+| `CRON_SECRET`            | `/backend/.env` + Render | ⬜ Optional — protects POST /scheduler/run from unauthorized calls |
 
 ---
 
@@ -240,16 +245,41 @@ More powerful but more complex to build.
 
 ---
 
-## Phase 5 — Advanced Features ⬜ NOT STARTED
+## Phase 5 — Advanced Features 🔄 IN PROGRESS
 
-### Smart Alerts
+### Smart Alerts — Steps 1–7 complete ✅
 
-| File                            | Status     | Notes                                                               |
-| ------------------------------- | ---------- | ------------------------------------------------------------------- |
-| `backend/app/alert_engine.py`   | ⬜ Missing | Evaluate 4 rules: over_budget, spending_spike, bill_due, near_limit |
-| `backend/app/routers/alerts.py` | ⬜ Missing | GET /alerts, PUT /alerts/{id}/read, DELETE /alerts/{id}             |
-| `frontend/src/api/Alerts.js`    | ⬜ Missing | Extract logic from Alerts.jsx, useAlerts() hook                     |
-| `frontend/src/pages/Alerts.jsx` | ⚠️ Partial | Currently config UI only — needs live alert list wired in           |
+| File                                  | Status  | Notes                                                                                        |
+| ------------------------------------- | ------- | -------------------------------------------------------------------------------------------- |
+| `backend/alembic/versions/a1b2…`      | ✅ Done | Migration: source enum + reviewed + last_seen_at                                             |
+| `backend/alembic/versions/b2c3…`      | ✅ Done | Migration: alerts + alert_preferences tables                                                 |
+| `backend/app/models.py`               | ✅ Done | Alert + AlertPreferences models added; Transaction.reviewed + Preferences.last_seen_at added |
+| `backend/app/alert_engine.py`         | ✅ Done | All 8 rule types; source-aware routing; Tier 1 immediate dispatch stub                       |
+| `backend/app/alert_scheduler.py`      | ✅ Done | Daily cron runner + POST /scheduler/run HTTP trigger                                         |
+| `backend/app/notifications.py`        | ✅ Done | Stub — functions defined, no-ops until Step 9 (TELEGRAM_BOT_TOKEN + VAPID keys)             |
+| `backend/app/routers/alerts.py`       | ✅ Done | GET /alerts, unread-count, PUT read/read-all, DELETE, GET/PUT preferences, Telegram, PWA    |
+| `frontend/src/api/alerts.js`          | ✅ Done | Axios wrappers (lowercase)                                                                   |
+| `frontend/src/api/Alerts.js`          | ✅ Done | useAlerts() hook, formatRelativeTime, getSeverityConfig, getAlertIcon, fetchUnreadCount      |
+| `frontend/src/pages/Alerts.jsx`       | ✅ Done | Section 1: live feed (unread first). Section 2: channel cards + thresholds + digest settings |
+| `frontend/src/App.jsx`                | ✅ Done | Sidebar badge wired to live unread count (polls every 30s)                                   |
+| `frontend/src/data/MockData.js`       | ✅ Done | DEMO_ALERT_FEED + DEMO_ALERT_PREFERENCES added                                               |
+
+**Pending — requires manual owner action (see ALERTS_SPEC.md §12):**
+
+| Step | What | Status |
+| ---- | ---- | ------ |
+| 8A | Create Telegram bot via @BotFather → add TELEGRAM_BOT_TOKEN | ⬜ Manual |
+| 8B | Run `npx web-push generate-vapid-keys` → add VAPID keys | ⬜ Manual |
+| 9  | Un-stub `notifications.py` (Telegram + PWA push) | ⬜ After step 8 |
+| 10 | Wire notifications into alert_engine.py channel routing | ⬜ After step 9 |
+| 11 | Telegram channel card already built — test end-to-end | ⬜ After step 9 |
+| 12 | PWA Push service worker (`frontend/public/sw.js`) | ⬜ After step 9 |
+| 13 | Telegram categorization assistant | ⬜ After bank API is live |
+
+**Run migrations before testing:**
+```
+alembic upgrade head
+```
 
 ### Banking API Sync
 
@@ -299,7 +329,8 @@ More powerful but more complex to build.
 | 4 · Settings + Dashboard             | ✅ Done                                      |
 | Single-user testing                  | ✅ Done                                      |
 | Pending migration                    | ⚠️ Run `alembic upgrade head` before Phase 5 |
-| 5 · Alerts / Sync / Export / Import  | ⬜ Not started                               |
+| 5 · Alerts (Steps 1–7)               | ✅ Done — Steps 8–13 pending manual setup    |
+| 5 · Sync / Export / Import           | ⬜ Not started                               |
 | Auth                                 | ⬜ Planned — after Phase 5                   |
 
 ---

@@ -13,6 +13,7 @@ import Login from "./pages/Login";
 import { NavProvider } from "./context/NavContext";
 import { SettingsProvider } from "./context/SettingsContext";
 import { AuthProvider, useAuth } from "./context/Authcontexts";
+import { fetchUnreadCount } from "./api/Alert";
 
 import { DEMO_USER } from "./data/MockData";
 import client from "./api/client";
@@ -136,7 +137,7 @@ const NAV_ITEMS_CONFIG = [
   {
     id: "alerts",
     label: "Alerts",
-    badge: 3,
+    showAlertBadge: true,
     icon: (
       <svg className="nav-icon" viewBox="0 0 15 15">
         <path d="M7.5 1.5a4.5 4.5 0 0 1 4.5 4.5c0 2.5.8 3.8 1.5 4.5H1.5C2.2 9.8 3 8.5 3 6a4.5 4.5 0 0 1 4.5-4.5z" />
@@ -167,6 +168,7 @@ function AppShell() {
   const { user, isDemo, signOut } = useAuth();
   const [activeId, setActiveId] = useState("dashboard");
   const [draftCount, setDraftCount] = useState(0);
+  const [alertCount, setAlertCount] = useState(0);
   const consecutiveFailures = useRef(0);
   const pollIntervalRef = useRef(null);
 
@@ -196,11 +198,28 @@ function AppShell() {
     }
   }
 
+  async function fetchAlertCount() {
+    try {
+      const count = await fetchUnreadCount();
+      setAlertCount(count);
+    } catch {
+      // Non-critical — badge just stays at previous value
+    }
+  }
+
   useEffect(() => {
-    if (isDemo) return;
+    if (isDemo) {
+      // In demo mode seed the alert badge from the mock data count
+      fetchAlertCount();
+      return;
+    }
     consecutiveFailures.current = 0;
     fetchDraftCount();
-    pollIntervalRef.current = setInterval(fetchDraftCount, 5_000);
+    fetchAlertCount();
+    pollIntervalRef.current = setInterval(() => {
+      fetchDraftCount();
+      fetchAlertCount();
+    }, 30_000); // alerts poll at 30s (less aggressive than drafts)
     return () => {
       if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
     };
@@ -212,9 +231,15 @@ function AppShell() {
     if (!pollIntervalRef.current && !isDemo) {
       consecutiveFailures.current = 0;
       fetchDraftCount();
-      pollIntervalRef.current = setInterval(fetchDraftCount, 5_000);
+      fetchAlertCount();
+      pollIntervalRef.current = setInterval(() => {
+        fetchDraftCount();
+        fetchAlertCount();
+      }, 30_000);
     } else {
       fetchDraftCount();
+      // Refresh alert badge immediately when navigating away from the Alerts page
+      if (id !== "alerts") fetchAlertCount();
     }
   }
 
@@ -254,8 +279,10 @@ function AppShell() {
                   ? draftCount > 0
                     ? draftCount
                     : null
-                  : item.badge != null
-                    ? item.badge
+                  : item.showAlertBadge
+                    ? alertCount > 0
+                      ? alertCount
+                      : null
                     : null;
 
                 return (

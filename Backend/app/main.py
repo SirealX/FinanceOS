@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.routers import transactions, bills, summary, debts, savings, budget, preferences, categories
+from app.routers import transactions, bills, summary, debts, savings, budget, preferences, categories, alerts
+from app.alert_scheduler import scheduler_router
 
 app = FastAPI(title="Finance App API", redirect_slashes=False)
 
@@ -26,6 +27,8 @@ app.include_router(debts.router)
 app.include_router(savings.router)
 app.include_router(budget.router)
 app.include_router(summary.router)
+app.include_router(alerts.router)
+app.include_router(scheduler_router)
 app.include_router(preferences.router)
 app.include_router(categories.router)
 

@@ -763,8 +763,102 @@ export const INITIAL_SAVINGS_GOALS = [
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * Delivery channels configuration.
- * Replace with: GET /api/alerts/channels
+ * Demo alert feed — live data comes from GET /alerts
+ * Covers all alert types + severity levels for visual testing.
+ */
+export const DEMO_ALERT_FEED = [
+  {
+    id: "a1",
+    type: "bill_due",
+    tier: 1,
+    title: "Bill Due — Electric Bill",
+    body: "Due in 2 days · $120.00 unpaid",
+    severity: "warning",
+    entity_type: "bill",
+    entity_id: "b1",
+    source: "scheduler",
+    created_at: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
+    read_at: null,
+    fired_immediate: true,
+  },
+  {
+    id: "a2",
+    type: "budget_exceeded",
+    tier: 2,
+    title: "Budget Exceeded — Food & Dining",
+    body: "Food & Dining is at 112% of budget ($336 / $300).",
+    severity: "warning",
+    entity_type: "transaction",
+    entity_id: "food-2026-04",
+    source: "scheduler",
+    created_at: new Date(Date.now() - 5 * 60 * 60 * 1000).toISOString(),
+    read_at: null,
+    fired_immediate: false,
+  },
+  {
+    id: "a3",
+    type: "low_balance",
+    tier: 1,
+    title: "Spendable Balance Low",
+    body: "Your estimated spendable balance is $142.00, below your $200.00 floor.",
+    severity: "critical",
+    entity_type: null,
+    entity_id: "2026-04-14",
+    source: "scheduler",
+    created_at: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
+    read_at: null,
+    fired_immediate: true,
+  },
+  {
+    id: "a4",
+    type: "spending_spike",
+    tier: 2,
+    title: "Spending Spike — Shopping",
+    body: "Shopping is 45% higher than last month ($290 vs $200).",
+    severity: "warning",
+    entity_type: "transaction",
+    entity_id: "spike:Shopping:2026-04",
+    source: "scheduler",
+    created_at: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
+    read_at: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
+    fired_immediate: false,
+  },
+  {
+    id: "a5",
+    type: "goal_reached",
+    tier: 1,
+    title: "Goal Reached — Emergency Fund",
+    body: "You hit your $5,000.00 savings target. 🎉",
+    severity: "info",
+    entity_type: "savings_goal",
+    entity_id: "sg1",
+    source: "manual",
+    created_at: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
+    read_at: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
+    fired_immediate: false,
+  },
+];
+
+/**
+ * Demo alert preferences — live data comes from GET /alerts/preferences
+ */
+export const DEMO_ALERT_PREFERENCES = {
+  telegram_chat_id:      null,
+  telegram_enabled:      false,
+  telegram_consented:    false,
+  telegram_active_mode:  false,
+  pwa_push_enabled:      false,
+  pwa_push_subscription: null,
+  digest_enabled:        true,
+  digest_time:           "09:00:00",
+  immediate_enabled:     true,
+  bill_due_days:         3,
+  large_tx_threshold:    null,
+  low_balance_floor:     null,
+};
+
+/**
+ * Legacy alert channels config (kept for reference — replaced by new Alerts.jsx).
  */
 export const INITIAL_ALERT_CHANNELS = [
   {
