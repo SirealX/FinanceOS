@@ -25,7 +25,7 @@ allow_origins = [
     "http://localhost:8000",
     "http://127.0.0.1:8000",
     # ── Production (hardcoded as safety net) ───────────────────────────────────
-    "https://project-financeos.vercel.app",
+    "https://project-financeos.vercel.app/",
 ] 
 
 app.add_middleware(
