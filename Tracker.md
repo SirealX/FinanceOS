@@ -6,25 +6,89 @@
 
 ---
 
+## 🚀 Deployment Checklist (Render + Vercel)
+
+### Step 1 — Push to GitHub
+Commit all changes and push to your GitHub repo. Both Render and Vercel deploy from Git.
+
+> ⚠️ Confirm `.env` files are NOT committed — both `.gitignore` files exclude them.
+
+### Step 2 — Deploy Backend to Render
+
+1. Go to [render.com](https://render.com) → New → Web Service
+2. Connect your GitHub repo
+3. Set **Root Directory** to `Backend`
+4. Build command: `pip install -r requirements.txt`
+5. Start command: `uvicorn app.main:app --host 0.0.0.0 --port $PORT`
+6. Set these **Environment Variables** in the Render dashboard:
+
+| Variable              | Value                                                        |
+| --------------------- | ------------------------------------------------------------ |
+| `DATABASE_URL`        | `postgresql://postgres:pKnStzZS7GdKci5F@db.nbbxpozqrzbxyealvpxs.supabase.co:5432/postgres` |
+| `SUPABASE_URL`        | `https://nbbxpozqrzbxyealvpxs.supabase.co`                  |
+| `SUPABASE_JWT_SECRET` | *(copy from Backend/.env)*                                   |
+| `ALLOWED_ORIGINS`     | *(leave blank for now — add Vercel URL in Step 4)*           |
+| `CRON_SECRET`         | *(any random string, e.g. generate one at random.org)*       |
+
+7. Deploy → copy the URL once live (e.g. `https://financeos.onrender.com`)
+
+### Step 3 — Deploy Frontend to Vercel
+
+1. Go to [vercel.com](https://vercel.com) → New Project → Import from GitHub
+2. Set **Root Directory** to `frontend`
+3. Framework will auto-detect as Vite ✅
+4. Set these **Environment Variables** in the Vercel dashboard:
+
+| Variable               | Value                                                                 |
+| ---------------------- | --------------------------------------------------------------------- |
+| `VITE_API_URL`         | `https://financeos.onrender.com` ← your Render URL from Step 2       |
+| `VITE_SUPABASE_URL`    | `https://nbbxpozqrzbxyealvpxs.supabase.co`                           |
+| `VITE_SUPABASE_ANON_KEY` | *(copy from frontend/.env)*                                         |
+
+5. Deploy → copy the URL once live (e.g. `https://financeos.vercel.app`)
+
+### Step 4 — Wire the two services together
+
+1. Back in Render → your web service → Environment tab
+2. Add `ALLOWED_ORIGINS` = `https://financeos.vercel.app` ← your Vercel URL from Step 3
+3. Render will restart automatically
+
+### Step 5 — Verify it's working
+
+- Open your Vercel URL → should see the login page
+- Register / sign in via Supabase Auth
+- Check the browser Network tab — API calls should go to your Render URL and return 200s
+- Open `https://financeos.onrender.com/docs` → should show the FastAPI Swagger UI
+
+### Step 6 — Run Alembic migrations (if not already done)
+
+If you haven't run `alembic upgrade head` since the Phase 5 alert migrations:
+```bash
+cd Backend
+alembic upgrade head
+```
+The Supabase DB is shared between local and production so this only needs running once.
+
+---
+
 ## Environment Variables
 
-| Variable                 | Location         | Status                                             |
-| ------------------------ | ---------------- | -------------------------------------------------- |
-| `DATABASE_URL`           | `/backend/.env`  | ✅ Created                                         |
-| `DATABASE_PASSWORD`      | `/backend/.env`  | ✅ Created                                         |
-| `VITE_API_URL`           | `/frontend/.env` | ✅ Created                                         |
-| `VITE_DEMO_MODE`         | `/frontend/.env` | ✅ Created — `true` for demo, `false` for live API |
-| `SECRET_KEY`             | `/backend/.env`  | ⬜ Add when auth is built                          |
-| `PLAID_CLIENT_ID`        | `/backend/.env`  | ⬜ Phase 5                                         |
-| `PLAID_SECRET`           | `/backend/.env`  | ⬜ Phase 5                                         |
-| `TWILIO_ACCOUNT_SID`     | `/backend/.env`  | ❌ Removed — replaced by Telegram + PWA Push       |
-| `TWILIO_AUTH_TOKEN`      | `/backend/.env`  | ❌ Removed — replaced by Telegram + PWA Push       |
-| `TWILIO_WHATSAPP_NUMBER` | `/backend/.env`  | ❌ Removed — replaced by Telegram + PWA Push       |
-| `TELEGRAM_BOT_TOKEN`     | `/backend/.env` + Render | ⬜ 🔑 Add after creating bot via @BotFather (ALERTS_SPEC §12A) |
-| `VAPID_PUBLIC_KEY`       | `/backend/.env` + Render + `/frontend/.env` + Vercel | ⬜ 🔑 Add after running `npx web-push generate-vapid-keys` (ALERTS_SPEC §12B) |
-| `VAPID_PRIVATE_KEY`      | `/backend/.env` + Render only | ⬜ 🔑 Add after VAPID key generation — never expose to frontend |
-| `VAPID_CONTACT_EMAIL`    | `/backend/.env` + Render only | ⬜ 🔑 Add after VAPID key generation |
-| `CRON_SECRET`            | `/backend/.env` + Render | ⬜ Optional — protects POST /scheduler/run from unauthorized calls |
+| Variable                 | Location                                    | Status                                                        |
+| ------------------------ | ------------------------------------------- | ------------------------------------------------------------- |
+| `DATABASE_URL`           | Backend `.env` + Render                     | ✅ Set                                                        |
+| `SUPABASE_URL`           | Backend `.env` + Render                     | ✅ Set                                                        |
+| `SUPABASE_JWT_SECRET`    | Backend `.env` + Render                     | ✅ Set                                                        |
+| `ALLOWED_ORIGINS`        | Render only                                 | ⬜ Set to your Vercel URL after frontend is deployed          |
+| `VITE_API_URL`           | Vercel only (not in .env file)              | ⬜ Set to your Render URL after backend is deployed           |
+| `VITE_SUPABASE_URL`      | frontend `.env` + Vercel                    | ✅ Set                                                        |
+| `VITE_SUPABASE_ANON_KEY` | frontend `.env` + Vercel                    | ✅ Set                                                        |
+| `CRON_SECRET`            | Backend `.env` + Render                     | ⬜ Generate a random string and set on both                   |
+| `PLAID_CLIENT_ID`        | Backend `.env` + Render                     | ⬜ Phase 6 — Banking API                                      |
+| `PLAID_SECRET`           | Backend `.env` + Render                     | ⬜ Phase 6 — Banking API                                      |
+| `TELEGRAM_BOT_TOKEN`     | Backend `.env` + Render                     | ⬜ After creating bot via @BotFather (ALERTS_SPEC §12A)       |
+| `VAPID_PUBLIC_KEY`       | Backend `.env` + Render + frontend + Vercel | ⬜ After `npx web-push generate-vapid-keys` (ALERTS_SPEC §12B)|
+| `VAPID_PRIVATE_KEY`      | Backend `.env` + Render only                | ⬜ Never expose to frontend                                   |
+| `VAPID_CONTACT_EMAIL`    | Backend `.env` + Render only                | ⬜ After VAPID key generation                                 |
 
 ---
 
@@ -306,32 +370,39 @@ alembic upgrade head
 
 ---
 
-## Auth — Planned (post Phase 5)
+## Auth ✅ DONE (Supabase Auth + FastAPI JWT)
 
-| Task                                       | Status     | Notes                                                                             |
-| ------------------------------------------ | ---------- | --------------------------------------------------------------------------------- |
-| Choose auth strategy                       | ⬜ Pending | JWT (DIY) vs Supabase Auth — Supabase Auth recommended                            |
-| `backend/app/routers/auth.py`              | ⬜ Missing | POST /auth/register, POST /auth/login, POST /auth/refresh                         |
-| `SECRET_KEY` in `/backend/.env`            | ⬜ Missing | Add when auth is built                                                            |
-| Add Authorization header to `client.js`    | ⬜ Missing | One-line change, all API calls inherit it                                         |
-| Protect all FastAPI routes with dependency | ⬜ Missing | `Depends(get_current_user)` on every router                                       |
-| Add `user_id` FK to all tables             | ⬜ Missing | Bills, Debts, SavingsGoals, Transactions, BudgetCategory, Categories, Preferences |
+Auth is fully implemented. No further work needed for multi-user testing.
+
+| Task                                       | Status     | Notes                                                          |
+| ------------------------------------------ | ---------- | -------------------------------------------------------------- |
+| Choose auth strategy                       | ✅ Done    | Supabase Auth (email/password) — no custom auth server needed  |
+| Login / register UI                        | ✅ Done    | `frontend/src/pages/Login.jsx` — sign in + sign up + demo mode |
+| JWT sent on every API call                 | ✅ Done    | `frontend/src/api/client.js` — Axios request interceptor       |
+| Backend JWT verification                   | ✅ Done    | `backend/app/dependencies.py` — ES256 via JWKS + HS256 fallback|
+| All FastAPI routes protected               | ✅ Done    | `Depends(get_current_user)` on every endpoint                  |
+| `user_id` FK on all tables                 | ✅ Done    | All models have `user_id` column — data is fully user-scoped   |
+| Demo mode (no auth)                        | ✅ Done    | `isDemo` flag in AuthContext — uses MockData, no API calls     |
 
 ---
 
 ## Quick Status Summary
 
-| Phase                                | Status                                       |
-| ------------------------------------ | -------------------------------------------- |
-| 1 · DB Foundation                    | ✅ Done                                      |
-| 2 · Transactions                     | ✅ Done                                      |
-| 3 · Bills / Budget / Debts / Savings | ✅ Done                                      |
-| 4 · Settings + Dashboard             | ✅ Done                                      |
-| Single-user testing                  | ✅ Done                                      |
-| Pending migration                    | ⚠️ Run `alembic upgrade head` before Phase 5 |
-| 5 · Alerts (Steps 1–7)               | ✅ Done — Steps 8–13 pending manual setup    |
-| 5 · Sync / Export / Import           | ⬜ Not started                               |
-| Auth                                 | ⬜ Planned — after Phase 5                   |
+| Phase                                | Status                                                   |
+| ------------------------------------ | -------------------------------------------------------- |
+| 1 · DB Foundation                    | ✅ Done                                                  |
+| 2 · Transactions                     | ✅ Done                                                  |
+| 3 · Bills / Budget / Debts / Savings | ✅ Done                                                  |
+| 4 · Settings + Dashboard             | ✅ Done                                                  |
+| Auth (Supabase JWT)                  | ✅ Done                                                  |
+| Single-user testing                  | ✅ Done                                                  |
+| 5 · Alerts (Steps 1–7)               | ✅ Done — Steps 8–13 pending (Telegram + VAPID setup)    |
+| 5 · Export (CSV + XML)               | ✅ Done                                                  |
+| 5 · CSV/XLSX Import wizard           | ✅ Done                                                  |
+| Deployment prep (blockers fixed)     | ✅ Done — ready for Render + Vercel                      |
+| Multi-user live testing              | ⬜ Next — follow deployment checklist above              |
+| 6 · Banking API Sync                 | ⬜ After multi-user testing                              |
+| 5 · Notifications (Telegram + PWA)   | ⬜ Steps 8–13 — after deployment                        |
 
 ---
 

@@ -100,6 +100,7 @@ export function useSettingsPage() {
   const [catTab, setCatTab] = useState("all");
   const [catModal, setCatModal] = useState(null);
   const [saved, setSaved] = useState(false);
+  const [draftDisplayName, setDraftDisplayName] = useState(settings.displayName ?? "");
   const [draftCurrency, setDraftCurrency] = useState(settings.currency);
   const [draftDateFormat, setDraftDateFormat] = useState(settings.dateFormat);
   const [draftMonthStart, setDraftMonthStart] = useState(settings.monthStart);
@@ -122,9 +123,10 @@ export function useSettingsPage() {
   async function handleSavePreferences() {
     try {
       await settings.updatePreferences({
-        currency: draftCurrency,
-        dateFormat: draftDateFormat,
-        monthStart: draftMonthStart,
+        displayName: draftDisplayName.trim() || null,
+        currency:    draftCurrency,
+        dateFormat:  draftDateFormat,
+        monthStart:  draftMonthStart,
       });
       setSaved(true);
       setTimeout(() => setSaved(false), 2_500);
@@ -232,6 +234,8 @@ export function useSettingsPage() {
     saved,
 
     // Draft preferences
+    draftDisplayName,
+    setDraftDisplayName,
     draftCurrency,
     setDraftCurrency,
     draftDateFormat,

@@ -19,3 +19,9 @@ python-dotenv==1.0.1
 
 # Data validation (included with FastAPI but pinned for clarity)
 pydantic==2.9.2
+
+# File uploads — required by FastAPI UploadFile / File in import_router.py
+python-multipart==0.0.9
+
+# XLSX parsing — required by file_parser.py for bank statement imports
+openpyxl==3.1.5

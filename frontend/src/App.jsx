@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 
 import Dashboard from "./pages/Dashboard";
 import Transactions from "./pages/Transactions";
@@ -11,7 +11,7 @@ import Settings from "./pages/Settings";
 import Login from "./pages/Login";
 
 import { NavProvider } from "./context/NavContext";
-import { SettingsProvider } from "./context/SettingsContext";
+import { SettingsProvider, useSettings } from "./context/SettingsContext";
 import { AuthProvider, useAuth } from "./context/Authcontexts";
 import { fetchUnreadCount } from "./api/Alert";
 
@@ -162,24 +162,128 @@ const NAV_ITEMS_CONFIG = [
   },
 ];
 
+// ── WelcomeModal — shown on first login when no display name is set yet ────────
+
+function WelcomeModal() {
+  const { updatePreferences, loading: prefsLoading } = useSettings();
+  const [name, setName] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  async function handleSave(e) {
+    e.preventDefault();
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    setSaving(true);
+    try {
+      await updatePreferences({ displayName: trimmed });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (prefsLoading) return null; // wait until we know whether a name exists
+
+  return (
+    <div
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "rgba(0,0,0,0.7)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        zIndex: 100,
+        padding: 20,
+      }}
+    >
+      <div
+        style={{
+          background: "#141826",
+          border: "0.5px solid rgba(255,255,255,0.08)",
+          borderRadius: 16,
+          padding: "36px 32px 28px",
+          width: "100%",
+          maxWidth: 400,
+        }}
+      >
+        <div
+          style={{
+            fontSize: 18,
+            fontWeight: 600,
+            color: "#F1F5F9",
+            marginBottom: 8,
+            letterSpacing: "-0.3px",
+          }}
+        >
+          Welcome to <span style={{ color: "#10B981" }}>Finance</span>OS 👋
+        </div>
+        <p
+          style={{
+            fontSize: 13,
+            color: "#5E6E85",
+            lineHeight: 1.6,
+            margin: "0 0 24px",
+          }}
+        >
+          Before you dive in, what should we call you? This name will appear on
+          your dashboard.
+        </p>
+        <form onSubmit={handleSave}>
+          <div className="field-wrap" style={{ marginBottom: 20 }}>
+            <label className="field-label">Your first name</label>
+            <input
+              className="input"
+              placeholder="e.g. César"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              autoFocus
+              maxLength={50}
+            />
+          </div>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button
+              type="submit"
+              className="btn-primary"
+              disabled={!name.trim() || saving}
+              style={{ flex: 1 }}
+            >
+              {saving ? "Saving…" : "Let's go →"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 // ── App Shell (rendered only when authenticated or in demo mode) ───────────────
 
 function AppShell() {
   const { user, isDemo, signOut } = useAuth();
+  const { displayName, loading: prefsLoading } = useSettings();
   const [activeId, setActiveId] = useState("dashboard");
   const [draftCount, setDraftCount] = useState(0);
   const [alertCount, setAlertCount] = useState(0);
   const consecutiveFailures = useRef(0);
   const pollIntervalRef = useRef(null);
 
-  // Sidebar user display — real user email or demo label
+  // Derive a clean first name for the sidebar:
+  // 1. Use displayName if set
+  // 2. Fall back to the part before the @ in the email
+  // 3. Final fallback: "User"
+  const resolvedName =
+    displayName ?? (user?.email ? user.email.split("@")[0] : null) ?? "User";
+
   const sidebarUser = isDemo
     ? { initials: "DU", name: DEMO_USER.name, role: "Demo Mode" }
     : {
-        initials: (user?.email?.[0] ?? "U").toUpperCase(),
-        name: user?.email ?? "User",
+        initials: resolvedName[0].toUpperCase(),
+        name: resolvedName,
         role: "Personal",
       };
+
+  // Show the welcome modal when the user is logged in (not demo) and has no name yet
+  const showWelcome = !isDemo && !prefsLoading && displayName === null;
 
   async function fetchDraftCount() {
     if (isDemo) return;
@@ -247,143 +351,135 @@ function AppShell() {
 
   return (
     <NavProvider onNavigate={handleNavigate}>
-      <SettingsProvider>
-        <div className="app-shell">
-          {/* ── Sidebar ── */}
-          <aside className="app-sidebar">
-            <div className="sidebar-logo">
-              <span>Finance</span>OS
-              {isDemo && (
-                <span
-                  style={{
-                    marginLeft: 8,
-                    fontSize: 10,
-                    fontWeight: 500,
-                    background: "rgba(167,139,250,0.15)",
-                    color: "#A78BFA",
-                    padding: "1px 7px",
-                    borderRadius: 10,
-                    letterSpacing: "0.3px",
-                  }}
-                >
-                  DEMO
-                </span>
-              )}
-            </div>
+      {showWelcome && <WelcomeModal />}
+      <div className="app-shell">
+        {/* ── Sidebar ── */}
+        <aside className="app-sidebar">
+          <div className="sidebar-logo">
+            <span>Finance</span>OS
+            {isDemo && (
+              <span
+                style={{
+                  marginLeft: 8,
+                  fontSize: 10,
+                  fontWeight: 500,
+                  background: "rgba(167,139,250,0.15)",
+                  color: "#A78BFA",
+                  padding: "1px 7px",
+                  borderRadius: 10,
+                  letterSpacing: "0.3px",
+                }}
+              >
+                DEMO
+              </span>
+            )}
+          </div>
 
-            <div className="sidebar-section-label">Main Menu</div>
+          <div className="sidebar-section-label">Main Menu</div>
 
-            <nav>
-              {NAV_ITEMS_CONFIG.map((item) => {
-                const badge = item.showDraftBadge
-                  ? draftCount > 0
-                    ? draftCount
+          <nav>
+            {NAV_ITEMS_CONFIG.map((item) => {
+              const badge = item.showDraftBadge
+                ? draftCount > 0
+                  ? draftCount
+                  : null
+                : item.showAlertBadge
+                  ? alertCount > 0
+                    ? alertCount
                     : null
-                  : item.showAlertBadge
-                    ? alertCount > 0
-                      ? alertCount
-                      : null
-                    : null;
+                  : null;
 
-                return (
-                  <div
-                    key={item.id}
-                    className={`nav-item${activeId === item.id ? " active" : ""}`}
-                    onClick={() => handleNavigate(item.id)}
-                    role="button"
-                    tabIndex={0}
-                    onKeyDown={(e) =>
-                      e.key === "Enter" && handleNavigate(item.id)
-                    }
-                    aria-current={activeId === item.id ? "page" : undefined}
-                  >
-                    {item.icon}
-                    <span>{item.label}</span>
-                    {badge != null && (
-                      <span className="nav-badge">{badge}</span>
-                    )}
-                  </div>
-                );
-              })}
-            </nav>
-
-            {/* User row + sign out */}
-            <div className="sidebar-user">
-              <div
-                className="avatar"
-                style={{
-                  width: 32,
-                  height: 32,
-                  background: isDemo
-                    ? "rgba(167,139,250,0.13)"
-                    : "rgba(16,185,129,0.13)",
-                  color: isDemo
-                    ? "var(--color-savings)"
-                    : "var(--color-income)",
-                  fontSize: 11,
-                  flexShrink: 0,
-                }}
-              >
-                {sidebarUser.initials}
-              </div>
-              <div
-                className="sidebar-user-info"
-                style={{ flex: 1, minWidth: 0 }}
-              >
+              return (
                 <div
-                  className="name"
-                  style={{
-                    whiteSpace: "nowrap",
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                  }}
+                  key={item.id}
+                  className={`nav-item${activeId === item.id ? " active" : ""}`}
+                  onClick={() => handleNavigate(item.id)}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(e) =>
+                    e.key === "Enter" && handleNavigate(item.id)
+                  }
+                  aria-current={activeId === item.id ? "page" : undefined}
                 >
-                  {sidebarUser.name}
+                  {item.icon}
+                  <span>{item.label}</span>
+                  {badge != null && <span className="nav-badge">{badge}</span>}
                 </div>
-                <div className="role">{sidebarUser.role}</div>
-              </div>
-              {/* Sign out / Exit demo */}
-              <button
-                title={isDemo ? "Exit demo" : "Sign out"}
-                onClick={signOut}
-                style={{
-                  background: "none",
-                  border: "none",
-                  color: "var(--color-text-muted)",
-                  cursor: "pointer",
-                  padding: "4px",
-                  borderRadius: 6,
-                  display: "flex",
-                  alignItems: "center",
-                  flexShrink: 0,
-                  transition: "color 0.15s",
-                }}
-                onMouseEnter={(e) => (e.currentTarget.style.color = "#CBD5E1")}
-                onMouseLeave={(e) =>
-                  (e.currentTarget.style.color = "var(--color-text-muted)")
-                }
-              >
-                <svg
-                  viewBox="0 0 15 15"
-                  width="14"
-                  height="14"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.6"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <path d="M5.5 7.5H13M10 4.5l3 3-3 3" />
-                  <path d="M8 2H3a1 1 0 0 0-1 1v9a1 1 0 0 0 1 1h5" />
-                </svg>
-              </button>
-            </div>
-          </aside>
+              );
+            })}
+          </nav>
 
-          {/* ── Main content ── */}
-          <main className="app-main">{activeItem?.component}</main>
-        </div>
-      </SettingsProvider>
+          {/* User row + sign out */}
+          <div className="sidebar-user">
+            <div
+              className="avatar"
+              style={{
+                width: 32,
+                height: 32,
+                background: isDemo
+                  ? "rgba(167,139,250,0.13)"
+                  : "rgba(16,185,129,0.13)",
+                color: isDemo ? "var(--color-savings)" : "var(--color-income)",
+                fontSize: 11,
+                flexShrink: 0,
+              }}
+            >
+              {sidebarUser.initials}
+            </div>
+            <div className="sidebar-user-info" style={{ flex: 1, minWidth: 0 }}>
+              <div
+                className="name"
+                style={{
+                  whiteSpace: "nowrap",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                }}
+              >
+                {sidebarUser.name}
+              </div>
+              <div className="role">{sidebarUser.role}</div>
+            </div>
+            {/* Sign out / Exit demo */}
+            <button
+              title={isDemo ? "Exit demo" : "Sign out"}
+              onClick={signOut}
+              style={{
+                background: "none",
+                border: "none",
+                color: "var(--color-text-muted)",
+                cursor: "pointer",
+                padding: "4px",
+                borderRadius: 6,
+                display: "flex",
+                alignItems: "center",
+                flexShrink: 0,
+                transition: "color 0.15s",
+              }}
+              onMouseEnter={(e) => (e.currentTarget.style.color = "#CBD5E1")}
+              onMouseLeave={(e) =>
+                (e.currentTarget.style.color = "var(--color-text-muted)")
+              }
+            >
+              <svg
+                viewBox="0 0 15 15"
+                width="14"
+                height="14"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.6"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M5.5 7.5H13M10 4.5l3 3-3 3" />
+                <path d="M8 2H3a1 1 0 0 0-1 1v9a1 1 0 0 0 1 1h5" />
+              </svg>
+            </button>
+          </div>
+        </aside>
+
+        {/* ── Main content ── */}
+        <main className="app-main">{activeItem?.component}</main>
+      </div>
     </NavProvider>
   );
 }
@@ -435,7 +531,9 @@ function Root() {
 export default function App() {
   return (
     <AuthProvider>
-      <Root />
+      <SettingsProvider>
+        <Root />
+      </SettingsProvider>
     </AuthProvider>
   );
 }

@@ -140,6 +140,7 @@ class Preferences(Base):
     id           = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     # ── AUTH ──────────────────────────────────────────────────────────────────
     user_id      = Column(UUID(as_uuid=True), nullable=True, unique=True, index=True)
+    display_name = Column(String(100), nullable=True)   # user's chosen first name / display name
     currency     = Column(String(10),  nullable=False, default="USD")
     date_format  = Column(String(20),  nullable=False, default="MMM D, YYYY")
     month_start  = Column(Integer,     nullable=False, default=1)

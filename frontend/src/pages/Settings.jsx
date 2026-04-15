@@ -415,6 +415,8 @@ export default function Settings() {
     activeCats,
     canAddOnTab,
     saved,
+    draftDisplayName,
+    setDraftDisplayName,
     draftCurrency,
     setDraftCurrency,
     draftDateFormat,
@@ -465,6 +467,28 @@ export default function Settings() {
         <button className="btn-primary" onClick={handleSavePreferences}>
           {saved ? "✓ Saved" : "Save Changes"}
         </button>
+      </div>
+
+      {/* ── Profile ── */}
+      <div className="card" style={{ marginBottom: 12 }}>
+        <h2 className="section-header">Profile</h2>
+        <SectionLabel>Identity</SectionLabel>
+        <div style={{ maxWidth: 320 }}>
+          <div className="field-wrap" style={{ marginBottom: 8 }}>
+            <label className="field-label">Display Name</label>
+            <input
+              className="input"
+              placeholder="e.g. César"
+              value={draftDisplayName}
+              onChange={(e) => setDraftDisplayName(e.target.value)}
+              maxLength={50}
+            />
+          </div>
+          <p style={{ fontSize: 11, color: "var(--color-text-muted)", margin: "0 0 4px", lineHeight: 1.5 }}>
+            This is how we greet you on the dashboard and in the sidebar. Hit
+            "Save Changes" above to apply.
+          </p>
+        </div>
       </div>
 
       {/* ── General Settings ── */}

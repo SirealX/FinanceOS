@@ -20,6 +20,7 @@ VALID_DATE_FORMATS = {"MM/DD/YYYY", "DD/MM/YYYY", "YYYY-MM-DD", "MMM D, YYYY"}
 
 
 class PreferencesUpdate(BaseModel):
+    display_name: Optional[str] = None
     currency:     Optional[str] = None
     date_format:  Optional[str] = None
     month_start:  Optional[int] = None
@@ -45,10 +46,11 @@ class PreferencesUpdate(BaseModel):
 
 def _serialize(prefs: Preferences) -> dict:
     return {
-        "id":          str(prefs.id),
-        "currency":    prefs.currency,
-        "date_format": prefs.date_format,
-        "month_start": prefs.month_start,
+        "id":           str(prefs.id),
+        "display_name": prefs.display_name,   # None when not yet set
+        "currency":     prefs.currency,
+        "date_format":  prefs.date_format,
+        "month_start":  prefs.month_start,
     }
 
 
@@ -84,9 +86,10 @@ def update_preferences(
 ):
     prefs = _get_or_create(current_user, db)
 
-    if data.currency    is not None: prefs.currency    = data.currency
-    if data.date_format is not None: prefs.date_format = data.date_format
-    if data.month_start is not None: prefs.month_start = data.month_start
+    if data.display_name is not None: prefs.display_name = data.display_name.strip() or None
+    if data.currency     is not None: prefs.currency     = data.currency
+    if data.date_format  is not None: prefs.date_format  = data.date_format
+    if data.month_start  is not None: prefs.month_start  = data.month_start
 
     db.commit()
     db.refresh(prefs)

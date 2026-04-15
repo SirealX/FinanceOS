@@ -1,20 +1,33 @@
+import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.routers import transactions, bills, summary, debts, savings, budget, preferences, categories, alerts
 from app.routers import import_router, export
 from app.alert_scheduler import scheduler_router
+from dotenv import load_dotenv
+
+load_dotenv()
 
 app = FastAPI(title="Finance App API", redirect_slashes=False)
 
-# ── CORS — must be registered before routers ──
+# ── CORS — must be registered before routers ──────────────────────────────────
+# In production, set ALLOWED_ORIGINS on Render to your Vercel URL(s):
+#   e.g.  ALLOWED_ORIGINS=https://financeos.vercel.app,https://www.financeos.vercel.app
+# Multiple origins are comma-separated.
+# Localhost origins are always included so local dev keeps working.
+_origins_env = os.getenv("ALLOWED_ORIGINS", "")
+_production_origins = [o.strip() for o in _origins_env.split(",") if o.strip()]
+
+allow_origins = [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "http://localhost:8000",
+    "http://127.0.0.1:8000",
+] + _production_origins
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-        "http://localhost:8000",
-        "http://127.0.0.1:8000",
-    ],
+    allow_origins=allow_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

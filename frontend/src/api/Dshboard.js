@@ -251,7 +251,7 @@ export function useDashboard() {
   const { isDemo: IS_DEMO, user: authUser } = useAuth();
   const [period, setPeriod] = useState("This Month");
   const navigate = useNav();
-  const { getAllCategoryConfig, formatAmount } = useSettings();
+  const { getAllCategoryConfig, formatAmount, displayName } = useSettings();
 
   const [kpiData, setKpiData] = useState(EMPTY_KPI);
   const [chartData, setChartData] = useState(EMPTY_CHART);
@@ -372,7 +372,12 @@ export function useDashboard() {
     periodSubtitle: getPeriodSubtitle(period),
     user: IS_DEMO
       ? DEMO_USER
-      : { name: authUser?.email ?? "User", email: authUser?.email ?? "" },
+      : {
+          // Prefer the stored display name; fall back to the part before @ in email
+          name: displayName
+            ?? (authUser?.email ? authUser.email.split("@")[0] : "User"),
+          email: authUser?.email ?? "",
+        },
     kpi,
     donutLegend,
     budgetRows: IS_DEMO ? DASHBOARD_BUDGET_ROWS : budgetRows,

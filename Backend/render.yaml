@@ -1,0 +1,67 @@
+# render.yaml — Render deployment configuration for FinanceOS backend
+# Place this file in the Backend/ directory.
+# Commit to Git and connect the repo in the Render dashboard.
+#
+# After deploying, copy the service URL (e.g. https://financeos.onrender.com)
+# and set it as VITE_API_URL in Vercel's environment variables.
+
+services:
+  - type: web
+    name: financeos-backend
+    runtime: python
+    region: oregon            # change to: ohio (US East), frankfurt, singapore, etc.
+    plan: free                # upgrade to starter ($7/mo) if you need always-on
+
+    rootDir: .                # render.yaml lives inside Backend/, so "." is correct
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+
+    # ── Health check ────────────────────────────────────────────────────────────
+    healthCheckPath: /docs    # FastAPI auto-generates /docs — good ping target
+
+    # ── Environment variables ──────────────────────────────────────────────────
+    # Set these in the Render dashboard (Environment tab) — do NOT commit secrets.
+    # Listed here as a reference for what the app needs.
+    envVars:
+      - key: DATABASE_URL
+        sync: false           # set manually in dashboard
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_JWT_SECRET
+        sync: false
+      - key: ALLOWED_ORIGINS
+        sync: false           # set to your Vercel URL after frontend is deployed
+      - key: CRON_SECRET
+        sync: false           # any random string — protect POST /scheduler/run
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false           # add after creating bot via @BotFather
+      - key: VAPID_PUBLIC_KEY
+        sync: false           # add after running: npx web-push generate-vapid-keys
+      - key: VAPID_PRIVATE_KEY
+        sync: false
+      - key: VAPID_CONTACT_EMAIL
+        sync: false
+
+  # ── Cron job — daily alert scheduler ──────────────────────────────────────────
+  # Triggers POST /scheduler/run every day at 08:00 UTC
+  - type: cron
+    name: financeos-daily-scheduler
+    runtime: python
+    region: oregon
+    plan: free
+    rootDir: .
+    buildCommand: pip install -r requirements.txt
+    schedule: "0 8 * * *"    # 08:00 UTC daily — adjust to your timezone
+    startCommand: >
+      python -c "
+      import requests, os;
+      secret = os.getenv('CRON_SECRET', '');
+      url = os.getenv('BACKEND_URL', 'http://localhost:8000') + '/scheduler/run';
+      r = requests.post(url, headers={'x-cron-secret': secret});
+      print(r.status_code, r.text)
+      "
+    envVars:
+      - key: BACKEND_URL
+        sync: false           # set to your Render web service URL
+      - key: CRON_SECRET
+        sync: false

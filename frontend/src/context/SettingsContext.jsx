@@ -54,6 +54,7 @@ export function SettingsProvider({ children }) {
   const [catsLoading, setCatsLoading] = useState(!IS_DEMO);
 
   // ── Preference state ────────────────────────────────────────────────────────
+  const [displayName, setDisplayName] = useState(null); // null = not yet loaded
   const [currency, setCurrency] = useState("USD");
   const [dateFormat, setDateFormat] = useState("MMM D, YYYY");
   const [monthStart, setMonthStart] = useState(1);
@@ -80,6 +81,7 @@ export function SettingsProvider({ children }) {
     try {
       const res = await getPreferences();
       const p = res.data;
+      setDisplayName(p.display_name ?? null);
       setCurrency(p.currency);
       setDateFormat(p.date_format);
       setMonthStart(p.month_start);
@@ -171,21 +173,22 @@ export function SettingsProvider({ children }) {
   const updatePreferences = useCallback(
     async (patch) => {
       if (IS_DEMO) {
-        if (patch.currency !== undefined) setCurrency(patch.currency);
-        if (patch.dateFormat !== undefined) setDateFormat(patch.dateFormat);
-        if (patch.monthStart !== undefined) setMonthStart(patch.monthStart);
+        if (patch.displayName !== undefined) setDisplayName(patch.displayName || null);
+        if (patch.currency    !== undefined) setCurrency(patch.currency);
+        if (patch.dateFormat  !== undefined) setDateFormat(patch.dateFormat);
+        if (patch.monthStart  !== undefined) setMonthStart(patch.monthStart);
         return;
       }
       try {
         const payload = {};
-        if (patch.currency !== undefined) payload.currency = patch.currency;
-        if (patch.dateFormat !== undefined)
-          payload.date_format = patch.dateFormat;
-        if (patch.monthStart !== undefined)
-          payload.month_start = patch.monthStart;
+        if (patch.displayName !== undefined) payload.display_name = patch.displayName;
+        if (patch.currency    !== undefined) payload.currency     = patch.currency;
+        if (patch.dateFormat  !== undefined) payload.date_format  = patch.dateFormat;
+        if (patch.monthStart  !== undefined) payload.month_start  = patch.monthStart;
 
         const res = await apiUpdatePrefs(payload);
         const p = res.data;
+        setDisplayName(p.display_name ?? null);
         setCurrency(p.currency);
         setDateFormat(p.date_format);
         setMonthStart(p.month_start);
@@ -281,6 +284,7 @@ export function SettingsProvider({ children }) {
     getSavingsCategoryNames,
 
     // Preferences
+    displayName,   // null = not set; string = user's chosen name
     currency,
     dateFormat,
     monthStart,
