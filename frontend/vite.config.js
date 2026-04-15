@@ -17,7 +17,7 @@ export default defineConfig({
   server: {
     proxy: {
       "/api": {
-        target: "https://project-financeos.vercel.app/",
+        target: "https://financeos-pmdd.onrender.com",
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api/, ""),
       },
