@@ -9,6 +9,7 @@ services:
   - type: web
     name: financeos-backend
     runtime: python
+    pythonVersion: "3.12"     # pin to 3.12 — avoids pydantic-core build failures on 3.14+
     region: oregon            # change to: ohio (US East), frankfurt, singapore, etc.
     plan: free                # upgrade to starter ($7/mo) if you need always-on
 
@@ -47,6 +48,7 @@ services:
   - type: cron
     name: financeos-daily-scheduler
     runtime: python
+    pythonVersion: "3.12"
     region: oregon
     plan: free
     rootDir: .
