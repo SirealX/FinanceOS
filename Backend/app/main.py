@@ -26,7 +26,7 @@ allow_origins = [
     "http://127.0.0.1:8000",
     # ── Production (hardcoded as safety net) ───────────────────────────────────
     "https://project-financeos.vercel.app",
-] + _production_origins  # also picks up any extras set via ALLOWED_ORIGINS env var
+] 
 
 app.add_middleware(
     CORSMiddleware,
