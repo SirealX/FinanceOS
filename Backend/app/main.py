@@ -19,11 +19,14 @@ _origins_env = os.getenv("ALLOWED_ORIGINS", "")
 _production_origins = [o.strip() for o in _origins_env.split(",") if o.strip()]
 
 allow_origins = [
+    # ── Local development ──────────────────────────────────────────────────────
     "http://localhost:5173",
     "http://127.0.0.1:5173",
     "http://localhost:8000",
     "http://127.0.0.1:8000",
-] + _production_origins
+    # ── Production (hardcoded as safety net) ───────────────────────────────────
+    "https://project-financeos.vercel.app",
+] + _production_origins  # also picks up any extras set via ALLOWED_ORIGINS env var
 
 app.add_middleware(
     CORSMiddleware,
