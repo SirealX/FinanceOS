@@ -54,7 +54,11 @@ export function SettingsProvider({ children }) {
   const [catsLoading, setCatsLoading] = useState(!IS_DEMO);
 
   // ── Preference state ────────────────────────────────────────────────────────
-  const [displayName, setDisplayName] = useState(null); // null = not yet loaded
+  // Seed displayName from localStorage so the greeting shows instantly on any
+  // device — the server fetch will overwrite it once it resolves.
+  const [displayName, setDisplayName] = useState(
+    () => localStorage.getItem("fin_display_name") || null,
+  );
   const [currency, setCurrency] = useState("USD");
   const [dateFormat, setDateFormat] = useState("MMM D, YYYY");
   const [monthStart, setMonthStart] = useState(1);
@@ -81,11 +85,18 @@ export function SettingsProvider({ children }) {
     try {
       const res = await getPreferences();
       const p = res.data;
-      setDisplayName(p.display_name ?? null);
+      // Server is the source of truth — update state and cache locally so the
+      // greeting shows the correct name instantly on the next device/load.
+      const name = p.display_name ?? null;
+      setDisplayName(name);
+      if (name) localStorage.setItem("fin_display_name", name);
+      else       localStorage.removeItem("fin_display_name");
       setCurrency(p.currency);
       setDateFormat(p.date_format);
       setMonthStart(p.month_start);
     } catch (err) {
+      // Non-fatal: we already seeded from localStorage, so the greeting still
+      // shows the last-known name.
       console.error("SettingsContext: failed to load preferences", err);
     } finally {
       setPrefsLoading(false);
@@ -188,7 +199,11 @@ export function SettingsProvider({ children }) {
 
         const res = await apiUpdatePrefs(payload);
         const p = res.data;
-        setDisplayName(p.display_name ?? null);
+        const savedName = p.display_name ?? null;
+        setDisplayName(savedName);
+        // Keep the cache in sync so other devices benefit on next load.
+        if (savedName) localStorage.setItem("fin_display_name", savedName);
+        else           localStorage.removeItem("fin_display_name");
         setCurrency(p.currency);
         setDateFormat(p.date_format);
         setMonthStart(p.month_start);

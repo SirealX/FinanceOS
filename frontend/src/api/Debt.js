@@ -182,12 +182,17 @@ function normalizeDebt(raw) {
 }
 
 function buildPayload(form, existingDebt) {
+  const bal     = parseFloat(form.balance);
+  const origBal = parseFloat(form.originalBalance);
   return {
-    name: form.name.trim(),
-    balance: parseFloat(form.balance),
-    interest_rate: parseFloat(form.apr) || 0,
-    min_payment: parseFloat(form.minPayment),
-    priority_rank: existingDebt ? existingDebt.priority : 999,
+    name:             form.name.trim(),
+    balance:          bal,
+    // Always send original_balance so edits and new entries are stored correctly.
+    // If the user left it blank we fall back to the current balance (first-time entry).
+    original_balance: !isNaN(origBal) ? Math.max(origBal, bal) : bal,
+    interest_rate:    parseFloat(form.apr) || 0,
+    min_payment:      parseFloat(form.minPayment),
+    priority_rank:    existingDebt ? existingDebt.priority : 999,
   };
 }
 

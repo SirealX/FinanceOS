@@ -50,10 +50,20 @@ Chart.register(
 // KpiCard
 // ─────────────────────────────────────────────────────────────────────────────
 
-function KpiCard({ label, value, delta, colorClass, icon }) {
+// accent: "positive" | "negative" | undefined — adds a subtle background tint
+// so the balance card is unambiguous at a glance even before reading the number.
+function KpiCard({ label, value, delta, colorClass, icon, accent, subtitle }) {
   const isUp = delta.dir === "up";
+
+  const accentStyle =
+    accent === "positive"
+      ? { background: "rgba(16,185,129,0.07)", border: "0.5px solid rgba(16,185,129,0.18)" }
+      : accent === "negative"
+      ? { background: "rgba(239,68,68,0.07)",  border: "0.5px solid rgba(239,68,68,0.18)"  }
+      : {};
+
   return (
-    <div className="card card-compact" style={{ marginBottom: 0 }}>
+    <div className="card card-compact" style={{ marginBottom: 0, ...accentStyle }}>
       <div
         style={{
           display: "flex",
@@ -68,6 +78,11 @@ function KpiCard({ label, value, delta, colorClass, icon }) {
         </span>
       </div>
       <div className={`kpi-value ${colorClass}`}>{value}</div>
+      {subtitle && (
+        <div style={{ fontSize: 11, color: "var(--color-text-muted)", marginTop: 4 }}>
+          {subtitle}
+        </div>
+      )}
       <div className="kpi-delta" style={{ marginTop: 8 }}>
         <span className={isUp ? "arrow-up" : "arrow-down"}>
           {isUp ? "▲" : "▼"} {delta.pct}%
@@ -355,14 +370,43 @@ export default function Dashboard() {
 
       {/* ══ ZONE 2: KPI Cards ══ */}
       <div className="grid-kpi" style={{ marginBottom: 12 }}>
-        {/* BALANCE — carry-over aware closing balance (opening + this period) */}
-        <KpiCard
-          label="BALANCE"
-          value={formatAmount(kpi.closingBalance)}
-          delta={kpi.closingDelta}
-          colorClass={kpi.closingBalance >= 0 ? "" : "expense"}
-          icon={<NetBalanceIcon />}
-        />
+        {/* BALANCE / NET SAVED
+            ─ Single-month views: show the closing balance with a tint so
+              positive vs negative is immediately obvious.
+            ─ Last 3 Months: closing balance has no single meaningful start
+              point, so show cumulative Net Saved instead.
+        */}
+        {period === "Last 3 Months" ? (
+          <KpiCard
+            label="NET SAVED"
+            value={
+              (kpi.netBalance >= 0 ? "+" : "−") +
+              formatAmount(Math.abs(kpi.netBalance))
+            }
+            delta={kpi.netDelta}
+            colorClass={kpi.netBalance >= 0 ? "income" : "expense"}
+            accent={kpi.netBalance >= 0 ? "positive" : "negative"}
+            subtitle="income − expenses over 3 months"
+            icon={<NetBalanceIcon />}
+          />
+        ) : (
+          <KpiCard
+            label="BALANCE"
+            value={
+              (kpi.closingBalance >= 0 ? "+" : "−") +
+              formatAmount(Math.abs(kpi.closingBalance))
+            }
+            delta={kpi.closingDelta}
+            colorClass={kpi.closingBalance >= 0 ? "income" : "expense"}
+            accent={kpi.closingBalance >= 0 ? "positive" : "negative"}
+            subtitle={
+              kpi.closingBalance >= 0
+                ? "you're starting ahead this month"
+                : "you're starting in the red this month"
+            }
+            icon={<NetBalanceIcon />}
+          />
+        )}
         <KpiCard
           label="INCOME"
           value={formatAmount(kpi.income)}
