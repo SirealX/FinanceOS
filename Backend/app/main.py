@@ -16,17 +16,19 @@ app = FastAPI(title="Finance App API", redirect_slashes=False)
 # Multiple origins are comma-separated.
 # Localhost origins are always included so local dev keeps working.
 _origins_env = os.getenv("ALLOWED_ORIGINS", "")
-_production_origins = [o.strip() for o in _origins_env.split(",") if o.strip()]
+_production_origins = [o.strip().rstrip("/") for o in _origins_env.split(",") if o.strip()]
 
-allow_origins = [
+allow_origins = list(set([
     # ── Local development ──────────────────────────────────────────────────────
     "http://localhost:5173",
     "http://127.0.0.1:5173",
     "http://localhost:8000",
     "http://127.0.0.1:8000",
-    # ── Production (hardcoded as safety net) ───────────────────────────────────
-    "https://project-financeos.vercel.app/",
-] 
+    # ── Production (hardcoded as safety net — no trailing slash!) ─────────────
+    "https://project-financeos.vercel.app",
+    # ── Production origins from ALLOWED_ORIGINS env var ───────────────────────
+    *_production_origins,
+]))
 
 app.add_middleware(
     CORSMiddleware,
