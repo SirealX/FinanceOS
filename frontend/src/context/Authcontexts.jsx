@@ -1,25 +1,30 @@
 /**
  * context/AuthContext.jsx — Global Auth + Demo Mode State
  * ─────────────────────────────────────────────────────────────────────────────
- * Provides three things to every component in the tree:
+ * Provides the following to every component in the tree:
  *
- *   user       — Supabase user object when logged in, null otherwise
- *   isDemo     — true when the visitor chose "View Demo" on the login page
- *   loading    — true while Supabase is checking the existing session
- *   signIn()   — email/password login via Supabase
- *   signOut()  — signs out and clears demo mode
- *   enterDemo()— sets isDemo = true (called from the login page)
+ *   user                — Supabase user object when logged in, null otherwise
+ *   isDemo              — true when the visitor chose "View Demo" on the login page
+ *   loading             — true while Supabase is checking the existing session
+ *   needsPasswordSetup  — true when user arrived via an invitation link
+ *   signIn()            — email/password login via Supabase
+ *   signOut()           — signs out and clears demo mode
+ *   enterDemo()         — sets isDemo = true (called from the login page)
+ *   updatePassword()    — called by invited users to set their first password
+ *   clearPasswordSetup()— called after password is set to enter the app normally
  *
  * ROUTE LOGIC (handled in App.jsx)
- *   loading          → show spinner
- *   user && !isDemo → show <Login />
- *   user || isDemo   → show the full app shell
+ *   loading                      → show spinner
+ *   !user && !isDemo             → show <Login />
+ *   user && needsPasswordSetup   → show <SetPassword />
+ *   user || isDemo               → show the full app shell
  *
- * IS_DEMO IN HOOK FILES
- *   Every hook (useBills, useDebts, etc.) previously read IS_DEMO from the
- *   build-time env var VITE_DEMO_MODE. They now call useAuth().isDemo instead,
- *   which allows the "View Demo" button to work at runtime without a separate
- *   build or deployment.
+ * INVITATION FLOW
+ *   Supabase invitation emails contain a link with #type=invite in the URL hash.
+ *   The Supabase JS client automatically exchanges the token for a session and
+ *   fires onAuthStateChange with event SIGNED_IN. We detect the original hash
+ *   before the browser clears it to set needsPasswordSetup = true, which routes
+ *   the user to the <SetPassword /> page where they choose their password.
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
@@ -34,10 +39,32 @@ import { supabase } from "../api/Auth";
 
 const AuthContext = createContext(null);
 
+/**
+ * Read the `type` param from the URL hash fragment (#access_token=...&type=invite).
+ * We must capture this BEFORE Supabase (or React) strips it from the URL.
+ * Called once synchronously at module evaluation time so it is never missed.
+ */
+function getHashType() {
+  try {
+    const hash = window.location.hash.slice(1); // remove leading #
+    const params = new URLSearchParams(hash);
+    return params.get("type"); // "invite" | "recovery" | "signup" | null
+  } catch {
+    return null;
+  }
+}
+
+// Capture hash type immediately (before any re-renders or hash clearing)
+const INITIAL_HASH_TYPE = getHashType();
+
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [isDemo, setIsDemo] = useState(false);
   const [loading, setLoading] = useState(true);
+  // True when the user arrived via an invite or password-recovery link
+  const [needsPasswordSetup, setNeedsPasswordSetup] = useState(
+    INITIAL_HASH_TYPE === "invite" || INITIAL_HASH_TYPE === "recovery",
+  );
 
   // ── Restore session on page load ─────────────────────────────────────────
   useEffect(() => {
@@ -47,11 +74,16 @@ export function AuthProvider({ children }) {
       setLoading(false);
     });
 
-    // Keep user in sync if the session changes in another tab
+    // Keep user in sync if the session changes in another tab or after
+    // Supabase exchanges the invitation token in the URL hash.
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
+    } = supabase.auth.onAuthStateChange((event, session) => {
       setUser(session?.user ?? null);
+      // If Supabase fires PASSWORD_RECOVERY we also need the setup screen
+      if (event === "PASSWORD_RECOVERY") {
+        setNeedsPasswordSetup(true);
+      }
     });
 
     return () => subscription.unsubscribe();
@@ -73,6 +105,7 @@ export function AuthProvider({ children }) {
     await supabase.auth.signOut();
     setUser(null);
     setIsDemo(false);
+    setNeedsPasswordSetup(false);
   }, []);
 
   // ── Enter demo mode (no Supabase involved) ───────────────────────────────
@@ -80,7 +113,35 @@ export function AuthProvider({ children }) {
     setIsDemo(true);
   }, []);
 
-  const value = { user, isDemo, loading, signIn, signOut, enterDemo };
+  // ── Set password for invited / recovering users ───────────────────────────
+  const updatePassword = useCallback(async (newPassword) => {
+    const { data, error } = await supabase.auth.updateUser({
+      password: newPassword,
+    });
+    if (error) throw error;
+    return data.user;
+  }, []);
+
+  // ── Called after password is set — remove the setup gate ─────────────────
+  const clearPasswordSetup = useCallback(() => {
+    setNeedsPasswordSetup(false);
+    // Clean the hash from the URL so a refresh doesn't re-trigger the flow
+    if (window.location.hash) {
+      window.history.replaceState(null, "", window.location.pathname);
+    }
+  }, []);
+
+  const value = {
+    user,
+    isDemo,
+    loading,
+    needsPasswordSetup,
+    signIn,
+    signOut,
+    enterDemo,
+    updatePassword,
+    clearPasswordSetup,
+  };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

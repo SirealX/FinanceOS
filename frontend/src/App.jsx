@@ -10,6 +10,8 @@ import Alerts from "./pages/Alerts";
 import Settings from "./pages/Settings";
 import Login from "./pages/Login";
 
+import SetPassword from "./pages/SetPassword";
+
 import { NavProvider } from "./context/NavContext";
 import { SettingsProvider, useSettings } from "./context/SettingsContext";
 import { AuthProvider, useAuth } from "./context/Authcontexts";
@@ -522,7 +524,7 @@ function AppShell() {
 // ── Root — handles auth state before rendering anything ───────────────────────
 
 function Root() {
-  const { user, isDemo, loading } = useAuth();
+  const { user, isDemo, loading, needsPasswordSetup } = useAuth();
 
   if (loading) {
     return (
@@ -555,6 +557,11 @@ function Root() {
   // Not authenticated and not in demo mode → show login page
   if (!user && !isDemo) {
     return <Login />;
+  }
+
+  // Authenticated via invitation or password-recovery link → set password first
+  if (user && needsPasswordSetup) {
+    return <SetPassword />;
   }
 
   // Authenticated or demo mode → show the full app
