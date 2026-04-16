@@ -16,7 +16,7 @@
 import { useState } from "react";
 import { useAuth } from "../context/Authcontexts";
 
-export default function Login() {
+export default function Login({ inviteLinkExpired = false }) {
   const { signIn, enterDemo } = useAuth();
 
   const [email, setEmail] = useState("");
@@ -56,6 +56,14 @@ export default function Login() {
           A personal finance tool built to track income, expenses, bills, debts,
           and savings goals — all in one place.
         </p>
+
+        {/* ── Expired invite banner ── */}
+        {inviteLinkExpired && (
+          <div style={styles.warnBanner}>
+            ⚠ Your invitation link has expired or is invalid. Please ask the
+            administrator to send a new one.
+          </div>
+        )}
 
         {/* ── Error banner ── */}
         {error && <div style={styles.errorBanner}>{error}</div>}
@@ -242,6 +250,17 @@ const styles = {
     color: "#5E6E85",
     lineHeight: 1.6,
     margin: "0 0 28px",
+  },
+
+  warnBanner: {
+    background: "rgba(245,158,11,0.1)",
+    border: "0.5px solid rgba(245,158,11,0.3)",
+    color: "#F59E0B",
+    borderRadius: 8,
+    padding: "10px 14px",
+    marginBottom: 16,
+    fontSize: 13,
+    lineHeight: 1.5,
   },
 
   errorBanner: {

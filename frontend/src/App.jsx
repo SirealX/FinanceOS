@@ -524,7 +524,7 @@ function AppShell() {
 // ── Root — handles auth state before rendering anything ───────────────────────
 
 function Root() {
-  const { user, isDemo, loading, needsPasswordSetup } = useAuth();
+  const { user, isDemo, loading, needsPasswordSetup, inviteLinkExpired } = useAuth();
 
   if (loading) {
     return (
@@ -555,8 +555,9 @@ function Root() {
   }
 
   // Not authenticated and not in demo mode → show login page
+  // Pass inviteLinkExpired so Login can display a helpful "link expired" banner
   if (!user && !isDemo) {
-    return <Login />;
+    return <Login inviteLinkExpired={inviteLinkExpired} />;
   }
 
   // Authenticated via invitation or password-recovery link → set password first

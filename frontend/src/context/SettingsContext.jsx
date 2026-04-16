@@ -45,7 +45,7 @@ const DEMO_CATEGORIES = [
 const SettingsContext = createContext(null);
 
 export function SettingsProvider({ children }) {
-  const { isDemo: IS_DEMO } = useAuth();
+  const { isDemo: IS_DEMO, user } = useAuth();
 
   // ── Category state ──────────────────────────────────────────────────────────
   const [allCategories, setAllCategories] = useState(
@@ -114,11 +114,14 @@ export function SettingsProvider({ children }) {
     }
   }, [IS_DEMO]);
 
+  // Only fetch once we have a confirmed authenticated user.
+  // Without this guard, SettingsContext fires API calls during the invite flow
+  // before any session exists, causing a flood of 401 errors.
   useEffect(() => {
-    if (IS_DEMO) return;
+    if (IS_DEMO || !user) return;
     fetchCategories();
     fetchPreferences();
-  }, [fetchCategories, fetchPreferences]);
+  }, [IS_DEMO, user, fetchCategories, fetchPreferences]);
 
   // ── Derived category splits ─────────────────────────────────────────────────
 
