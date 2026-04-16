@@ -90,6 +90,8 @@ export const DASHBOARD_KPI = {
   "This Month": {
     netBalance: 5_502.45,
     netDelta: { dir: "up", pct: "12.5" },
+    closingBalance: 5_502.45,
+    closingDelta: { dir: "up", pct: "12.5" },
     income: 4_200.0,
     incomeDelta: { dir: "up", pct: "3.2" },
     expenses: 1_847.55,
@@ -100,6 +102,8 @@ export const DASHBOARD_KPI = {
   "Last Month": {
     netBalance: 4_891.1,
     netDelta: { dir: "up", pct: "6.8" },
+    closingBalance: 4_891.1,
+    closingDelta: { dir: "up", pct: "6.8" },
     income: 4_070.0,
     incomeDelta: { dir: "down", pct: "1.2" },
     expenses: 2_011.9,
@@ -110,6 +114,8 @@ export const DASHBOARD_KPI = {
   "Last 3 Months": {
     netBalance: 14_640.0,
     netDelta: { dir: "up", pct: "9.1" },
+    closingBalance: 14_640.0,
+    closingDelta: { dir: "up", pct: "9.1" },
     income: 12_400.0,
     incomeDelta: { dir: "up", pct: "2.0" },
     expenses: 5_760.0,
