@@ -971,9 +971,10 @@ select option {
   color: var(--color-text-secondary);
 }
 
+
 /* ── 20. Responsive Breakpoints ──────────────────────────────*/
 
-/* Collapse sidebar to icons only */
+/* Collapse sidebar to icons only (tablet: 601px - 900px) */
 @media (max-width: 900px) {
   .app-sidebar {
     width: 48px;
@@ -993,15 +994,42 @@ select option {
   }
 }
 
-/* 4-col KPI → 2×2 */
+/* 4-col KPI grid to 2x2 on medium screens */
 @media (max-width: 700px) {
   .grid-kpi {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
-/* Everything → single column */
+/* Mobile phones: hide sidebar, show bottom nav, fix layout */
 @media (max-width: 600px) {
+
+  /* Hide desktop sidebar entirely — bottom nav takes over */
+  .app-sidebar {
+    display: none;
+  }
+
+  /* Reduce side padding; add bottom clearance for the fixed nav bar */
+  .app-main {
+    padding: 16px 14px;
+    padding-bottom: calc(16px + 66px);
+  }
+
+  /* Stack page header: title on top, action buttons below */
+  .page-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+    margin-bottom: 16px;
+  }
+
+  .page-header-actions {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+
+  /* All multi-column grids collapse to single column */
+  .grid-kpi,
   .grid-stats,
   .grid-chart-secondary,
   .grid-two-col,
@@ -1009,5 +1037,107 @@ select option {
   .form-grid-3,
   .form-grid-2-1-1 {
     grid-template-columns: 1fr;
+  }
+
+  /* Hide non-essential transaction table columns */
+  .tx-col-cat,
+  .tx-col-date,
+  .tx-col-type {
+    display: none;
+  }
+
+  /* Reduce chart heights on small screens */
+  .chart-wrap.line  { height: 160px; }
+  .chart-wrap.bar   { height: 150px; }
+  .chart-wrap.debt  { height: 180px; }
+  .chart-wrap.trend { height: 160px; }
+
+  /* Minimum touch targets */
+  .btn-primary,
+  .btn-secondary {
+    min-height: 40px;
+  }
+
+  .pill {
+    padding: 7px 12px;
+  }
+}
+
+/* ── 21. Mobile Bottom Navigation ────────────────────────────*/
+
+/* Hidden on tablet and desktop */
+.mobile-bottom-nav {
+  display: none;
+}
+
+@media (max-width: 600px) {
+  .mobile-bottom-nav {
+    display: flex;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: var(--color-bg-sidebar);
+    border-top: var(--border-sidebar);
+    z-index: 50;
+    overflow-x: auto;
+    scrollbar-width: none;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+
+  .mobile-bottom-nav::-webkit-scrollbar {
+    display: none;
+  }
+
+  .mobile-nav-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    padding: 10px 14px;
+    min-width: 60px;
+    min-height: 56px;
+    font-size: 10px;
+    color: var(--color-text-hint);
+    flex-shrink: 0;
+    cursor: pointer;
+    position: relative;
+    user-select: none;
+    transition: color 0.15s;
+  }
+
+  .mobile-nav-item.active {
+    color: var(--color-income);
+  }
+
+  .mobile-nav-item span {
+    white-space: nowrap;
+  }
+
+  /* Green bar at top of active item */
+  .mobile-nav-item.active::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 20%;
+    right: 20%;
+    height: 2px;
+    background: var(--color-income);
+    border-radius: 0 0 2px 2px;
+  }
+
+  .mobile-nav-badge {
+    position: absolute;
+    top: 6px;
+    right: 8px;
+    background: var(--color-danger);
+    color: #fff;
+    font-size: 9px;
+    padding: 1px 4px;
+    border-radius: var(--radius-full);
+    font-weight: 600;
+    line-height: 1.4;
+    pointer-events: none;
   }
 }

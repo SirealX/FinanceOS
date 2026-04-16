@@ -479,6 +479,41 @@ function AppShell() {
 
         {/* ── Main content ── */}
         <main className="app-main">{activeItem?.component}</main>
+
+        {/* ── Mobile bottom navigation (phones ≤600px only) ── */}
+        <nav className="mobile-bottom-nav" aria-label="Main navigation">
+          {NAV_ITEMS_CONFIG.map((item) => {
+            const badge = item.showDraftBadge
+              ? draftCount > 0
+                ? draftCount
+                : null
+              : item.showAlertBadge
+                ? alertCount > 0
+                  ? alertCount
+                  : null
+                : null;
+
+            return (
+              <div
+                key={item.id}
+                className={`mobile-nav-item${activeId === item.id ? " active" : ""}`}
+                onClick={() => handleNavigate(item.id)}
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) =>
+                  e.key === "Enter" && handleNavigate(item.id)
+                }
+                aria-current={activeId === item.id ? "page" : undefined}
+              >
+                {item.icon}
+                <span>{item.label}</span>
+                {badge != null && (
+                  <span className="mobile-nav-badge">{badge}</span>
+                )}
+              </div>
+            );
+          })}
+        </nav>
       </div>
     </NavProvider>
   );

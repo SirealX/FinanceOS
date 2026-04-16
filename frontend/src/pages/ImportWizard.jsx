@@ -251,7 +251,7 @@ function Step1Upload({ settings, setSettings, onNext, loading, error }) {
           </select>
         </div>
       </div>
-      <div style={{ ...S.fieldWrap, width: "calc(50% - 6px)" }}>
+      <div style={{ ...S.fieldWrap, width: "min(calc(50% - 6px), 100%)" }}>
         <label style={S.label}>Decimal Separator</label>
         <select className="input" value={settings.decimalSep}
           onChange={e => setSettings(p => ({ ...p, decimalSep: e.target.value }))}>
