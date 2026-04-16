@@ -64,6 +64,17 @@ export function SettingsProvider({ children }) {
   const [monthStart, setMonthStart] = useState(1);
   const [prefsLoading, setPrefsLoading] = useState(!IS_DEMO);
 
+  // ── Seed demo data when demo mode is activated at runtime ──────────────────
+  // SettingsProvider mounts before the user enters demo mode, so useState()
+  // initializers always run with isDemo = false. This effect catches the
+  // false → true transition and populates the state those initializers missed.
+  useEffect(() => {
+    if (!IS_DEMO) return;
+    setAllCategories(DEMO_CATEGORIES);
+    setCatsLoading(false);
+    setPrefsLoading(false);
+  }, [IS_DEMO]);
+
   // ── Fetch on mount (live mode only) ────────────────────────────────────────
 
   const fetchCategories = useCallback(async () => {
