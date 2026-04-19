@@ -57,13 +57,22 @@ function KpiCard({ label, value, delta, colorClass, icon, accent, subtitle }) {
 
   const accentStyle =
     accent === "positive"
-      ? { background: "rgba(16,185,129,0.07)", border: "0.5px solid rgba(16,185,129,0.18)" }
+      ? {
+          background: "rgba(16,185,129,0.07)",
+          border: "0.5px solid rgba(16,185,129,0.18)",
+        }
       : accent === "negative"
-      ? { background: "rgba(239,68,68,0.07)",  border: "0.5px solid rgba(239,68,68,0.18)"  }
-      : {};
+        ? {
+            background: "rgba(239,68,68,0.07)",
+            border: "0.5px solid rgba(239,68,68,0.18)",
+          }
+        : {};
 
   return (
-    <div className="card card-compact" style={{ marginBottom: 0, ...accentStyle }}>
+    <div
+      className="card card-compact"
+      style={{ marginBottom: 0, ...accentStyle }}
+    >
       <div
         style={{
           display: "flex",
@@ -79,7 +88,13 @@ function KpiCard({ label, value, delta, colorClass, icon, accent, subtitle }) {
       </div>
       <div className={`kpi-value ${colorClass}`}>{value}</div>
       {subtitle && (
-        <div style={{ fontSize: 11, color: "var(--color-text-muted)", marginTop: 4 }}>
+        <div
+          style={{
+            fontSize: 11,
+            color: "var(--color-text-muted)",
+            marginTop: 4,
+          }}
+        >
           {subtitle}
         </div>
       )}
@@ -88,6 +103,122 @@ function KpiCard({ label, value, delta, colorClass, icon, accent, subtitle }) {
           {isUp ? "▲" : "▼"} {delta.pct}%
         </span>
         <span className="vs-label">vs last month</span>
+      </div>
+    </div>
+  );
+}
+// ─────────────────────────────────────────────────────────────────────────────
+// BalanceCard — starting balance (stable) + live "Now" line (bonus)
+// ─────────────────────────────────────────────────────────────────────────────
+
+function BalanceCard({ opening, closing, delta, icon }) {
+  const startPositive = opening >= 0;
+  const nowPositive = closing >= 0;
+  const monthChange = closing - opening; // net for the current month
+  const isUp = delta.dir === "up";
+
+  const accentStyle = startPositive
+    ? {
+        background: "rgba(16,185,129,0.07)",
+        border: "0.5px solid rgba(16,185,129,0.18)",
+      }
+    : {
+        background: "rgba(239,68,68,0.07)",
+        border: "0.5px solid rgba(239,68,68,0.18)",
+      };
+
+  const fmt = (n) =>
+    (n >= 0 ? "+" : "−") +
+    "$" +
+    Math.abs(n).toLocaleString("en-US", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
+
+  return (
+    <div
+      className="card card-compact"
+      style={{ marginBottom: 0, ...accentStyle }}
+    >
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "flex-start",
+          marginBottom: 10,
+        }}
+      >
+        <span className="kpi-label">BALANCE</span>
+        <span style={{ color: "var(--color-text-hint)", opacity: 0.6 }}>
+          {icon}
+        </span>
+      </div>
+
+      {/* Primary: stable starting balance */}
+      <div className={`kpi-value ${startPositive ? "income" : "expense"}`}>
+        {fmt(opening)}
+      </div>
+      <div
+        style={{ fontSize: 11, color: "var(--color-text-muted)", marginTop: 4 }}
+      >
+        {startPositive
+          ? "you started this month ahead"
+          : "you started this month in the red"}
+      </div>
+
+      {/* Divider */}
+      <div
+        style={{
+          height: "0.5px",
+          background: "rgba(255,255,255,0.08)",
+          margin: "10px 0 8px",
+        }}
+      />
+
+      {/* Secondary: live closing balance */}
+      <div
+        style={{
+          fontSize: 12,
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+        }}
+      >
+        <span style={{ color: "var(--color-text-muted)" }}>Now</span>
+        <span>
+          <span
+            style={{
+              fontWeight: 600,
+              color: nowPositive
+                ? "var(--color-income)"
+                : "var(--color-expense)",
+            }}
+          >
+            {fmt(closing)}
+          </span>
+          <span
+            style={{
+              marginLeft: 6,
+              color: "var(--color-text-muted)",
+              fontSize: 11,
+            }}
+          >
+            ({monthChange >= 0 ? "+" : "−"}$
+            {Math.abs(monthChange).toLocaleString("en-US", {
+              minimumFractionDigits: 2,
+              maximumFractionDigits: 2,
+            })}{" "}
+            this month)
+          </span>
+        </span>
+      </div>
+
+      {/* Delta: opening vs last opening */}
+      <div className="kpi-delta" style={{ marginTop: 8 }}>
+        <span className={isUp ? "arrow-up" : "arrow-down"}>
+          {isUp ? "▲" : "▼"} {delta.pct}%
+        </span>
+        <span className="vs-label">vs last month's start</span>
       </div>
     </div>
   );
@@ -390,20 +521,10 @@ export default function Dashboard() {
             icon={<NetBalanceIcon />}
           />
         ) : (
-          <KpiCard
-            label="BALANCE"
-            value={
-              (kpi.closingBalance >= 0 ? "+" : "−") +
-              formatAmount(Math.abs(kpi.closingBalance))
-            }
-            delta={kpi.closingDelta}
-            colorClass={kpi.closingBalance >= 0 ? "income" : "expense"}
-            accent={kpi.closingBalance >= 0 ? "positive" : "negative"}
-            subtitle={
-              kpi.closingBalance >= 0
-                ? "you're starting ahead this month"
-                : "you're starting in the red this month"
-            }
+          <BalanceCard
+            opening={kpi.openingBalance}
+            closing={kpi.closingBalance}
+            delta={kpi.openingDelta}
             icon={<NetBalanceIcon />}
           />
         )}

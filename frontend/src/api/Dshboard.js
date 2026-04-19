@@ -241,6 +241,7 @@ const EMPTY_KPI = {
   expenses_delta: { dir: "up", pct: "0.0" },
   net_delta: { dir: "up", pct: "0.0" },
   savings_delta: { dir: "up", pct: "0.0" },
+  opening_delta: { dir: "up", pct: "0.0" },
 };
 const EMPTY_CHART = { labels: [], income: [], expenses: [] };
 const EMPTY_DONUT = { labels: [], values: [], colors: [] };
@@ -283,7 +284,9 @@ export function useDashboard() {
         client.get(`/cashflow?period=${p}`),
         client.get(`/expenses/breakdown?period=${p}`),
         client.get(`/budget/actuals?period=${p}&kind=expense`), // FIX #5: expense only
-        client.get(`/transactions/?date_from=${_periodStart(activePeriod)}&date_to=${_periodEnd(activePeriod)}`),
+        client.get(
+          `/transactions/?date_from=${_periodStart(activePeriod)}&date_to=${_periodEnd(activePeriod)}`,
+        ),
         client.get("/budget/categories?kind=expense"), // FIX #5 + #10: in parallel
       ]);
 
@@ -338,17 +341,18 @@ export function useDashboard() {
   const kpi = IS_DEMO
     ? DASHBOARD_KPI[period]
     : {
-        netBalance:      kpiData.net_balance,
-        openingBalance:  kpiData.opening_balance ?? 0,
-        closingBalance:  kpiData.closing_balance ?? kpiData.net_balance,
-        income:          kpiData.income,
-        expenses:        kpiData.expenses,
-        savingsRate:     kpiData.savings_rate,
-        netDelta:        kpiData.net_delta,
-        incomeDelta:     kpiData.income_delta,
-        expensesDelta:   kpiData.expenses_delta,
-        savingsDelta:    kpiData.savings_delta,
-        closingDelta:    kpiData.closing_delta ?? kpiData.net_delta,
+        netBalance: kpiData.net_balance,
+        openingBalance: kpiData.opening_balance ?? 0,
+        closingBalance: kpiData.closing_balance ?? kpiData.net_balance,
+        income: kpiData.income,
+        expenses: kpiData.expenses,
+        savingsRate: kpiData.savings_rate,
+        netDelta: kpiData.net_delta,
+        incomeDelta: kpiData.income_delta,
+        expensesDelta: kpiData.expenses_delta,
+        savingsDelta: kpiData.savings_delta,
+        closingDelta: kpiData.closing_delta ?? kpiData.net_delta,
+        openingDelta: kpiData.opening_delta ?? kpiData.net_delta,
       };
 
   const donutLegend = useMemo(() => {
@@ -374,8 +378,9 @@ export function useDashboard() {
       ? DEMO_USER
       : {
           // Prefer the stored display name; fall back to the part before @ in email
-          name: displayName
-            ?? (authUser?.email ? authUser.email.split("@")[0] : "User"),
+          name:
+            displayName ??
+            (authUser?.email ? authUser.email.split("@")[0] : "User"),
           email: authUser?.email ?? "",
         },
     kpi,

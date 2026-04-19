@@ -187,6 +187,7 @@ export function useTransactions() {
   const [error, setError] = useState(null);
   const [typeFilter, setTypeFilter] = useState("All");
   const [periodFilter, setPeriodFilter] = useState("This Month");
+  const [categoryFilter, setCategoryFilter] = useState([]);
   const [showModal, setShowModal] = useState(false);
   const [editingTx, setEditingTx] = useState(null);
   const [deletingId, setDeletingId] = useState(null);
@@ -231,6 +232,10 @@ export function useTransactions() {
       return true;
     })
     .filter((tx) => inPeriod(tx.date, periodFilter))
+    .filter(
+      (tx) =>
+        categoryFilter.length === 0 || categoryFilter.includes(tx.category),
+    )
     .sort((a, b) => b.date.localeCompare(a.date));
 
   // ── Summary totals ────────────────────────────────────────────────────────
@@ -382,6 +387,8 @@ export function useTransactions() {
     handleConfirmDelete,
     handleSave,
     handleTypeChange,
+    categoryFilter,
+    setCategoryFilter,
     categoryGroups,
     validCategoryNames,
     getCategoryConfig,

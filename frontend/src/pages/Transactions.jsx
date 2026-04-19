@@ -259,6 +259,100 @@ function TxRow({
   );
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// CategoryFilterPanel — collapsible multi-select pill strip
+// ─────────────────────────────────────────────────────────────────────────────
+
+function CategoryFilterPanel({ categoryGroups, selected, onChange }) {
+  const [open, setOpen] = useState(false);
+
+  // Flatten groups into one list of {name, color}
+  const allCats = categoryGroups
+    ? categoryGroups.flatMap((g) => g.categories ?? g.items ?? g)
+    : [];
+
+  const toggle = (name) => {
+    onChange(
+      selected.includes(name)
+        ? selected.filter((n) => n !== name)
+        : [...selected, name],
+    );
+  };
+
+  const clear = () => onChange([]);
+
+  return (
+    <div style={{ marginBottom: 12 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <button
+          className="btn-ghost"
+          onClick={() => setOpen((o) => !o)}
+          style={{ fontSize: 12 }}
+        >
+          {open ? "▾" : "▸"} Filter by category
+          {selected.length > 0 && (
+            <span className="count-badge" style={{ marginLeft: 6 }}>
+              {selected.length}
+            </span>
+          )}
+        </button>
+        {selected.length > 0 && (
+          <button
+            className="btn-ghost"
+            style={{ fontSize: 12, color: "var(--color-text-muted)" }}
+            onClick={clear}
+          >
+            Clear
+          </button>
+        )}
+      </div>
+
+      {open && (
+        <div
+          style={{
+            marginTop: 10,
+            padding: 10,
+            borderRadius: 10,
+            background: "rgba(255,255,255,0.02)",
+            border: "0.5px solid rgba(255,255,255,0.06)",
+            display: "flex",
+            flexWrap: "wrap",
+            gap: 6,
+          }}
+        >
+          {allCats.length === 0 ? (
+            <span style={{ fontSize: 12, color: "var(--color-text-muted)" }}>
+              No categories available
+            </span>
+          ) : (
+            allCats.map((c) => {
+              const name = c.name ?? c;
+              const color = c.color ?? "#475569";
+              const on = selected.includes(name);
+              return (
+                <button
+                  key={name}
+                  className={`pill${on ? " active" : ""}`}
+                  onClick={() => toggle(name)}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 6,
+                    fontSize: 12,
+                  }}
+                >
+                  <span className="cat-dot" style={{ background: color }} />
+                  {name}
+                </button>
+              );
+            })
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Add / Edit Modal ──────────────────────────────────────────────────────────
 
 function TxModal({
@@ -523,6 +617,8 @@ export default function Transactions() {
     handleConfirmDelete,
     handleSave,
     handleTypeChange,
+    categoryFilter,
+    setCategoryFilter,
     categoryGroups,
     getCategoryConfig, // FIX (colors): live color lookup
   } = useTransactions();
@@ -593,6 +689,11 @@ export default function Transactions() {
             </button>
           ))}
         </div>
+        <CategoryFilterPanel
+          categoryGroups={categoryGroups}
+          selected={categoryFilter}
+          onChange={setCategoryFilter}
+        />
       </div>
 
       {/* ── Zone 3: Table ── */}
@@ -763,9 +864,7 @@ export default function Transactions() {
       )}
 
       {/* ── Export Modal ── */}
-      {showExport && (
-        <ExportModal onClose={() => setShowExport(false)} />
-      )}
+      {showExport && <ExportModal onClose={() => setShowExport(false)} />}
     </>
   );
 }
