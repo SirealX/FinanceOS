@@ -178,13 +178,15 @@ def get_summary(
     # Previous period's closing balance (used for the closing_balance delta)
     prev_opening      = _opening_balance(db, current_user, prev_start)
     prev_closing      = prev_opening + prev_net
-    current_opening_vs_prev = _delta(opening_balance, prev_opening)
+
 
     def _delta(current: float, previous: float) -> dict:
         if previous == 0:
             return {"dir": "up", "pct": "0.0"}
         change = ((current - previous) / previous) * 100
         return {"dir": "up" if change >= 0 else "down", "pct": str(round(abs(change), 1))}
+
+    current_opening_vs_prev = _delta(opening_balance, prev_opening)
 
     return {
         "income":           round(income,          2),
