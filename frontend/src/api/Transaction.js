@@ -203,6 +203,14 @@ export function useTransactions() {
     [allCategories, form.type],
   );
 
+  // Flat list of ALL categories (expense + income + savings) for the filter panel.
+  // Intentionally NOT scoped to form.type — the filter should show every category
+  // that could appear on any transaction.
+  const filterCategories = useMemo(
+    () => allCategories.map((c) => ({ name: c.name, color: c.color })),
+    [allCategories],
+  );
+
   // ── Fetch ─────────────────────────────────────────────────────────────────
   const fetchTransactions = useCallback(async () => {
     if (IS_DEMO) return;
@@ -390,7 +398,7 @@ export function useTransactions() {
     categoryFilter,
     setCategoryFilter,
     categoryGroups,
-    validCategoryNames,
+    filterCategories,
     getCategoryConfig,
     isDemo: IS_DEMO,
   };

@@ -816,6 +816,7 @@ select option {
 /* Row of pill groups with gap between them */
 .pill-group-row {
   display: flex;
+  align-items: flex-start;
   gap: 8px;
   margin-bottom: 12px;
   flex-wrap: wrap;

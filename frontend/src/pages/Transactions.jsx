@@ -263,13 +263,11 @@ function TxRow({
 // CategoryFilterPanel — collapsible multi-select pill strip
 // ─────────────────────────────────────────────────────────────────────────────
 
-function CategoryFilterPanel({ categoryGroups, selected, onChange }) {
+// categories: flat array of { name, color } covering ALL transaction types
+function CategoryFilterPanel({ categories, selected, onChange }) {
   const [open, setOpen] = useState(false);
 
-  // Flatten groups into one list of {name, color}
-  const allCats = categoryGroups
-    ? categoryGroups.flatMap((g) => g.categories ?? g.items ?? g)
-    : [];
+  const allCats = categories ?? [];
 
   const toggle = (name) => {
     onChange(
@@ -282,42 +280,61 @@ function CategoryFilterPanel({ categoryGroups, selected, onChange }) {
   const clear = () => onChange([]);
 
   return (
-    <div style={{ marginBottom: 12 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        gap: 8,
+        alignSelf: "flex-start",
+      }}
+    >
+      {/* Trigger — styled as a pill-group to match the type / period filters */}
+      <div className="pill-group">
         <button
-          className="btn-ghost"
+          className={`pill${open ? " active" : ""}`}
           onClick={() => setOpen((o) => !o)}
-          style={{ fontSize: 12 }}
+          style={{ display: "flex", alignItems: "center", gap: 6 }}
         >
-          {open ? "▾" : "▸"} Filter by category
+          {open ? "▾" : "▸"} Categories
           {selected.length > 0 && (
-            <span className="count-badge" style={{ marginLeft: 6 }}>
+            <span
+              className="count-badge"
+              style={{
+                background: "rgba(16,185,129,0.2)",
+                color: "var(--color-income)",
+                padding: "1px 7px",
+                fontSize: 10,
+              }}
+            >
               {selected.length}
             </span>
           )}
         </button>
         {selected.length > 0 && (
           <button
-            className="btn-ghost"
-            style={{ fontSize: 12, color: "var(--color-text-muted)" }}
+            className="pill"
+            style={{ fontSize: 11, color: "var(--color-text-muted)" }}
             onClick={clear}
           >
-            Clear
+            ✕ Clear
           </button>
         )}
       </div>
 
+      {/* Dropdown — full-width panel that pushes content down */}
       {open && (
         <div
           style={{
-            marginTop: 10,
-            padding: 10,
+            padding: "8px 12px",
             borderRadius: 10,
-            background: "rgba(255,255,255,0.02)",
-            border: "0.5px solid rgba(255,255,255,0.06)",
+            background: "var(--color-bg-card)",
+            border: "var(--border-default)",
             display: "flex",
             flexWrap: "wrap",
             gap: 6,
+            // Stretch to fill the pill-group-row so it doesn't look floated
+            width: "100%",
+            boxSizing: "border-box",
           }}
         >
           {allCats.length === 0 ? (
@@ -325,9 +342,7 @@ function CategoryFilterPanel({ categoryGroups, selected, onChange }) {
               No categories available
             </span>
           ) : (
-            allCats.map((c) => {
-              const name = c.name ?? c;
-              const color = c.color ?? "#475569";
+            allCats.map(({ name, color }) => {
               const on = selected.includes(name);
               return (
                 <button
@@ -337,11 +352,16 @@ function CategoryFilterPanel({ categoryGroups, selected, onChange }) {
                   style={{
                     display: "flex",
                     alignItems: "center",
-                    gap: 6,
+                    gap: 5,
                     fontSize: 12,
+                    background: on ? undefined : "rgba(255,255,255,0.03)",
+                    border: `1px solid ${on ? "transparent" : "rgba(255,255,255,0.06)"}`,
                   }}
                 >
-                  <span className="cat-dot" style={{ background: color }} />
+                  <span
+                    className="cat-dot"
+                    style={{ background: on ? "#022c22" : color }}
+                  />
                   {name}
                 </button>
               );
@@ -620,6 +640,7 @@ export default function Transactions() {
     categoryFilter,
     setCategoryFilter,
     categoryGroups,
+    filterCategories,
     getCategoryConfig, // FIX (colors): live color lookup
   } = useTransactions();
 
@@ -690,7 +711,7 @@ export default function Transactions() {
           ))}
         </div>
         <CategoryFilterPanel
-          categoryGroups={categoryGroups}
+          categories={filterCategories}
           selected={categoryFilter}
           onChange={setCategoryFilter}
         />
