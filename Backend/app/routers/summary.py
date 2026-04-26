@@ -322,4 +322,5 @@ def get_expense_breakdown(
     for row in rows:
         labels.append(row.category)
         values.append(round(float(row.total), 2))
+        colors.append(cat_colors.get(row.category, "#475569"))
     return {"labels": labels, "values": values, "colors": colors}
