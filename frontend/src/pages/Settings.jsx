@@ -2,7 +2,7 @@
  * Settings.jsx — Presentation Layer
  */
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 
 import {
   CURRENCIES,
@@ -443,20 +443,9 @@ export default function Settings() {
     draftShowGap,           setDraftShowGap,
     draftReminderDay,       setDraftReminderDay,
     balanceSaved,
+    settingsSummary,
     handleSaveBankBalance,
   } = useSettingsPage();
-
-  // ── Inline reconciliation gap (live preview in settings) ──────────────────
-  // Compute the gap on the fly from the draft fields + this month's summary
-  // fetched once when the Settings page mounts.
-  const [settingsSummary, setSettingsSummary] = useState(null);
-  useEffect(() => {
-    import("../api/client").then(({ default: client }) => {
-      client.get("/summary?period=this_month")
-        .then((r) => setSettingsSummary(r.data))
-        .catch(() => {});
-    });
-  }, []);
 
   const reconciliation = (() => {
     const closing = settingsSummary?.closing_balance ?? null;

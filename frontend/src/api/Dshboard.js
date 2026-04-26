@@ -254,7 +254,7 @@ export function useDashboard() {
   const navigate = useNav();
   const {
     getAllCategoryConfig, formatAmount, displayName,
-    bankBalance, initialBalance, showBalanceGap,
+    bankBalance, bankBalanceDate, balanceAnchorApp, initialBalance, showBalanceGap,
   } = useSettings();
 
   const [kpiData, setKpiData] = useState(EMPTY_KPI);
@@ -366,6 +366,19 @@ export function useDashboard() {
         openingDelta: kpiData.opening_delta ?? kpiData.net_delta,
       };
 
+  // ── Projected bank balance ────────────────────────────────────────────────
+  // If the user entered a bank balance anchor in Settings we project it forward:
+  //   projected = bank_balance + (current_closing - balance_anchor_app)
+  // Every new transaction updates current_closing, so the card auto-refreshes
+  // without the user needing to re-enter their balance.
+  // Falls back to the raw stored value when no anchor exists yet (first save).
+  const projectedBankBalance = (() => {
+    if (IS_DEMO || bankBalance === null) return null;
+    if (balanceAnchorApp === null) return bankBalance;
+    const currentClosing = kpiData.closing_balance ?? 0;
+    return bankBalance + (currentClosing - balanceAnchorApp);
+  })();
+
   const donutLegend = useMemo(() => {
     return buildDonutLegend(IS_DEMO ? DASHBOARD_DONUT : donutData);
   }, [donutData]);
@@ -405,9 +418,10 @@ export function useDashboard() {
     error,
     formatAmount,
     // Bank balance reconciliation — only relevant for BalanceCard
-    showBalanceGap: IS_DEMO ? false : (showBalanceGap ?? false),
-    bankBalance:    IS_DEMO ? null  : (bankBalance   ?? null),
-    initialBalance: IS_DEMO ? null  : (initialBalance ?? null),
+    showBalanceGap:        IS_DEMO ? false : (showBalanceGap   ?? false),
+    bankBalance:           projectedBankBalance,   // projected forward from anchor
+    bankBalanceDate:       IS_DEMO ? null  : (bankBalanceDate  ?? null),
+    initialBalance:        IS_DEMO ? null  : (initialBalance   ?? null),
     goToBudget: () => navigate("budget"),
     goToTransactions: () => navigate("transactions"),
   };

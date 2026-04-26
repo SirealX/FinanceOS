@@ -71,6 +71,7 @@ export function SettingsProvider({ children }) {
   const [trackingStartDate, setTrackingStartDate]   = useState(null);
   const [showBalanceGap, setShowBalanceGap]         = useState(false);
   const [balanceReminderDay, setBalanceReminderDay] = useState(null);
+  const [balanceAnchorApp, setBalanceAnchorApp]     = useState(null);
 
   // ── Seed demo data when demo mode is activated at runtime ──────────────────
   // SettingsProvider mounts before the user enters demo mode, so useState()
@@ -120,6 +121,7 @@ export function SettingsProvider({ children }) {
       setTrackingStartDate(p.tracking_start_date ?? null);
       setShowBalanceGap(p.show_balance_gap ?? false);
       setBalanceReminderDay(p.balance_reminder_day ?? null);
+      setBalanceAnchorApp(p.balance_anchor_app ?? null);
     } catch (err) {
       // Non-fatal: we already seeded from localStorage, so the greeting still
       // shows the last-known name.
@@ -232,6 +234,7 @@ export function SettingsProvider({ children }) {
         if (patch.trackingStartDate   !== undefined) payload.tracking_start_date  = patch.trackingStartDate;
         if (patch.showBalanceGap      !== undefined) payload.show_balance_gap     = patch.showBalanceGap;
         if ("balanceReminderDay" in patch)           payload.balance_reminder_day = patch.balanceReminderDay;
+        if (patch.balanceAnchorApp    !== undefined) payload.balance_anchor_app   = patch.balanceAnchorApp;
 
         const res = await apiUpdatePrefs(payload);
         const p = res.data;
@@ -250,6 +253,7 @@ export function SettingsProvider({ children }) {
         setTrackingStartDate(p.tracking_start_date ?? null);
         setShowBalanceGap(p.show_balance_gap ?? false);
         setBalanceReminderDay(p.balance_reminder_day ?? null);
+        setBalanceAnchorApp(p.balance_anchor_app ?? null);
       } catch (err) {
         console.error("updatePreferences failed", err);
         throw err;
@@ -356,6 +360,7 @@ export function SettingsProvider({ children }) {
     trackingStartDate,
     showBalanceGap,
     balanceReminderDay,
+    balanceAnchorApp,
 
     // Mutations
     addCategory,

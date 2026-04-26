@@ -162,6 +162,11 @@ class Preferences(Base):
     tracking_start_date  = Column(Date,    nullable=True)
     show_balance_gap     = Column(Boolean, nullable=False, default=False)
     balance_reminder_day = Column(Integer, nullable=True)
+    # Snapshot of the app's own running balance at the moment the user last
+    # entered bank_balance.  Used to project the bank balance forward without
+    # requiring the user to re-enter it after every new transaction.
+    # projected_bank = bank_balance + (current_closing - balance_anchor_app)
+    balance_anchor_app   = Column(Numeric(12, 2), nullable=True)
 
 
 class Alert(Base):

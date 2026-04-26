@@ -35,6 +35,9 @@ class PreferencesUpdate(BaseModel):
     tracking_start_date:  Optional[date_type] = None
     show_balance_gap:     Optional[bool]      = None
     balance_reminder_day: Optional[int]       = None   # 1-28 or None to disable
+    # Snapshot of the app's own closing_balance at save time — used to project
+    # the bank balance forward without the user re-entering it each time.
+    balance_anchor_app:   Optional[Decimal]   = None
 
     @validator("currency")
     def validate_currency(cls, v):
@@ -74,6 +77,7 @@ def _serialize(prefs: Preferences) -> dict:
         "tracking_start_date":  prefs.tracking_start_date.isoformat() if prefs.tracking_start_date else None,
         "show_balance_gap":     bool(prefs.show_balance_gap),
         "balance_reminder_day": prefs.balance_reminder_day,
+        "balance_anchor_app":   float(prefs.balance_anchor_app) if prefs.balance_anchor_app is not None else None,
     }
 
 
@@ -122,6 +126,7 @@ def update_preferences(
     if data.show_balance_gap     is not None: prefs.show_balance_gap     = data.show_balance_gap
     if "balance_reminder_day" in data.dict(exclude_unset=True):
         prefs.balance_reminder_day = data.balance_reminder_day
+    if data.balance_anchor_app   is not None: prefs.balance_anchor_app   = data.balance_anchor_app
 
     db.commit()
     db.refresh(prefs)

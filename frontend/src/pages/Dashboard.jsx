@@ -108,166 +108,118 @@ function KpiCard({ label, value, delta, colorClass, icon, accent, subtitle }) {
   );
 }
 // ─────────────────────────────────────────────────────────────────────────────
-// BalanceCard — starting balance (stable) + live "Now" line (bonus)
+// BalanceCard
+//
+// Two modes depending on whether a bank balance has been set in Settings:
+//
+//  WITH bank balance (primary mode):
+//    Primary headline  — bank balance + "as of [date]"
+//    Row 1             — start of month (opening)
+//    Row 2             — app's current calculated balance ("Gap") + month delta
+//
+//  WITHOUT bank balance (fallback mode, original behaviour):
+//    Primary headline  — opening balance
+//    Row               — "Now" (closing) + month delta
 // ─────────────────────────────────────────────────────────────────────────────
 
-function BalanceCard({ opening, closing, delta, icon, showGap, bankBalance, initialBalance }) {
-  const startPositive = opening >= 0;
-  const nowPositive = closing >= 0;
-  const monthChange = closing - opening; // net for the current month
-  const isUp = delta.dir === "up";
+function BalanceCard({ opening, closing, delta, icon, bankBalance, bankBalanceDate }) {
+  const monthChange  = closing - opening;
+  const isUp         = delta.dir === "up";
+  const hasBankData  = bankBalance !== null && bankBalance !== undefined;
 
-  const accentStyle = startPositive
-    ? {
-        background: "rgba(16,185,129,0.07)",
-        border: "0.5px solid rgba(16,185,129,0.18)",
-      }
-    : {
-        background: "rgba(239,68,68,0.07)",
-        border: "0.5px solid rgba(239,68,68,0.18)",
-      };
+  // Accent tint: green if the headline number is positive, red otherwise
+  const headlinePositive = hasBankData ? bankBalance >= 0 : opening >= 0;
+  const accentStyle = headlinePositive
+    ? { background: "rgba(16,185,129,0.07)", border: "0.5px solid rgba(16,185,129,0.18)" }
+    : { background: "rgba(239,68,68,0.07)",  border: "0.5px solid rgba(239,68,68,0.18)"  };
 
   const fmt = (n) =>
-    (n >= 0 ? "+" : "−") +
-    "$" +
-    Math.abs(n).toLocaleString("en-US", {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    });
+    (n >= 0 ? "+" : "−") + "$" +
+    Math.abs(n).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+  const fmtAbs = (n) =>
+    "$" + Math.abs(n).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+  // Format the bank balance date as "Apr 24"
+  const bankDateLabel = bankBalanceDate
+    ? new Date(bankBalanceDate + "T00:00:00").toLocaleString("en-US", { month: "short", day: "numeric" })
+    : null;
+
+  const divider = (
+    <div style={{ height: "0.5px", background: "rgba(255,255,255,0.08)", margin: "10px 0 8px" }} />
+  );
+
+  const smallRow = (label, value, isPositive, suffix) => (
+    <div style={{ fontSize: 12, display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+      <span style={{ color: "var(--color-text-muted)" }}>{label}</span>
+      <span>
+        <span style={{ fontWeight: 600, color: isPositive ? "var(--color-income)" : "var(--color-expense)" }}>
+          {fmt(value)}
+        </span>
+        {suffix && (
+          <span style={{ marginLeft: 6, color: "var(--color-text-muted)", fontSize: 11 }}>
+            {suffix}
+          </span>
+        )}
+      </span>
+    </div>
+  );
 
   return (
-    <div
-      className="card card-compact"
-      style={{ marginBottom: 0, ...accentStyle }}
-    >
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "flex-start",
-          marginBottom: 10,
-        }}
-      >
+    <div className="card card-compact" style={{ marginBottom: 0, ...accentStyle }}>
+      {/* Header row */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 }}>
         <span className="kpi-label">BALANCE</span>
-        <span style={{ color: "var(--color-text-hint)", opacity: 0.6 }}>
-          {icon}
-        </span>
+        <span style={{ color: "var(--color-text-hint)", opacity: 0.6 }}>{icon}</span>
       </div>
 
-      {/* Primary: stable starting balance */}
-      <div className={`kpi-value ${startPositive ? "income" : "expense"}`}>
-        {fmt(opening)}
-      </div>
-      <div
-        style={{ fontSize: 11, color: "var(--color-text-muted)", marginTop: 4 }}
-      >
-        {startPositive
-          ? "you started this month ahead"
-          : "you started this month in the red"}
-      </div>
-
-      {/* Divider */}
-      <div
-        style={{
-          height: "0.5px",
-          background: "rgba(255,255,255,0.08)",
-          margin: "10px 0 8px",
-        }}
-      />
-
-      {/* Secondary: live closing balance */}
-      <div
-        style={{
-          fontSize: 12,
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-        }}
-      >
-        <span style={{ color: "var(--color-text-muted)" }}>Now</span>
-        <span>
-          <span
-            style={{
-              fontWeight: 600,
-              color: nowPositive
-                ? "var(--color-income)"
-                : "var(--color-expense)",
-            }}
-          >
-            {fmt(closing)}
-          </span>
-          <span
-            style={{
-              marginLeft: 6,
-              color: "var(--color-text-muted)",
-              fontSize: 11,
-            }}
-          >
-            ({monthChange >= 0 ? "+" : "−"}$
-            {Math.abs(monthChange).toLocaleString("en-US", {
-              minimumFractionDigits: 2,
-              maximumFractionDigits: 2,
-            })}{" "}
-            this month)
-          </span>
-        </span>
-      </div>
-
-      {/* Optional: active gap vs real bank balance */}
-      {showGap && bankBalance !== null && (
+      {hasBankData ? (
         <>
-          <div
-            style={{
-              height: "0.5px",
-              background: "rgba(255,255,255,0.08)",
-              margin: "8px 0 6px",
-            }}
-          />
-          {(() => {
-            // active_gap = bank_balance − initial_balance − app_closing_balance
-            // initial_balance defaults to 0 if not set (meaning full gap is shown)
-            const seed = initialBalance ?? 0;
-            const gap = bankBalance - seed - closing;
-            const gapPositive = gap >= 0;
-            return (
-              <div
-                style={{
-                  fontSize: 12,
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                }}
-              >
-                <span style={{ color: "var(--color-text-muted)" }}>
-                  Gap{!initialBalance ? "*" : ""}
-                </span>
-                <span
-                  style={{
-                    fontWeight: 600,
-                    color: gapPositive
-                      ? "var(--color-income)"
-                      : "var(--color-expense)",
-                    fontSize: 12,
-                  }}
-                  title={
-                    initialBalance
-                      ? "Unexplained difference since you started tracking"
-                      : "Set a 'Balance at Start' in Settings to isolate only the tracked-period gap"
-                  }
-                >
-                  {gapPositive ? "+" : "−"}$
-                  {Math.abs(gap).toLocaleString("en-US", {
-                    minimumFractionDigits: 2,
-                    maximumFractionDigits: 2,
-                  })}
-                </span>
-              </div>
-            );
-          })()}
+          {/* ── Mode A: bank balance as headline ── */}
+          <div className={`kpi-value ${bankBalance >= 0 ? "income" : "expense"}`}>
+            {fmt(bankBalance)}
+          </div>
+          <div style={{ fontSize: 11, color: "var(--color-text-muted)", marginTop: 4 }}>
+            {bankDateLabel ? `as of ${bankDateLabel} · current bank balance` : "current bank balance"}
+          </div>
+
+          {divider}
+
+          {smallRow(
+            "start of month",
+            opening,
+            opening >= 0,
+            opening >= 0 ? "you started this month ahead" : "you started this month in the red",
+          )}
+          {smallRow(
+            "Gap",
+            closing,
+            closing >= 0,
+            `(${monthChange >= 0 ? "+" : "−"}${fmtAbs(monthChange)} this month)`,
+          )}
+        </>
+      ) : (
+        <>
+          {/* ── Mode B: opening as headline (original behaviour) ── */}
+          <div className={`kpi-value ${opening >= 0 ? "income" : "expense"}`}>
+            {fmt(opening)}
+          </div>
+          <div style={{ fontSize: 11, color: "var(--color-text-muted)", marginTop: 4 }}>
+            {opening >= 0 ? "you started this month ahead" : "you started this month in the red"}
+          </div>
+
+          {divider}
+
+          {smallRow(
+            "Now",
+            closing,
+            closing >= 0,
+            `(${monthChange >= 0 ? "+" : "−"}${fmtAbs(monthChange)} this month)`,
+          )}
         </>
       )}
 
-      {/* Delta: opening vs last opening */}
+      {/* Delta vs last month */}
       <div className="kpi-delta" style={{ marginTop: 8 }}>
         <span className={isUp ? "arrow-up" : "arrow-down"}>
           {isUp ? "▲" : "▼"} {delta.pct}%
@@ -491,6 +443,7 @@ export default function Dashboard() {
     error,
     showBalanceGap,
     bankBalance,
+    bankBalanceDate,
     initialBalance,
     goToBudget,
     goToTransactions,
@@ -606,9 +559,8 @@ export default function Dashboard() {
             closing={kpi.closingBalance}
             delta={kpi.openingDelta}
             icon={<NetBalanceIcon />}
-            showGap={showBalanceGap}
             bankBalance={bankBalance}
-            initialBalance={initialBalance}
+            bankBalanceDate={bankBalanceDate}
           />
         )}
         <KpiCard

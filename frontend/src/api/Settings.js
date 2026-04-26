@@ -2,7 +2,8 @@
  * api/Settings.js — Settings Logic Layer
  */
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import client from "./client";
 import { useSettings } from "../context/SettingsContext";
 import {
   CURRENCIES,
@@ -115,6 +116,14 @@ export function useSettingsPage() {
   const [draftReminderDay,       setDraftReminderDay]       = useState(settings.balanceReminderDay ?? "");
   const [balanceSaved,           setBalanceSaved]           = useState(false);
 
+  // ── Live summary for the reconciliation preview and anchor capture ─────────
+  const [settingsSummary, setSettingsSummary] = useState(null);
+  useEffect(() => {
+    client.get("/summary?period=this_month")
+      .then((r) => setSettingsSummary(r.data))
+      .catch(() => {});
+  }, []);
+
   // ── Active category list based on selected tab ─────────────────────────────
   const activeCats = (() => {
     if (catTab === "expense") return settings.expenseCategories;
@@ -149,13 +158,21 @@ export function useSettingsPage() {
   async function handleSaveBankBalance() {
     try {
       const patch = {
-        showBalanceGap:    draftShowGap,
+        showBalanceGap:     draftShowGap,
         balanceReminderDay: draftReminderDay === "" ? null : parseInt(draftReminderDay, 10),
       };
-      if (draftBankBalance      !== "") patch.bankBalance      = parseFloat(draftBankBalance);
-      if (draftBankBalanceDate  !== "") patch.bankBalanceDate  = draftBankBalanceDate;
-      if (draftInitialBalance   !== "") patch.initialBalance   = parseFloat(draftInitialBalance);
+      if (draftBankBalance       !== "") patch.bankBalance       = parseFloat(draftBankBalance);
+      if (draftBankBalanceDate   !== "") patch.bankBalanceDate   = draftBankBalanceDate;
+      if (draftInitialBalance    !== "") patch.initialBalance    = parseFloat(draftInitialBalance);
       if (draftTrackingStartDate !== "") patch.trackingStartDate = draftTrackingStartDate;
+
+      // Capture the app's current running balance as the projection anchor.
+      // The dashboard will then compute:
+      //   projected_bank = bank_balance + (current_closing - balance_anchor_app)
+      // so the displayed balance auto-updates as new transactions are logged.
+      if (draftBankBalance !== "" && settingsSummary?.closing_balance != null) {
+        patch.balanceAnchorApp = settingsSummary.closing_balance;
+      }
 
       await settings.updatePreferences(patch);
       setBalanceSaved(true);
@@ -281,8 +298,7 @@ export function useSettingsPage() {
     draftShowGap,           setDraftShowGap,
     draftReminderDay,       setDraftReminderDay,
     balanceSaved,
-    // Read-only context values for reconciliation display
-    closingBalanceForGap: null,  // populated from summary by the Settings page
+    settingsSummary,      // live /summary data — used for reconciliation preview
     handleSaveBankBalance,
 
     // Danger zone
