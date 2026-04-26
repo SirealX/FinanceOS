@@ -159,6 +159,96 @@ export function getOverviewChartConfig(chartData) {
   };
 }
 
+// ── Balance Trend chart config builder ───────────────────────────────────────
+//
+// Two overlapping filled-area lines for single-month periods:
+//   • Balance   — starts at projectedOpening, moves ±each week (indigo area)
+//   • Spent so far — starts at 0, accumulates expenses weekly (orange area)
+//
+// A "Start" anchor point is prepended so the opening value is visible.
+
+export function getBalanceTrendConfig(chartData, projectedOpening) {
+  if (!chartData?.labels?.length) return null;
+
+  const labels    = ["Start", ...chartData.labels];
+  const balLine   = [projectedOpening];
+  const spentLine = [0];
+
+  let running  = projectedOpening;
+  let spent    = 0;
+
+  for (let i = 0; i < chartData.income.length; i++) {
+    running += chartData.income[i] - chartData.expenses[i];
+    spent   += chartData.expenses[i];
+    balLine.push(running);
+    spentLine.push(spent);
+  }
+
+  return {
+    type: "line",
+    data: {
+      labels,
+      datasets: [
+        {
+          label: "Balance",
+          data: balLine,
+          borderColor: "#6366F1",
+          backgroundColor: "rgba(99,102,241,0.13)",
+          fill: true,
+          tension: 0.45,
+          borderWidth: 2,
+          pointRadius: 4,
+          pointBackgroundColor: "#6366F1",
+          pointBorderColor: "#1E2435",
+          pointBorderWidth: 1.5,
+          pointHoverRadius: 6,
+        },
+        {
+          label: "Spent so far",
+          data: spentLine,
+          borderColor: "#F97316",
+          backgroundColor: "rgba(249,115,22,0.09)",
+          fill: true,
+          tension: 0.45,
+          borderWidth: 1.5,
+          pointRadius: 3,
+          pointBackgroundColor: "#F97316",
+          pointBorderColor: "#1E2435",
+          pointBorderWidth: 1.5,
+          pointHoverRadius: 5,
+        },
+      ],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          ...TOOLTIP_STYLE,
+          callbacks: {
+            label: (ctx) =>
+              ` ${ctx.dataset.label}: $${ctx.parsed.y.toLocaleString("en-US", {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+              })}`,
+          },
+        },
+      },
+      scales: {
+        x: { ...AXIS_STYLE.x },
+        y: {
+          ...AXIS_STYLE.y,
+          ticks: {
+            ...AXIS_STYLE.y.ticks,
+            callback: (v) => "$" + (v / 1_000).toFixed(1) + "k",
+          },
+        },
+      },
+    },
+  };
+}
+
 export function getDonutChartConfig(donutData) {
   return {
     type: "doughnut",
@@ -384,6 +474,26 @@ export function useDashboard() {
     return bankBalance + (currentClosing - balanceAnchorApp);
   })();
 
+  // ── Balance Trend chart ───────────────────────────────────────────────────
+  // Only meaningful for single-month views — Last 3 Months is a compilation
+  // with monthly buckets that don't suit the week-by-week story.
+  const balanceTrendConfig = useMemo(() => {
+    if (IS_DEMO || period === "Last 3 Months") return null;
+    if (!chartData.labels?.length) return null;
+
+    // For This Month with a real bank balance, derive projected opening so the
+    // chart starts from actual money rather than the transaction-only figure.
+    // For Last Month (projectedBankBalance is null) fall back to the raw opening.
+    const rawOpening   = kpiData.opening_balance ?? 0;
+    const rawClosing   = kpiData.closing_balance ?? 0;
+    const monthNet     = rawClosing - rawOpening;
+    const chartOpening = projectedBankBalance !== null
+      ? projectedBankBalance - monthNet   // projected opening = proj closing − net
+      : rawOpening;
+
+    return getBalanceTrendConfig(chartData, chartOpening);
+  }, [IS_DEMO, period, chartData, kpiData, projectedBankBalance]);
+
   const donutLegend = useMemo(() => {
     return buildDonutLegend(IS_DEMO ? DASHBOARD_DONUT : donutData);
   }, [donutData]);
@@ -418,6 +528,7 @@ export function useDashboard() {
     recentTransactions,
     overviewChartConfig,
     donutChartConfig,
+    balanceTrendConfig,
     loading,
     slowLoad,
     error,

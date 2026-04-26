@@ -4,11 +4,12 @@
  * React components only. Every value comes from useDashboard() in Dashboard.js.
  *
  * COMPONENTS
- *   KpiCard        — stat card with delta indicator
- *   OverviewChart  — cash-flow line chart canvas
- *   ExpenseDonut   — expense breakdown doughnut canvas
- *   BudgetRow      — category progress bar row
- *   TxRow          — recent transaction row
+ *   KpiCard           — stat card with delta indicator
+ *   OverviewChart     — cash-flow line chart canvas
+ *   BalanceTrendChart — balance vs cumulative spending area chart canvas
+ *   ExpenseDonut      — expense breakdown doughnut canvas
+ *   BudgetRow         — category progress bar row
+ *   TxRow             — recent transaction row
  *
  * DEFAULT EXPORT  Dashboard
  * ─────────────────────────────────────────────────────────────────────────────
@@ -305,6 +306,34 @@ function OverviewChart({ config }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// BalanceTrendChart — balance vs cumulative spending area chart
+// Same mount/destroy pattern as OverviewChart.
+// ─────────────────────────────────────────────────────────────────────────────
+
+function BalanceTrendChart({ config }) {
+  const canvasRef = useRef(null);
+  const chartRef  = useRef(null);
+
+  useEffect(() => {
+    if (!canvasRef.current || !config) return;
+    if (chartRef.current) {
+      chartRef.current.destroy();
+      chartRef.current = null;
+    }
+    chartRef.current = new Chart(canvasRef.current, config);
+
+    return () => {
+      if (chartRef.current) {
+        chartRef.current.destroy();
+        chartRef.current = null;
+      }
+    };
+  }, [config]);
+
+  return <canvas ref={canvasRef} />;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // ExpenseDonut — expense breakdown doughnut
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -447,6 +476,7 @@ export default function Dashboard() {
     recentTransactions,
     overviewChartConfig,
     donutChartConfig,
+    balanceTrendConfig,
     loading,
     slowLoad,
     error,
@@ -675,7 +705,43 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* ══ ZONE 3b: Budget Progress + Recent Transactions ══ */}
+      {/* ══ ZONE 3b: Balance Over Time (single-month only) ══ */}
+      {balanceTrendConfig && (
+        <div className="card" style={{ marginBottom: 12 }}>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              marginBottom: 16,
+            }}
+          >
+            <div>
+              <h2 className="section-header" style={{ margin: 0 }}>
+                Balance Over Time
+              </h2>
+              <p style={{ fontSize: 11, color: "var(--color-text-muted)", marginTop: 3 }}>
+                How your balance moves as spending accumulates week by week
+              </p>
+            </div>
+            <div className="chart-legend">
+              <div className="chart-legend-item">
+                <span className="cat-dot" style={{ background: "#6366F1" }} />
+                Balance
+              </div>
+              <div className="chart-legend-item">
+                <span className="cat-dot" style={{ background: "#F97316" }} />
+                Spent so far
+              </div>
+            </div>
+          </div>
+          <div className="chart-wrap line">
+            <BalanceTrendChart config={balanceTrendConfig} />
+          </div>
+        </div>
+      )}
+
+      {/* ══ ZONE 3c: Budget Progress + Recent Transactions ══ */}
       <div className="grid-two-col" style={{ marginBottom: 0 }}>
         <div className="card" style={{ marginBottom: 0 }}>
           <div
