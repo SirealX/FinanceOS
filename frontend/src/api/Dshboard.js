@@ -171,17 +171,29 @@ export function getBalanceTrendConfig(chartData, projectedOpening) {
   if (!chartData?.labels?.length) return null;
 
   const labels    = ["Start", ...chartData.labels];
-  const balLine   = [projectedOpening];
+  const balLine   = [Math.max(0, projectedOpening)];
   const spentLine = [0];
 
-  let running  = projectedOpening;
-  let spent    = 0;
+  let running      = projectedOpening;
+  let spent        = 0;
+  let incomeAccum  = 0;
 
   for (let i = 0; i < chartData.income.length; i++) {
-    running += chartData.income[i] - chartData.expenses[i];
-    spent   += chartData.expenses[i];
-    balLine.push(running);
-    spentLine.push(spent);
+    incomeAccum += chartData.income[i];
+    running     += chartData.income[i] - chartData.expenses[i];
+    spent       += chartData.expenses[i];
+
+    // Balance can never go below zero — in real life you can't hold a negative
+    // bank balance without a loan/overdraft which would itself be an income entry.
+    const safeBalance = Math.max(0, running);
+
+    // Spending can never exceed what was actually available to spend:
+    // everything you started with plus every dollar of income received so far.
+    const availableToSpend = Math.max(0, projectedOpening) + incomeAccum;
+    const safeSpent        = Math.min(spent, availableToSpend);
+
+    balLine.push(safeBalance);
+    spentLine.push(safeSpent);
   }
 
   return {
@@ -481,18 +493,35 @@ export function useDashboard() {
     if (IS_DEMO || period === "Last 3 Months") return null;
     if (!chartData.labels?.length) return null;
 
-    // For This Month with a real bank balance, derive projected opening so the
-    // chart starts from actual money rather than the transaction-only figure.
-    // For Last Month (projectedBankBalance is null) fall back to the raw opening.
-    const rawOpening   = kpiData.opening_balance ?? 0;
-    const rawClosing   = kpiData.closing_balance ?? 0;
-    const monthNet     = rawClosing - rawOpening;
-    const chartOpening = projectedBankBalance !== null
-      ? projectedBankBalance - monthNet   // projected opening = proj closing − net
-      : rawOpening;
+    const rawOpening = kpiData.opening_balance ?? 0;
+    const rawClosing = kpiData.closing_balance ?? 0;
+    const monthNet   = rawClosing - rawOpening;
+
+    let chartOpening;
+
+    if (projectedBankBalance !== null) {
+      // This Month + bank balance set: derive projected opening from projected
+      // closing so the chart starts from real money, not tracked-only figures.
+      chartOpening = projectedBankBalance - monthNet;
+
+    } else if (bankBalance !== null && balanceAnchorApp !== null) {
+      // Last Month (projectedBankBalance is null for past periods): the historical
+      // gap between the app's tracking and the real bank is a constant offset —
+      // it was exactly the same last month as it is today, so we can apply it
+      // retroactively to get a realistic opening for the chart.
+      //   offset = bankBalance − balanceAnchorApp
+      //   projectedLastMonthOpening = rawOpening + offset
+      chartOpening = rawOpening + (bankBalance - balanceAnchorApp);
+
+    } else {
+      // No anchor at all — use raw opening but clamp to 0 so the chart at least
+      // starts at a non-negative value (avoids the spending-above-balance absurdity
+      // caused by historical data gaps).
+      chartOpening = Math.max(0, rawOpening);
+    }
 
     return getBalanceTrendConfig(chartData, chartOpening);
-  }, [IS_DEMO, period, chartData, kpiData, projectedBankBalance]);
+  }, [IS_DEMO, period, chartData, kpiData, projectedBankBalance, bankBalance, balanceAnchorApp]);
 
   const donutLegend = useMemo(() => {
     return buildDonutLegend(IS_DEMO ? DASHBOARD_DONUT : donutData);
