@@ -252,7 +252,10 @@ export function useDashboard() {
   const { isDemo: IS_DEMO, user: authUser } = useAuth();
   const [period, setPeriod] = useState("This Month");
   const navigate = useNav();
-  const { getAllCategoryConfig, formatAmount, displayName } = useSettings();
+  const {
+    getAllCategoryConfig, formatAmount, displayName,
+    bankBalance, initialBalance, showBalanceGap,
+  } = useSettings();
 
   const [kpiData, setKpiData] = useState(EMPTY_KPI);
   const [chartData, setChartData] = useState(EMPTY_CHART);
@@ -260,6 +263,7 @@ export function useDashboard() {
   const [budgetRows, setBudgetRows] = useState([]);
   const [recentTxRaw, setRecentTxRaw] = useState([]);
   const [loading, setLoading] = useState(!IS_DEMO);
+  const [slowLoad, setSlowLoad] = useState(false);  // true when load takes >2.5 s
   const [error, setError] = useState(null);
 
   // ── FIX #10: All API calls in a single Promise.all ─────────────────────────
@@ -267,7 +271,12 @@ export function useDashboard() {
     if (IS_DEMO) return;
 
     setLoading(true);
+    setSlowLoad(false);
     setError(null);
+
+    // After 2.5 s still loading → show a "waking up server" hint.
+    // Clears itself when the load completes (fast or slow).
+    const slowTimer = setTimeout(() => setSlowLoad(true), 2500);
 
     const p = PERIOD_MAP[activePeriod] ?? "this_month";
 
@@ -318,6 +327,8 @@ export function useDashboard() {
       setError("Could not load dashboard data.");
       console.error(err);
     } finally {
+      clearTimeout(slowTimer);
+      setSlowLoad(false);
       setLoading(false);
     }
   }, []);
@@ -390,8 +401,13 @@ export function useDashboard() {
     overviewChartConfig,
     donutChartConfig,
     loading,
+    slowLoad,
     error,
     formatAmount,
+    // Bank balance reconciliation — only relevant for BalanceCard
+    showBalanceGap: IS_DEMO ? false : (showBalanceGap ?? false),
+    bankBalance:    IS_DEMO ? null  : (bankBalance   ?? null),
+    initialBalance: IS_DEMO ? null  : (initialBalance ?? null),
     goToBudget: () => navigate("budget"),
     goToTransactions: () => navigate("transactions"),
   };

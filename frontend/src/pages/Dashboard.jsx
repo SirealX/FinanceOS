@@ -111,7 +111,7 @@ function KpiCard({ label, value, delta, colorClass, icon, accent, subtitle }) {
 // BalanceCard — starting balance (stable) + live "Now" line (bonus)
 // ─────────────────────────────────────────────────────────────────────────────
 
-function BalanceCard({ opening, closing, delta, icon }) {
+function BalanceCard({ opening, closing, delta, icon, showGap, bankBalance, initialBalance }) {
   const startPositive = opening >= 0;
   const nowPositive = closing >= 0;
   const monthChange = closing - opening; // net for the current month
@@ -212,6 +212,60 @@ function BalanceCard({ opening, closing, delta, icon }) {
           </span>
         </span>
       </div>
+
+      {/* Optional: active gap vs real bank balance */}
+      {showGap && bankBalance !== null && (
+        <>
+          <div
+            style={{
+              height: "0.5px",
+              background: "rgba(255,255,255,0.08)",
+              margin: "8px 0 6px",
+            }}
+          />
+          {(() => {
+            // active_gap = bank_balance − initial_balance − app_closing_balance
+            // initial_balance defaults to 0 if not set (meaning full gap is shown)
+            const seed = initialBalance ?? 0;
+            const gap = bankBalance - seed - closing;
+            const gapPositive = gap >= 0;
+            return (
+              <div
+                style={{
+                  fontSize: 12,
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                }}
+              >
+                <span style={{ color: "var(--color-text-muted)" }}>
+                  Gap{!initialBalance ? "*" : ""}
+                </span>
+                <span
+                  style={{
+                    fontWeight: 600,
+                    color: gapPositive
+                      ? "var(--color-income)"
+                      : "var(--color-expense)",
+                    fontSize: 12,
+                  }}
+                  title={
+                    initialBalance
+                      ? "Unexplained difference since you started tracking"
+                      : "Set a 'Balance at Start' in Settings to isolate only the tracked-period gap"
+                  }
+                >
+                  {gapPositive ? "+" : "−"}$
+                  {Math.abs(gap).toLocaleString("en-US", {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2,
+                  })}
+                </span>
+              </div>
+            );
+          })()}
+        </>
+      )}
 
       {/* Delta: opening vs last opening */}
       <div className="kpi-delta" style={{ marginTop: 8 }}>
@@ -433,7 +487,11 @@ export default function Dashboard() {
     overviewChartConfig,
     donutChartConfig,
     loading,
+    slowLoad,
     error,
+    showBalanceGap,
+    bankBalance,
+    initialBalance,
     goToBudget,
     goToTransactions,
   } = useDashboard();
@@ -442,6 +500,28 @@ export default function Dashboard() {
   if (loading) {
     return (
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        {/* Waking-up hint — only appears after 2.5 s on slow cold starts */}
+        {slowLoad && (
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+              padding: "10px 16px",
+              borderRadius: 10,
+              background: "rgba(99,102,241,0.08)",
+              border: "0.5px solid rgba(99,102,241,0.2)",
+              fontSize: 13,
+              color: "var(--color-text-secondary)",
+            }}
+          >
+            <span style={{ fontSize: 16 }}>☕</span>
+            <span>
+              Waking up the server — this only happens after a period of
+              inactivity. Should be ready in a few seconds.
+            </span>
+          </div>
+        )}
         <div className="skeleton" style={{ height: 60, borderRadius: 12 }} />
         <div
           style={{
@@ -526,6 +606,9 @@ export default function Dashboard() {
             closing={kpi.closingBalance}
             delta={kpi.openingDelta}
             icon={<NetBalanceIcon />}
+            showGap={showBalanceGap}
+            bankBalance={bankBalance}
+            initialBalance={initialBalance}
           />
         )}
         <KpiCard

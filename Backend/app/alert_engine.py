@@ -69,8 +69,9 @@ _ALERT_META = {
     "goal_reached":      {"tier": 1, "severity": "info"},     # queued to digest
     "budget_exceeded":   {"tier": 2, "severity": "warning"},
     "spending_spike":    {"tier": 2, "severity": "warning"},
-    "import_reminder":   {"tier": 2, "severity": "info"},
-    "near_limit":        {"tier": 3, "severity": "info"},
+    "import_reminder":     {"tier": 2, "severity": "info"},
+    "balance_reminder":    {"tier": 2, "severity": "info"},
+    "near_limit":          {"tier": 3, "severity": "info"},
 }
 
 
@@ -154,6 +155,10 @@ def evaluate_alerts(
     # 2c. Import reminder (scheduler, session-boundary-aware)
     if source == "scheduler":
         new_alerts += _check_import_reminder(user_id, today, db)
+
+    # 2d. Balance sanity check reminder (scheduler, user-configured day of month)
+    if source == "scheduler":
+        new_alerts += _check_balance_reminder(user_id, today, db)
 
     # ── Persist all new alerts ────────────────────────────────────────────────
     if new_alerts:
@@ -508,6 +513,65 @@ def _check_import_reminder(
         ),
         source      = "scheduler",
         entity_type = "transaction",
+        entity_id   = key,
+    )]
+
+
+def _check_balance_reminder(
+    user_id: str,
+    today: date,
+    db: Session,
+) -> list[Alert]:
+    """
+    Fire once per month on the user's chosen balance_reminder_day to prompt
+    them to check their actual bank balance and update it in Settings.
+
+    The reminder is skipped if:
+      - The user hasn't set a reminder day (balance_reminder_day is None)
+      - Today isn't the configured day of the month
+      - The reminder already fired this month (deduplication via entity_id)
+    """
+    from .models import Preferences
+    prefs_row = db.query(Preferences).filter(Preferences.user_id == user_id).first()
+
+    if not prefs_row or prefs_row.balance_reminder_day is None:
+        return []
+
+    if today.day != prefs_row.balance_reminder_day:
+        return []
+
+    # Deduplicate per calendar month — key includes year+month
+    key = f"balance_reminder:{today.year}-{today.month:02d}"
+    if _already_fired(user_id, "balance_reminder", key, db):
+        return []
+
+    # Build a helpful body that mentions how long ago the balance was last set
+    if prefs_row.bank_balance_date:
+        days_ago = (today - prefs_row.bank_balance_date).days
+        if days_ago == 0:
+            since_str = "updated today"
+        elif days_ago == 1:
+            since_str = "last updated yesterday"
+        else:
+            since_str = f"last updated {days_ago} days ago"
+        body = (
+            f"Time to check your bank balance — it was {since_str}. "
+            "Head to Settings → Bank Balance to update it and see if anything looks off."
+        )
+    else:
+        body = (
+            "Time to check your bank balance. "
+            "Head to Settings → Bank Balance to enter your current balance "
+            "and spot any transactions you may have missed."
+        )
+
+    return [_make_alert(
+        user_id     = user_id,
+        type_       = "balance_reminder",
+        title       = "Balance Check Reminder",
+        body        = body,
+        source      = "scheduler",
+        entity_type = "preferences",
         entity_id   = key,
     )]
 

@@ -18,7 +18,9 @@ services:
     startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
 
     # ── Health check ────────────────────────────────────────────────────────────
-    healthCheckPath: /docs    # FastAPI auto-generates /docs — good ping target
+    # /ping returns {"ok":true} instantly — zero DB work, much lighter than /docs.
+    # Also used by UptimeRobot to keep this free-tier service alive (see main.py).
+    healthCheckPath: /ping
 
     # ── Environment variables ──────────────────────────────────────────────────
     # Set these in the Render dashboard (Environment tab) — do NOT commit secrets.

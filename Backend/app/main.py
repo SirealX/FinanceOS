@@ -2,7 +2,7 @@ import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.routers import transactions, bills, summary, debts, savings, budget, preferences, categories, alerts
-from app.routers import import_router, export
+from app.routers import import_router, export, jwks
 from app.alert_scheduler import scheduler_router
 from dotenv import load_dotenv
 
@@ -52,3 +52,20 @@ app.include_router(preferences.router)  # FIX: was imported but never registered
 app.include_router(import_router.router)
 app.include_router(export.router)
 app.include_router(scheduler_router)
+app.include_router(jwks.router)          # FAPI 2.0 — public JWKS for Bancolombia
+
+
+# ── Keep-alive / health check ──────────────────────────────────────────────────
+# Lightweight endpoint used by:
+#   1. render.yaml healthCheckPath
+#   2. UptimeRobot (or any external pinger) — ping every 14 min to prevent
+#      Render free-tier spin-down (services sleep after 15 min of inactivity).
+#
+# Set up UptimeRobot (free):
+#   https://uptimerobot.com → New Monitor → HTTP(s) → URL: <your-render-url>/ping
+#   Interval: 5 minutes (free plan supports this)
+#
+# This endpoint does zero DB work — returns instantly even on a cold start.
+@app.get("/ping", tags=["health"])
+def ping():
+    return {"ok": True}

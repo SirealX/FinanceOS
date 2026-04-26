@@ -64,6 +64,14 @@ export function SettingsProvider({ children }) {
   const [monthStart, setMonthStart] = useState(1);
   const [prefsLoading, setPrefsLoading] = useState(!IS_DEMO);
 
+  // ── Bank balance reconciliation state ──────────────────────────────────────
+  const [bankBalance, setBankBalance]               = useState(null);
+  const [bankBalanceDate, setBankBalanceDate]       = useState(null);
+  const [initialBalance, setInitialBalance]         = useState(null);
+  const [trackingStartDate, setTrackingStartDate]   = useState(null);
+  const [showBalanceGap, setShowBalanceGap]         = useState(false);
+  const [balanceReminderDay, setBalanceReminderDay] = useState(null);
+
   // ── Seed demo data when demo mode is activated at runtime ──────────────────
   // SettingsProvider mounts before the user enters demo mode, so useState()
   // initializers always run with isDemo = false. This effect catches the
@@ -105,6 +113,13 @@ export function SettingsProvider({ children }) {
       setCurrency(p.currency);
       setDateFormat(p.date_format);
       setMonthStart(p.month_start);
+      // Bank balance reconciliation
+      setBankBalance(p.bank_balance ?? null);
+      setBankBalanceDate(p.bank_balance_date ?? null);
+      setInitialBalance(p.initial_balance ?? null);
+      setTrackingStartDate(p.tracking_start_date ?? null);
+      setShowBalanceGap(p.show_balance_gap ?? false);
+      setBalanceReminderDay(p.balance_reminder_day ?? null);
     } catch (err) {
       // Non-fatal: we already seeded from localStorage, so the greeting still
       // shows the last-known name.
@@ -210,6 +225,13 @@ export function SettingsProvider({ children }) {
         if (patch.currency    !== undefined) payload.currency     = patch.currency;
         if (patch.dateFormat  !== undefined) payload.date_format  = patch.dateFormat;
         if (patch.monthStart  !== undefined) payload.month_start  = patch.monthStart;
+        // Bank balance fields
+        if (patch.bankBalance         !== undefined) payload.bank_balance         = patch.bankBalance;
+        if (patch.bankBalanceDate     !== undefined) payload.bank_balance_date    = patch.bankBalanceDate;
+        if (patch.initialBalance      !== undefined) payload.initial_balance      = patch.initialBalance;
+        if (patch.trackingStartDate   !== undefined) payload.tracking_start_date  = patch.trackingStartDate;
+        if (patch.showBalanceGap      !== undefined) payload.show_balance_gap     = patch.showBalanceGap;
+        if ("balanceReminderDay" in patch)           payload.balance_reminder_day = patch.balanceReminderDay;
 
         const res = await apiUpdatePrefs(payload);
         const p = res.data;
@@ -221,6 +243,13 @@ export function SettingsProvider({ children }) {
         setCurrency(p.currency);
         setDateFormat(p.date_format);
         setMonthStart(p.month_start);
+        // Sync bank balance state
+        setBankBalance(p.bank_balance ?? null);
+        setBankBalanceDate(p.bank_balance_date ?? null);
+        setInitialBalance(p.initial_balance ?? null);
+        setTrackingStartDate(p.tracking_start_date ?? null);
+        setShowBalanceGap(p.show_balance_gap ?? false);
+        setBalanceReminderDay(p.balance_reminder_day ?? null);
       } catch (err) {
         console.error("updatePreferences failed", err);
         throw err;
@@ -319,6 +348,14 @@ export function SettingsProvider({ children }) {
     monthStart,
     currencySymbol,
     currencyDecimals,
+
+    // Bank balance reconciliation
+    bankBalance,
+    bankBalanceDate,
+    initialBalance,
+    trackingStartDate,
+    showBalanceGap,
+    balanceReminderDay,
 
     // Mutations
     addCategory,

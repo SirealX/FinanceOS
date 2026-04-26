@@ -106,6 +106,15 @@ export function useSettingsPage() {
   const [draftMonthStart, setDraftMonthStart] = useState(settings.monthStart);
   const [dangerPending, setDangerPending] = useState(null);
 
+  // ── Bank balance draft state ───────────────────────────────────────────────
+  const [draftBankBalance,       setDraftBankBalance]       = useState(settings.bankBalance       ?? "");
+  const [draftBankBalanceDate,   setDraftBankBalanceDate]   = useState(settings.bankBalanceDate   ?? "");
+  const [draftInitialBalance,    setDraftInitialBalance]    = useState(settings.initialBalance    ?? "");
+  const [draftTrackingStartDate, setDraftTrackingStartDate] = useState(settings.trackingStartDate ?? "");
+  const [draftShowGap,           setDraftShowGap]           = useState(settings.showBalanceGap    ?? false);
+  const [draftReminderDay,       setDraftReminderDay]       = useState(settings.balanceReminderDay ?? "");
+  const [balanceSaved,           setBalanceSaved]           = useState(false);
+
   // ── Active category list based on selected tab ─────────────────────────────
   const activeCats = (() => {
     if (catTab === "expense") return settings.expenseCategories;
@@ -132,6 +141,27 @@ export function useSettingsPage() {
       setTimeout(() => setSaved(false), 2_500);
     } catch (err) {
       console.error("handleSavePreferences failed", err);
+    }
+  }
+
+  // ── Bank balance handler ──────────────────────────────────────────────────
+
+  async function handleSaveBankBalance() {
+    try {
+      const patch = {
+        showBalanceGap:    draftShowGap,
+        balanceReminderDay: draftReminderDay === "" ? null : parseInt(draftReminderDay, 10),
+      };
+      if (draftBankBalance      !== "") patch.bankBalance      = parseFloat(draftBankBalance);
+      if (draftBankBalanceDate  !== "") patch.bankBalanceDate  = draftBankBalanceDate;
+      if (draftInitialBalance   !== "") patch.initialBalance   = parseFloat(draftInitialBalance);
+      if (draftTrackingStartDate !== "") patch.trackingStartDate = draftTrackingStartDate;
+
+      await settings.updatePreferences(patch);
+      setBalanceSaved(true);
+      setTimeout(() => setBalanceSaved(false), 2_500);
+    } catch (err) {
+      console.error("handleSaveBankBalance failed", err);
     }
   }
 
@@ -242,6 +272,18 @@ export function useSettingsPage() {
     setDraftDateFormat,
     draftMonthStart,
     setDraftMonthStart,
+
+    // Bank balance
+    draftBankBalance,       setDraftBankBalance,
+    draftBankBalanceDate,   setDraftBankBalanceDate,
+    draftInitialBalance,    setDraftInitialBalance,
+    draftTrackingStartDate, setDraftTrackingStartDate,
+    draftShowGap,           setDraftShowGap,
+    draftReminderDay,       setDraftReminderDay,
+    balanceSaved,
+    // Read-only context values for reconciliation display
+    closingBalanceForGap: null,  // populated from summary by the Settings page
+    handleSaveBankBalance,
 
     // Danger zone
     dangerPending,

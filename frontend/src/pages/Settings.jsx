@@ -2,7 +2,7 @@
  * Settings.jsx — Presentation Layer
  */
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 import {
   CURRENCIES,
@@ -435,7 +435,38 @@ export default function Settings() {
     requestDangerAction,
     confirmDangerAction,
     cancelDangerAction,
+    // Bank balance
+    draftBankBalance,       setDraftBankBalance,
+    draftBankBalanceDate,   setDraftBankBalanceDate,
+    draftInitialBalance,    setDraftInitialBalance,
+    draftTrackingStartDate, setDraftTrackingStartDate,
+    draftShowGap,           setDraftShowGap,
+    draftReminderDay,       setDraftReminderDay,
+    balanceSaved,
+    handleSaveBankBalance,
   } = useSettingsPage();
+
+  // ── Inline reconciliation gap (live preview in settings) ──────────────────
+  // Compute the gap on the fly from the draft fields + this month's summary
+  // fetched once when the Settings page mounts.
+  const [settingsSummary, setSettingsSummary] = useState(null);
+  useEffect(() => {
+    import("../api/client").then(({ default: client }) => {
+      client.get("/summary?period=this_month")
+        .then((r) => setSettingsSummary(r.data))
+        .catch(() => {});
+    });
+  }, []);
+
+  const reconciliation = (() => {
+    const closing = settingsSummary?.closing_balance ?? null;
+    const bank    = draftBankBalance    !== "" ? parseFloat(draftBankBalance)    : null;
+    const seed    = draftInitialBalance !== "" ? parseFloat(draftInitialBalance) : null;
+    if (bank === null || closing === null) return null;
+    const fullGap   = bank - closing;
+    const activeGap = seed !== null ? bank - seed - closing : null;
+    return { closing, bank, seed, fullGap, activeGap };
+  })();
 
   // Build categoryGroups for the ImportWizard (same shape as Transactions page)
   const categoryGroups = [
@@ -737,6 +768,200 @@ export default function Settings() {
             <div className="empty-body">Add a category to get started.</div>
           </div>
         )}
+      </div>
+
+      {/* ── Bank Balance ── */}
+      <div className="card" style={{ marginBottom: 12 }}>
+        <h2 className="section-header">Bank Balance</h2>
+        <p style={{ fontSize: 12, color: "var(--color-text-muted)", marginBottom: 16, marginTop: -6 }}>
+          Enter your real bank balance so the app can flag any gap between what
+          your records say and what your bank actually holds. The gap that formed{" "}
+          <em>while you were already tracking</em> is the actionable one.
+        </p>
+
+        {/* Row: Tracking start */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
+          <div>
+            <SectionLabel>When Did You Start Tracking?</SectionLabel>
+            <input
+              type="date"
+              className="input"
+              value={draftTrackingStartDate}
+              onChange={(e) => setDraftTrackingStartDate(e.target.value)}
+              style={{ width: "100%" }}
+            />
+            <p style={{ fontSize: 11, color: "var(--color-text-muted)", marginTop: 4 }}>
+              Date of your first transaction in this app.
+            </p>
+          </div>
+          <div>
+            <SectionLabel>Balance at Start</SectionLabel>
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              className="input"
+              placeholder="e.g. 2500.00"
+              value={draftInitialBalance}
+              onChange={(e) => setDraftInitialBalance(e.target.value)}
+              style={{ width: "100%" }}
+            />
+            <p style={{ fontSize: 11, color: "var(--color-text-muted)", marginTop: 4 }}>
+              How much you had in the bank on that date. Isolates the active gap.
+            </p>
+          </div>
+        </div>
+
+        {/* Row: Current bank balance */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 16 }}>
+          <div>
+            <SectionLabel>Current Bank Balance</SectionLabel>
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              className="input"
+              placeholder="e.g. 1240.00"
+              value={draftBankBalance}
+              onChange={(e) => setDraftBankBalance(e.target.value)}
+              style={{ width: "100%" }}
+            />
+          </div>
+          <div>
+            <SectionLabel>As of Date</SectionLabel>
+            <input
+              type="date"
+              className="input"
+              value={draftBankBalanceDate}
+              onChange={(e) => setDraftBankBalanceDate(e.target.value)}
+              style={{ width: "100%" }}
+            />
+          </div>
+        </div>
+
+        {/* Reconciliation preview */}
+        {reconciliation && (
+          <div
+            style={{
+              background: "var(--color-bg-input)",
+              border: "0.5px solid rgba(255,255,255,0.07)",
+              borderRadius: 10,
+              padding: "12px 16px",
+              marginBottom: 16,
+              fontSize: 12,
+            }}
+          >
+            <div style={{ fontWeight: 600, marginBottom: 8, color: "var(--color-text-secondary)", fontSize: 11, letterSpacing: "0.6px", textTransform: "uppercase" }}>
+              Reconciliation
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+              <span style={{ color: "var(--color-text-muted)" }}>App calculates (all-time)</span>
+              <span style={{ fontWeight: 500, color: reconciliation.closing >= 0 ? "var(--color-income)" : "var(--color-expense)" }}>
+                {reconciliation.closing >= 0 ? "+" : "−"}${Math.abs(reconciliation.closing).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </span>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+              <span style={{ color: "var(--color-text-muted)" }}>Your bank says</span>
+              <span style={{ fontWeight: 500, color: reconciliation.bank >= 0 ? "var(--color-income)" : "var(--color-expense)" }}>
+                {reconciliation.bank >= 0 ? "+" : "−"}${Math.abs(reconciliation.bank).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </span>
+            </div>
+            {reconciliation.activeGap !== null ? (
+              <>
+                <div style={{ height: "0.5px", background: "rgba(255,255,255,0.07)", margin: "8px 0" }} />
+                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                  <span style={{ color: "var(--color-text-muted)" }}>Historical offset (pre-app)</span>
+                  <span style={{ color: "var(--color-text-secondary)" }}>
+                    ${reconciliation.seed.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </span>
+                </div>
+                <div style={{ display: "flex", justifyContent: "space-between" }}>
+                  <span style={{ color: "var(--color-text-secondary)", fontWeight: 600 }}>Active gap (during tracking)</span>
+                  <span style={{ fontWeight: 700, color: Math.abs(reconciliation.activeGap) < 0.01 ? "var(--color-income)" : reconciliation.activeGap > 0 ? "var(--color-income)" : "var(--color-expense)" }}>
+                    {reconciliation.activeGap >= 0 ? "+" : "−"}${Math.abs(reconciliation.activeGap).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </span>
+                </div>
+                {Math.abs(reconciliation.activeGap) < 1 && (
+                  <div style={{ fontSize: 11, color: "var(--color-income)", marginTop: 6 }}>✓ Records match your bank</div>
+                )}
+              </>
+            ) : (
+              <>
+                <div style={{ height: "0.5px", background: "rgba(255,255,255,0.07)", margin: "8px 0" }} />
+                <div style={{ display: "flex", justifyContent: "space-between" }}>
+                  <span style={{ color: "var(--color-text-secondary)", fontWeight: 600 }}>Full gap</span>
+                  <span style={{ fontWeight: 700, color: reconciliation.fullGap >= 0 ? "var(--color-income)" : "var(--color-expense)" }}>
+                    {reconciliation.fullGap >= 0 ? "+" : "−"}${Math.abs(reconciliation.fullGap).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </span>
+                </div>
+                <div style={{ fontSize: 11, color: "var(--color-text-muted)", marginTop: 6 }}>
+                  Set a "Balance at Start" above to separate pre-app history from the tracked-period gap.
+                </div>
+              </>
+            )}
+          </div>
+        )}
+
+        {/* Show gap on dashboard toggle */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+          <div>
+            <div style={{ fontSize: 13, color: "var(--color-text-primary)", fontWeight: 500 }}>Show active gap on Dashboard</div>
+            <div style={{ fontSize: 11, color: "var(--color-text-muted)", marginTop: 2 }}>
+              Adds a small "Gap" line to the Balance card so you can see it at a glance.
+            </div>
+          </div>
+          <button
+            onClick={() => setDraftShowGap((v) => !v)}
+            style={{
+              width: 40, height: 22, borderRadius: 11, border: "none", cursor: "pointer",
+              background: draftShowGap ? "var(--color-income)" : "rgba(255,255,255,0.12)",
+              position: "relative", flexShrink: 0, transition: "background 0.2s",
+            }}
+          >
+            <span style={{
+              position: "absolute", top: 3, left: draftShowGap ? 20 : 3,
+              width: 16, height: 16, borderRadius: "50%", background: "#fff",
+              transition: "left 0.2s",
+            }} />
+          </button>
+        </div>
+
+        {/* Monthly reminder */}
+        <SectionLabel>Monthly Balance Reminder</SectionLabel>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 16 }}>
+          <span style={{ fontSize: 13, color: "var(--color-text-secondary)" }}>
+            Remind me on day
+          </span>
+          <input
+            type="number"
+            min="1"
+            max="28"
+            className="input"
+            placeholder="—"
+            value={draftReminderDay}
+            onChange={(e) => setDraftReminderDay(e.target.value)}
+            style={{ width: 72 }}
+          />
+          <span style={{ fontSize: 13, color: "var(--color-text-secondary)" }}>
+            of each month
+          </span>
+          {draftReminderDay && (
+            <button
+              className="btn-ghost"
+              onClick={() => setDraftReminderDay("")}
+              style={{ fontSize: 11 }}
+            >
+              Clear
+            </button>
+          )}
+        </div>
+        <p style={{ fontSize: 11, color: "var(--color-text-muted)", marginBottom: 16, marginTop: -10 }}>
+          You'll get an in-app notification to check your bank balance. Leave blank to disable.
+        </p>
+
+        <button className="btn-primary" onClick={handleSaveBankBalance}>
+          {balanceSaved ? "✓ Saved" : "Save Bank Balance"}
+        </button>
       </div>
 
       {/* ── Data & Export ── */}

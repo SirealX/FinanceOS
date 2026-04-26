@@ -70,79 +70,87 @@ def _validate_period(period: str):
         )
 
 
-def _total(db: Session, user_id: str, tx_type: str, start: date, end: date) -> float:
-    result = (
-        db.query(func.sum(Transaction.amount))
+# ── Query helpers (optimised) ─────────────────────────────────────────────────
+#
+# OLD approach: one SELECT per transaction type  → ~10 round-trips per /summary
+# NEW approach: GROUP BY type in a single SELECT → 4 round-trips per /summary
+#   _totals_by_type  — sums for a date range  (income / expense / savings)
+#   _opening_totals  — sums for everything *before* a date (carry-over calc)
+#   _net_from_totals — collapse a totals dict into a signed net balance
+
+
+def _totals_by_type(db: Session, user_id: str, start: date, end: date) -> dict:
+    """One query → {type: float} for income, expense, savings in [start, end]."""
+    rows = (
+        db.query(Transaction.type, func.sum(Transaction.amount))
         .filter(
             Transaction.user_id == user_id,
-            Transaction.type == tx_type,
-            Transaction.date >= start,
-            Transaction.date <= end,
+            Transaction.date    >= start,
+            Transaction.date    <= end,
         )
-        .scalar()
+        .group_by(Transaction.type)
+        .all()
     )
-    return float(result or 0)
+    return {t: float(v or 0) for t, v in rows}
 
 
-def _total_types(db: Session, user_id: str, tx_types: list, start: date, end: date) -> float:
-    result = (
-        db.query(func.sum(Transaction.amount))
+def _opening_totals(db: Session, user_id: str, before_date: date) -> dict:
+    """One query → {type: float} for all transactions strictly before before_date."""
+    rows = (
+        db.query(Transaction.type, func.sum(Transaction.amount))
         .filter(
             Transaction.user_id == user_id,
-            Transaction.type.in_(tx_types),
-            Transaction.date >= start,
-            Transaction.date <= end,
+            Transaction.date    <  before_date,
         )
-        .scalar()
+        .group_by(Transaction.type)
+        .all()
     )
-    return float(result or 0)
+    return {t: float(v or 0) for t, v in rows}
 
+
+def _net_from_totals(totals: dict) -> float:
+    """income − expense − savings from a totals dict."""
+    return (
+        totals.get("income",  0.0)
+        - totals.get("expense", 0.0)
+        - totals.get("savings", 0.0)
+    )
+
+
+# ── Legacy per-month helpers (used by /cashflow only) ─────────────────────────
 
 def _total_for_month(db: Session, user_id: str, tx_type: str, year: int, month: int) -> float:
     start    = date(year, month, 1)
     last_day = calendar.monthrange(year, month)[1]
     end      = date(year, month, last_day)
-    return _total(db, user_id, tx_type, start, end)
+    rows = (
+        db.query(func.sum(Transaction.amount))
+        .filter(
+            Transaction.user_id == user_id,
+            Transaction.type    == tx_type,
+            Transaction.date    >= start,
+            Transaction.date    <= end,
+        )
+        .scalar()
+    )
+    return float(rows or 0)
 
 
 def _total_types_for_month(db: Session, user_id: str, tx_types: list, year: int, month: int) -> float:
     start    = date(year, month, 1)
     last_day = calendar.monthrange(year, month)[1]
     end      = date(year, month, last_day)
-    return _total_types(db, user_id, tx_types, start, end)
-
-
-def _opening_balance(db: Session, user_id: str, before_date: date) -> float:
-    """
-    Cumulative net balance of ALL transactions strictly before `before_date`.
-
-    This is the carry-over amount that flows into the period that starts on
-    `before_date`.  A positive value means the user had money left over from
-    all prior activity; a negative value means they were already in deficit.
-
-    Formula:  sum(income) - sum(expenses) - sum(savings)  for date < before_date
-    """
-    prior_income = (
+    rows = (
         db.query(func.sum(Transaction.amount))
         .filter(
             Transaction.user_id == user_id,
-            Transaction.type    == "income",
-            Transaction.date    <  before_date,
+            Transaction.type.in_(tx_types),
+            Transaction.date    >= start,
+            Transaction.date    <= end,
         )
         .scalar()
-    ) or 0.0
-
-    prior_outflow = (
-        db.query(func.sum(Transaction.amount))
-        .filter(
-            Transaction.user_id == user_id,
-            Transaction.type.in_(["expense", "savings"]),
-            Transaction.date    <  before_date,
-        )
-        .scalar()
-    ) or 0.0
-
-    return float(prior_income) - float(prior_outflow)
+    )
+    return float(rows or 0)
 
 
 @router.get("/summary")
@@ -154,30 +162,36 @@ def get_summary(
     _validate_period(period)
 
     start, end = _period_bounds(period)
-    income   = _total(db, current_user, "income",  start, end)
-    expenses = _total(db, current_user, "expense", start, end)
-    savings  = _total(db, current_user, "savings", start, end)
 
-    net_balance  = income - expenses - savings
-    savings_rate = round(((income - expenses) / income * 100), 1) if income > 0 else 0.0
-
-    # ── Carry-over: balance carried in from all months before this period ─────
-    opening_balance = _opening_balance(db, current_user, start)
-    closing_balance = opening_balance + net_balance   # what you actually have now
-
+    # ── 4 queries total (was 10) ───────────────────────────────────────────────
     span_days  = (end - start).days + 1
     prev_end   = start - timedelta(days=1)
     prev_start = prev_end - timedelta(days=span_days - 1)
 
-    prev_income   = _total(db, current_user, "income",  prev_start, prev_end)
-    prev_expenses = _total(db, current_user, "expense", prev_start, prev_end)
-    prev_savings  = _total(db, current_user, "savings", prev_start, prev_end)
+    cur_totals  = _totals_by_type(db, current_user, start,      end)
+    prev_totals = _totals_by_type(db, current_user, prev_start, prev_end)
+    open_totals = _opening_totals(db, current_user, start)
+    prev_open_totals = _opening_totals(db, current_user, prev_start)
+
+    income   = cur_totals.get("income",  0.0)
+    expenses = cur_totals.get("expense", 0.0)
+    savings  = cur_totals.get("savings", 0.0)
+
+    net_balance  = income - expenses - savings
+    savings_rate = round(((income - expenses) / income * 100), 1) if income > 0 else 0.0
+
+    # ── Carry-over balances ────────────────────────────────────────────────────
+    opening_balance = _net_from_totals(open_totals)
+    closing_balance = opening_balance + net_balance
+
+    prev_income   = prev_totals.get("income",  0.0)
+    prev_expenses = prev_totals.get("expense", 0.0)
+    prev_savings  = prev_totals.get("savings", 0.0)
     prev_net      = prev_income - prev_expenses - prev_savings
     prev_rate     = round(((prev_income - prev_expenses) / prev_income * 100), 1) if prev_income > 0 else 0.0
 
-    # Previous period's closing balance (used for the closing_balance delta)
-    prev_opening      = _opening_balance(db, current_user, prev_start)
-    prev_closing      = prev_opening + prev_net
+    prev_opening = _net_from_totals(prev_open_totals)
+    prev_closing = prev_opening + prev_net
 
 
     def _delta(current: float, previous: float) -> dict:
@@ -243,12 +257,14 @@ def get_cashflow(
 
     if period in ("this_month", "last_month"):
         # Weekly breakdown — gives 4 data points and makes the chart readable
+        # Use _totals_by_type (1 query per week) instead of 2 separate queries.
         months = _month_range(period)
         year, month = months[0]
         for label, week_start, week_end in _week_ranges_for_month(year, month):
+            week_totals = _totals_by_type(db, current_user, week_start, week_end)
             labels.append(label)
-            income.append(round(_total(db, current_user, "income", week_start, week_end), 2))
-            outflow = _total_types(db, current_user, ["expense", "savings"], week_start, week_end)
+            income.append(round(week_totals.get("income", 0.0), 2))
+            outflow = week_totals.get("expense", 0.0) + week_totals.get("savings", 0.0)
             expenses.append(round(outflow, 2))
     else:
         # Monthly breakdown for last_3_months
@@ -306,6 +322,4 @@ def get_expense_breakdown(
     for row in rows:
         labels.append(row.category)
         values.append(round(float(row.total), 2))
-        colors.append(cat_colors.get(row.category, "#475569"))
-
     return {"labels": labels, "values": values, "colors": colors}

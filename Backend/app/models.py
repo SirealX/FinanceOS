@@ -147,6 +147,22 @@ class Preferences(Base):
     # Updated on every authenticated request — used for session-boundary detection
     last_seen_at = Column(DateTime, nullable=True)
 
+    # ── Bank balance reconciliation ────────────────────────────────────────────
+    # bank_balance:        actual balance the user last saw at their bank
+    # bank_balance_date:   date they last updated it
+    # initial_balance:     how much they had when they started using the app
+    # tracking_start_date: date they began entering transactions (isolates the
+    #                      "active gap" from historical pre-app data)
+    # show_balance_gap:    whether to surface the active gap on the dashboard
+    # balance_reminder_day: day of month (1–28) to fire a "check your balance"
+    #                       alert — NULL means the reminder is disabled
+    bank_balance         = Column(Numeric(12, 2), nullable=True)
+    bank_balance_date    = Column(Date,    nullable=True)
+    initial_balance      = Column(Numeric(12, 2), nullable=True)
+    tracking_start_date  = Column(Date,    nullable=True)
+    show_balance_gap     = Column(Boolean, nullable=False, default=False)
+    balance_reminder_day = Column(Integer, nullable=True)
+
 
 class Alert(Base):
     """
