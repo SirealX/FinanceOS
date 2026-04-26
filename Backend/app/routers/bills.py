@@ -28,6 +28,7 @@ class BillUpdate(BaseModel):
     frequency: Optional[str] = None
     category: Optional[str] = None
     status: Optional[str] = None
+    payment_method: Optional[str] = None  # captured at mark-as-paid time
 
 
 @router.get("/")
@@ -134,25 +135,29 @@ def update_bill(
         and bill.status == "unpaid"
         and bill.transaction_id is None
     ):
-        draft = Transaction(
+        # payment_method is provided directly by the user when they click
+        # "Mark as paid" — no draft needed, create confirmed immediately.
+        tx = Transaction(
             user_id=current_user,
             date=DateType.today(),
             description=bill.name,
             category=bill.category or "Other",
             type="expense",
             amount=bill.amount,
-            payment_method=None,
-            source="manual",
-            is_draft=True,
+            payment_method=update_data.get("payment_method"),
+            source="bill_payment",
+            is_draft=False,
+            reviewed=True,
             budget_category_id=hub.id if hub else None,
         )
-        db.add(draft)
+        db.add(tx)
         db.flush()
 
-        bill.transaction_id = draft.id
+        bill.transaction_id = tx.id
         if hub:
-            hub.transaction_id = draft.id
-            hub.date           = DateType.today()
+            hub.transaction_id             = tx.id
+            hub.transaction_payment_method = update_data.get("payment_method")
+            hub.date                       = DateType.today()
 
     # ── Apply other field updates ─────────────────────────────────────────────
     for key, value in update_data.items():

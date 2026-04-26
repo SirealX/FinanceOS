@@ -455,10 +455,14 @@ export function useDashboard() {
     ? DASHBOARD_KPI[period]
     : {
         netBalance: kpiData.net_balance,
+        // liquidNet: income − expenses (savings not subtracted).
+        // Saving money should not look like losing money on the balance card.
+        liquidNet: kpiData.liquid_net ?? (kpiData.income - kpiData.expenses),
         openingBalance: kpiData.opening_balance ?? 0,
         closingBalance: kpiData.closing_balance ?? kpiData.net_balance,
         income: kpiData.income,
         expenses: kpiData.expenses,
+        savingsAmount: kpiData.savings ?? 0,
         savingsRate: kpiData.savings_rate,
         netDelta: kpiData.net_delta,
         incomeDelta: kpiData.income_delta,
@@ -569,6 +573,7 @@ export function useDashboard() {
     initialBalance:        IS_DEMO ? null  : (initialBalance   ?? null),
     goToBudget: () => navigate("budget"),
     goToTransactions: () => navigate("transactions"),
+    goToSettings: () => navigate("settings"),
   };
 }
 

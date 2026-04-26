@@ -116,25 +116,26 @@ function KpiCard({ label, value, delta, colorClass, icon, accent, subtitle }) {
 //  WITH bank balance (primary mode):
 //    Primary headline  — bank balance + "as of [date]"
 //    Row 1             — start of month (opening)
-//    Row 2             — app's current calculated balance ("Gap") + month delta
+//    Row 2             — cash flow (income − expenses) this month
+//    Row 3             — saved to goals this month (green, if > 0)
 //
-//  WITHOUT bank balance (fallback mode, original behaviour):
+//  WITHOUT bank balance (fallback mode):
 //    Primary headline  — opening balance
-//    Row               — "Now" (closing) + month delta
+//    Row 1             — cash flow this month (income − expenses)
+//    Row 2             — saved to goals (green, if > 0)
+//
+// liquidNet  = income − expenses  (savings NOT subtracted — saving is not losing)
+// savingsAmt = savings-type transactions this period
 // ─────────────────────────────────────────────────────────────────────────────
 
-function BalanceCard({ opening, closing, delta, icon, bankBalance, bankBalanceDate }) {
+function BalanceCard({ opening, closing, delta, icon, bankBalance, bankBalanceDate, liquidNet, savingsAmt }) {
   const monthChange  = closing - opening;
   const isUp         = delta.dir === "up";
   const hasBankData  = bankBalance !== null && bankBalance !== undefined;
+  const hasSavings   = savingsAmt > 0;
 
   // When a real bank balance is available, derive the projected opening so that
   // "start of month" reflects actual money, not just tracked transactions.
-  //
-  //   projectedOpening = bankBalance (projected closing) − monthChange
-  //
-  // The offset between reality and the app's transaction total is the same at
-  // both ends of the month — it cancels out in monthChange, which stays correct.
   const projectedOpening = hasBankData ? bankBalance - monthChange : opening;
 
   // Accent tint: green if the headline number is positive, red otherwise
@@ -175,6 +176,17 @@ function BalanceCard({ opening, closing, delta, icon, bankBalance, bankBalanceDa
     </div>
   );
 
+  // Savings row — always green, labelled clearly so saving feels like a win
+  const savingsRow = hasSavings ? (
+    <div style={{ fontSize: 12, display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+      <span style={{ color: "var(--color-text-muted)" }}>saved to goals</span>
+      <span style={{ fontWeight: 600, color: "var(--color-income)" }}>
+        +{fmtAbs(savingsAmt)}
+        <span style={{ marginLeft: 6, color: "var(--color-text-muted)", fontSize: 11 }}>earmarked ✓</span>
+      </span>
+    </div>
+  ) : null;
+
   return (
     <div className="card card-compact" style={{ marginBottom: 0, ...accentStyle }}>
       {/* Header row */}
@@ -202,15 +214,16 @@ function BalanceCard({ opening, closing, delta, icon, bankBalance, bankBalanceDa
             projectedOpening >= 0 ? "you started this month ahead" : "you started this month in the red",
           )}
           {smallRow(
-            "this month",
-            monthChange,
-            monthChange >= 0,
-            monthChange >= 0 ? "net gain" : "net spent",
+            "cash flow",
+            liquidNet,
+            liquidNet >= 0,
+            liquidNet >= 0 ? "net gain" : "net spent",
           )}
+          {savingsRow}
         </>
       ) : (
         <>
-          {/* ── Mode B: opening as headline (original behaviour) ── */}
+          {/* ── Mode B: opening as headline ── */}
           <div className={`kpi-value ${opening >= 0 ? "income" : "expense"}`}>
             {fmt(opening)}
           </div>
@@ -221,11 +234,12 @@ function BalanceCard({ opening, closing, delta, icon, bankBalance, bankBalanceDa
           {divider}
 
           {smallRow(
-            "Now",
-            closing,
-            closing >= 0,
-            `(${monthChange >= 0 ? "+" : "−"}${fmtAbs(monthChange)} this month)`,
+            "cash flow",
+            liquidNet,
+            liquidNet >= 0,
+            liquidNet >= 0 ? "income − expenses" : "spending exceeds income",
           )}
+          {savingsRow}
         </>
       )}
 
@@ -486,6 +500,7 @@ export default function Dashboard() {
     initialBalance,
     goToBudget,
     goToTransactions,
+    goToSettings,
   } = useDashboard();
 
   // Loading skeleton while API fetches complete
@@ -600,6 +615,8 @@ export default function Dashboard() {
             icon={<NetBalanceIcon />}
             bankBalance={bankBalance}
             bankBalanceDate={bankBalanceDate}
+            liquidNet={kpi.liquidNet ?? (kpi.income - kpi.expenses)}
+            savingsAmt={kpi.savingsAmount ?? 0}
           />
         )}
         <KpiCard
@@ -624,6 +641,41 @@ export default function Dashboard() {
           icon={<SavingsIcon />}
         />
       </div>
+
+      {/* ══ ZONE 2b: Balance anchor nudge (shown only when bank balance not set) ══ */}
+      {bankBalance === null && period === "This Month" && (
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 12,
+            padding: "10px 16px",
+            borderRadius: 10,
+            background: "rgba(99,102,241,0.07)",
+            border: "0.5px solid rgba(99,102,241,0.22)",
+            marginBottom: 12,
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <span style={{ fontSize: 15, flexShrink: 0 }}>🏦</span>
+            <span style={{ fontSize: 13, color: "var(--color-text-secondary)", lineHeight: 1.45 }}>
+              Your balance is based on tracked transactions only and may not match your real bank account.{" "}
+              <strong style={{ fontWeight: 500, color: "var(--color-text-primary)" }}>
+                Add your current bank balance in Settings
+              </strong>{" "}
+              to anchor the numbers to reality.
+            </span>
+          </div>
+          <button
+            className="btn-ghost"
+            style={{ fontSize: 12, flexShrink: 0, whiteSpace: "nowrap" }}
+            onClick={goToSettings}
+          >
+            Go to Settings →
+          </button>
+        </div>
+      )}
 
       {/* ══ ZONE 3a: Cash Flow + Expense Donut ══ */}
       <div className="grid-chart-secondary" style={{ marginBottom: 12 }}>

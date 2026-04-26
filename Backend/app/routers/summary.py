@@ -178,7 +178,14 @@ def get_summary(
     savings  = cur_totals.get("savings", 0.0)
 
     net_balance  = income - expenses - savings
-    savings_rate = round(((income - expenses) / income * 100), 1) if income > 0 else 0.0
+    # liquid_net: cash flow this period excluding savings contributions.
+    # Savings are still YOUR money (in a goal), so this separates "spent"
+    # from "earmarked for a goal" — prevents saving from looking like losing.
+    liquid_net   = income - expenses
+    # savings_rate: % of income deliberately directed to savings goals.
+    # Old formula (income-expenses)/income measured "unspent income", not
+    # intentional saving. New formula counts only savings-type transactions.
+    savings_rate = round((savings / income * 100), 1) if income > 0 else 0.0
 
     # ── Carry-over balances ────────────────────────────────────────────────────
     opening_balance = _net_from_totals(open_totals)
@@ -188,7 +195,7 @@ def get_summary(
     prev_expenses = prev_totals.get("expense", 0.0)
     prev_savings  = prev_totals.get("savings", 0.0)
     prev_net      = prev_income - prev_expenses - prev_savings
-    prev_rate     = round(((prev_income - prev_expenses) / prev_income * 100), 1) if prev_income > 0 else 0.0
+    prev_rate     = round((prev_savings / prev_income * 100), 1) if prev_income > 0 else 0.0
 
     prev_opening = _net_from_totals(prev_open_totals)
     prev_closing = prev_opening + prev_net
@@ -207,6 +214,9 @@ def get_summary(
         "expenses":         round(expenses,        2),
         "savings":          round(savings,         2),
         "net_balance":      round(net_balance,     2),
+        # liquid_net = income − expenses (savings excluded).
+        # Use this on the balance card so saving money doesn't look like spending.
+        "liquid_net":       round(liquid_net,      2),
         "opening_balance":  round(opening_balance, 2),
         "closing_balance":  round(closing_balance, 2),
         "savings_rate":     savings_rate,

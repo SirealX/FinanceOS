@@ -31,6 +31,14 @@ export const BLANK_FORM = {
   category: "",
 };
 
+export const PAYMENT_METHODS = [
+  { value: "Debit Card",      label: "Debit Card" },
+  { value: "Credit Card",     label: "Credit Card" },
+  { value: "Bank Transfer",   label: "Bank Transfer" },
+  { value: "Cash",            label: "Cash" },
+  { value: "Other",           label: "Other" },
+];
+
 let _id = 20;
 export const uid = () => String(++_id);
 
@@ -153,6 +161,8 @@ export function useBills() {
   const [showModal, setShowModal] = useState(false);
   const [editingBill, setEditingBill] = useState(null);
   const [form, setForm] = useState(BLANK_FORM);
+  // payModal: null | { billId: string } — shown when marking a bill as paid
+  const [payModal, setPayModal] = useState(null);
 
   // ── FIX #1: expense category names from live SettingsContext ───────────────
   const billCategoryNames = useMemo(
@@ -231,22 +241,54 @@ export function useBills() {
   async function handleTogglePaid(id) {
     const bill = bills.find((b) => b.id === id);
     if (!bill) return;
-    const newStatus = bill.status === "paid" ? "unpaid" : "paid";
+
+    if (bill.status !== "paid") {
+      // unpaid → paid: ask for payment method first
+      if (IS_DEMO) {
+        setBills((prev) =>
+          prev.map((b) => (b.id === id ? { ...b, status: "paid" } : b)),
+        );
+      } else {
+        setPayModal({ billId: id });
+      }
+      return;
+    }
+
+    // paid → unpaid: no extra input needed, proceed directly
     if (IS_DEMO) {
       setBills((prev) =>
-        prev.map((b) => (b.id === id ? { ...b, status: newStatus } : b)),
+        prev.map((b) => (b.id === id ? { ...b, status: "unpaid" } : b)),
       );
     } else {
       try {
-        await updateBill(id, { status: newStatus });
+        await updateBill(id, { status: "unpaid" });
         setBills((prev) =>
-          prev.map((b) => (b.id === id ? { ...b, status: newStatus } : b)),
+          prev.map((b) => (b.id === id ? { ...b, status: "unpaid" } : b)),
         );
       } catch (err) {
         setError("Could not update bill status.");
         console.error(err);
       }
     }
+  }
+
+  async function handleConfirmPayment(method) {
+    if (!payModal) return;
+    const { billId } = payModal;
+    setPayModal(null);
+    try {
+      await updateBill(billId, { status: "paid", payment_method: method });
+      setBills((prev) =>
+        prev.map((b) => (b.id === billId ? { ...b, status: "paid" } : b)),
+      );
+    } catch (err) {
+      setError("Could not mark bill as paid.");
+      console.error(err);
+    }
+  }
+
+  function closePayModal() {
+    setPayModal(null);
   }
 
   function openAdd() {
@@ -365,6 +407,10 @@ export function useBills() {
     handleTogglePaid,
     handleSave,
     handleDelete,
+    // Payment method modal
+    payModal,
+    handleConfirmPayment,
+    closePayModal,
     // FIX #1: live category names for the dropdown
     billCategoryNames,
     // FIX #2: live color lookup for avatars

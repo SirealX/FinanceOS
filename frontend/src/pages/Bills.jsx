@@ -2,6 +2,7 @@ import { useState } from "react";
 
 import {
   BILL_FREQUENCIES,
+  PAYMENT_METHODS,
   formatAmount,
   initials,
   liveStatus,
@@ -462,6 +463,78 @@ function BillModal({
   );
 }
 
+// ── Payment Method Modal ──────────────────────────────────────────────────────
+
+function PaymentMethodModal({ onConfirm, onClose }) {
+  return (
+    <div
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "rgba(0,0,0,0.6)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        zIndex: 50,
+      }}
+      onClick={(e) => e.target === e.currentTarget && onClose()}
+    >
+      <div
+        className="card"
+        style={{ width: 340, maxWidth: "calc(100vw - 40px)", margin: 0 }}
+      >
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            marginBottom: 6,
+          }}
+        >
+          <h2 className="section-header" style={{ margin: 0 }}>
+            How did you pay?
+          </h2>
+          <button
+            className="btn-danger"
+            onClick={onClose}
+            style={{ fontSize: 18, lineHeight: 1, padding: "2px 6px" }}
+          >
+            ×
+          </button>
+        </div>
+        <p
+          style={{
+            fontSize: 12,
+            color: "var(--color-text-muted)",
+            marginBottom: 16,
+          }}
+        >
+          Select the payment method to record this bill as paid.
+        </p>
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {PAYMENT_METHODS.map(({ value, label }) => (
+            <button
+              key={value}
+              className="btn-secondary"
+              style={{ justifyContent: "flex-start", padding: "10px 14px", fontSize: 13 }}
+              onClick={() => onConfirm(value)}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        <button
+          className="btn-ghost"
+          style={{ marginTop: 12, width: "100%", fontSize: 12 }}
+          onClick={onClose}
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ── Bills View ────────────────────────────────────────────────────────────────
 
 export default function Bills() {
@@ -484,6 +557,9 @@ export default function Bills() {
     handleTogglePaid,
     handleSave,
     handleDelete,
+    payModal,
+    handleConfirmPayment,
+    closePayModal,
     billCategoryNames, // FIX #1
     catCfg, // FIX #2
   } = useBills();
@@ -703,6 +779,13 @@ export default function Bills() {
           onChange={setForm}
           onSave={handleSave}
           onClose={closeModal}
+        />
+      )}
+
+      {payModal && (
+        <PaymentMethodModal
+          onConfirm={handleConfirmPayment}
+          onClose={closePayModal}
         />
       )}
     </>
