@@ -127,6 +127,15 @@ function BalanceCard({ opening, closing, delta, icon, bankBalance, bankBalanceDa
   const isUp         = delta.dir === "up";
   const hasBankData  = bankBalance !== null && bankBalance !== undefined;
 
+  // When a real bank balance is available, derive the projected opening so that
+  // "start of month" reflects actual money, not just tracked transactions.
+  //
+  //   projectedOpening = bankBalance (projected closing) − monthChange
+  //
+  // The offset between reality and the app's transaction total is the same at
+  // both ends of the month — it cancels out in monthChange, which stays correct.
+  const projectedOpening = hasBankData ? bankBalance - monthChange : opening;
+
   // Accent tint: green if the headline number is positive, red otherwise
   const headlinePositive = hasBankData ? bankBalance >= 0 : opening >= 0;
   const accentStyle = headlinePositive
@@ -187,15 +196,15 @@ function BalanceCard({ opening, closing, delta, icon, bankBalance, bankBalanceDa
 
           {smallRow(
             "start of month",
-            opening,
-            opening >= 0,
-            opening >= 0 ? "you started this month ahead" : "you started this month in the red",
+            projectedOpening,
+            projectedOpening >= 0,
+            projectedOpening >= 0 ? "you started this month ahead" : "you started this month in the red",
           )}
           {smallRow(
-            "Gap",
-            closing,
-            closing >= 0,
-            `(${monthChange >= 0 ? "+" : "−"}${fmtAbs(monthChange)} this month)`,
+            "this month",
+            monthChange,
+            monthChange >= 0,
+            monthChange >= 0 ? "net gain" : "net spent",
           )}
         </>
       ) : (

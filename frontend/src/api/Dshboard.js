@@ -367,13 +367,18 @@ export function useDashboard() {
       };
 
   // ── Projected bank balance ────────────────────────────────────────────────
-  // If the user entered a bank balance anchor in Settings we project it forward:
-  //   projected = bank_balance + (current_closing - balance_anchor_app)
-  // Every new transaction updates current_closing, so the card auto-refreshes
-  // without the user needing to re-enter their balance.
-  // Falls back to the raw stored value when no anchor exists yet (first save).
+  // Only meaningful for "This Month" — the anchor is a present-day snapshot so
+  // projecting it onto past periods would show the same balance in every view.
+  // For Last Month / Last 3 Months the card falls into Mode B (transaction-based
+  // opening → closing) which tells the correct retrospective story.
+  //
+  //   projected = bank_balance + (current_closing − balance_anchor_app)
+  //
+  // Every new transaction updates current_closing, so the headline auto-updates
+  // without the user having to re-enter their balance.
   const projectedBankBalance = (() => {
     if (IS_DEMO || bankBalance === null) return null;
+    if (period !== "This Month") return null;   // anchor is present-day only
     if (balanceAnchorApp === null) return bankBalance;
     const currentClosing = kpiData.closing_balance ?? 0;
     return bankBalance + (currentClosing - balanceAnchorApp);
