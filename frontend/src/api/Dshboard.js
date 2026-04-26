@@ -364,6 +364,8 @@ export function useDashboard() {
   const [donutData, setDonutData] = useState(EMPTY_DONUT);
   const [budgetRows, setBudgetRows] = useState([]);
   const [recentTxRaw, setRecentTxRaw] = useState([]);
+  const [savingsTotal, setSavingsTotal] = useState(null);  // sum of goal current_amounts
+  const [debtTotal, setDebtTotal]       = useState(null);  // sum of debt balances
   const [loading, setLoading] = useState(!IS_DEMO);
   const [slowLoad, setSlowLoad] = useState(false);  // true when load takes >2.5 s
   const [error, setError] = useState(null);
@@ -390,6 +392,8 @@ export function useDashboard() {
         actualsRes,
         txRes,
         budgetCatsRes,
+        savingsRes,
+        debtsRes,
       ] = await Promise.all([
         client.get(`/summary?period=${p}`),
         client.get(`/cashflow?period=${p}`),
@@ -399,6 +403,8 @@ export function useDashboard() {
           `/transactions/?date_from=${_periodStart(activePeriod)}&date_to=${_periodEnd(activePeriod)}`,
         ),
         client.get("/budget/categories?kind=expense"), // FIX #5 + #10: in parallel
+        client.get("/savings").catch(() => ({ data: [] })),  // net worth component
+        client.get("/debts").catch(() => ({ data: [] })),    // net worth component
       ]);
 
       setKpiData(summaryRes.data);
@@ -425,6 +431,16 @@ export function useDashboard() {
         .sort((a, b) => b.date.localeCompare(a.date))
         .slice(0, 6);
       setRecentTxRaw(sorted);
+
+      // Net worth components
+      const sTotal = savingsRes.data.reduce(
+        (acc, g) => acc + parseFloat(g.current_amount ?? 0), 0,
+      );
+      const dTotal = debtsRes.data.reduce(
+        (acc, d) => acc + parseFloat(d.balance ?? 0), 0,
+      );
+      setSavingsTotal(sTotal);
+      setDebtTotal(dTotal);
     } catch (err) {
       setError("Could not load dashboard data.");
       console.error(err);
@@ -541,6 +557,17 @@ export function useDashboard() {
     return getDonutChartConfig(IS_DEMO ? DASHBOARD_DONUT : donutData);
   }, [donutData]);
 
+  // ── Net worth ─────────────────────────────────────────────────────────────
+  // (bank_balance OR closing_balance) + savings_totals − debt_totals
+  // All three numbers live in separate tables; we just sum them here.
+  // null = still loading (hide the card until both fetches resolve).
+  const netWorth = (() => {
+    if (IS_DEMO) return null;                              // hide in demo
+    if (savingsTotal === null || debtTotal === null) return null;
+    const liquidBase = projectedBankBalance ?? kpi.closingBalance ?? 0;
+    return liquidBase + savingsTotal - debtTotal;
+  })();
+
   return {
     period,
     setPeriod,
@@ -571,6 +598,10 @@ export function useDashboard() {
     bankBalance:           projectedBankBalance,   // projected forward from anchor
     bankBalanceDate:       IS_DEMO ? null  : (bankBalanceDate  ?? null),
     initialBalance:        IS_DEMO ? null  : (initialBalance   ?? null),
+    // Net worth breakdown
+    netWorth,
+    netWorthSavings: savingsTotal,
+    netWorthDebts:   debtTotal,
     goToBudget: () => navigate("budget"),
     goToTransactions: () => navigate("transactions"),
     goToSettings: () => navigate("settings"),

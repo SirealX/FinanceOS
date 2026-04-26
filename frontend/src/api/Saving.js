@@ -127,6 +127,63 @@ export function remaining(goal) {
   return Math.max(goal.target - goal.current, 0);
 }
 
+/**
+ * On-track status for a savings goal.
+ * Returns an object with:
+ *   monthlyNeeded  — how much to save per month to hit target by deadline
+ *   monthsLeft     — calendar months remaining (float, can be < 0)
+ *   label          — human-readable summary string
+ *   color          — CSS var appropriate to urgency
+ *
+ * Pure function — no side-effects, no network calls.
+ */
+export function goalStatus(goal) {
+  const rem       = remaining(goal);
+  const days      = daysLeft(goal.deadline);
+  const monthsLeft = days / 30.44;
+
+  if (goal.current >= goal.target) {
+    return {
+      monthlyNeeded: 0,
+      monthsLeft: 0,
+      label: "Goal reached 🎉",
+      color: "var(--color-income)",
+    };
+  }
+
+  if (monthsLeft <= 0) {
+    return {
+      monthlyNeeded: rem,
+      monthsLeft: 0,
+      label: "Deadline passed — update your target date",
+      color: "var(--color-danger)",
+    };
+  }
+
+  const monthlyNeeded = rem / monthsLeft;
+
+  // Urgency tiers
+  let color;
+  let urgencyNote;
+  if (monthsLeft <= 1) {
+    color       = "var(--color-danger)";
+    urgencyNote = "last month!";
+  } else if (monthsLeft <= 3) {
+    color       = "var(--color-expense)";
+    urgencyNote = `${monthsLeft.toFixed(1)} mo left`;
+  } else {
+    color       = "var(--color-text-muted)";
+    urgencyNote = `${Math.round(monthsLeft)} mo left`;
+  }
+
+  return {
+    monthlyNeeded,
+    monthsLeft,
+    label: `$${monthlyNeeded.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}/mo needed · ${urgencyNote}`,
+    color,
+  };
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // 4. API ADAPTERS
 // ─────────────────────────────────────────────────────────────────────────────

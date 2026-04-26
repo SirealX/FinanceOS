@@ -19,6 +19,7 @@ import {
   pct,
   deadlineLabel,
   remaining,
+  goalStatus,
   SAVINGS_EMOJI_PRESETS,
   useSavings,
 } from "../api/Saving";
@@ -110,6 +111,7 @@ function GoalCard({ goal, onEdit, onDelete, onAddFunds }) {
   const progress = pct(goal.current, goal.target);
   const dl = deadlineLabel(goal.deadline, isComplete);
   const barColor = isComplete ? "var(--color-income)" : "var(--color-savings)";
+  const status = goalStatus(goal);
 
   return (
     <div
@@ -290,6 +292,26 @@ function GoalCard({ goal, onEdit, onDelete, onAddFunds }) {
           <span style={{ fontSize: 11, color: "var(--color-text-muted)" }}>
             {formatAmount(remaining(goal))} to go
           </span>
+        )}
+      </div>
+
+      {/* On-track status row */}
+      <div
+        style={{
+          fontSize: 11,
+          color: status.color,
+          fontWeight: 500,
+          marginBottom: 14,
+          display: "flex",
+          alignItems: "center",
+          gap: 5,
+        }}
+      >
+        {!isComplete && (
+          <>
+            <span style={{ opacity: 0.7 }}>📈</span>
+            <span>{status.label}</span>
+          </>
         )}
       </div>
 

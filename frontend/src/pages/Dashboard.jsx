@@ -498,6 +498,9 @@ export default function Dashboard() {
     bankBalance,
     bankBalanceDate,
     initialBalance,
+    netWorth,
+    netWorthSavings,
+    netWorthDebts,
     goToBudget,
     goToTransactions,
     goToSettings,
@@ -632,6 +635,14 @@ export default function Dashboard() {
           delta={kpi.expensesDelta}
           colorClass="expense"
           icon={<ExpenseIcon />}
+          subtitle={(() => {
+            if (kpi.income <= 0) return "no income recorded yet";
+            const pct = Math.round((kpi.expenses / kpi.income) * 100);
+            if (pct > 100) return `${pct}% of income — spending exceeds earnings`;
+            if (pct >= 90)  return `${pct}% of income — very little left over`;
+            if (pct >= 75)  return `${pct}% of income — leaving ${100 - pct}% for saving`;
+            return `${pct}% of income this period`;
+          })()}
         />
         <KpiCard
           label="SAVINGS RATE"
@@ -639,10 +650,91 @@ export default function Dashboard() {
           delta={kpi.savingsDelta}
           colorClass="savings"
           icon={<SavingsIcon />}
+          subtitle={(() => {
+            const r = kpi.savingsRate;
+            if (r === 0)   return "no savings recorded — aim for 15%+";
+            if (r < 5)     return `${r}% — room to grow, aim for 15%+`;
+            if (r < 10)    return `${r}% — making progress, target is 15–20%`;
+            if (r < 15)    return `${r}% — getting close to the 15–20% target`;
+            if (r <= 20)   return `${r}% — solid, right in the 15–20% sweet spot`;
+            return `${r}% — excellent, above the recommended 20%`;
+          })()}
         />
       </div>
 
-      {/* ══ ZONE 2b: Balance anchor nudge (shown only when bank balance not set) ══ */}
+      {/* ══ ZONE 2b: Net Worth summary row ══ */}
+      {netWorth !== null && (
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 12,
+            padding: "10px 16px",
+            borderRadius: 10,
+            background: netWorth >= 0
+              ? "rgba(16,185,129,0.05)"
+              : "rgba(239,68,68,0.05)",
+            border: netWorth >= 0
+              ? "0.5px solid rgba(16,185,129,0.14)"
+              : "0.5px solid rgba(239,68,68,0.14)",
+            marginBottom: 12,
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 16,
+              flexWrap: "wrap",
+              fontSize: 12,
+              color: "var(--color-text-secondary)",
+            }}
+          >
+            <span style={{ fontSize: 14, flexShrink: 0 }}>💼</span>
+            <span>
+              <span style={{ color: "var(--color-text-muted)" }}>balance </span>
+              <span style={{ fontWeight: 500, color: "var(--color-text-primary)" }}>
+                {bankBalance !== null
+                  ? (bankBalance >= 0 ? "+" : "−") + "$" + Math.abs(bankBalance).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+                  : "—"}
+              </span>
+            </span>
+            <span style={{ color: "rgba(255,255,255,0.15)" }}>+</span>
+            <span>
+              <span style={{ color: "var(--color-text-muted)" }}>savings </span>
+              <span style={{ fontWeight: 500, color: "var(--color-savings)" }}>
+                +{formatAmount(netWorthSavings)}
+              </span>
+            </span>
+            <span style={{ color: "rgba(255,255,255,0.15)" }}>−</span>
+            <span>
+              <span style={{ color: "var(--color-text-muted)" }}>debts </span>
+              <span style={{ fontWeight: 500, color: "var(--color-expense)" }}>
+                {formatAmount(netWorthDebts)}
+              </span>
+            </span>
+          </div>
+          <div style={{ textAlign: "right", flexShrink: 0 }}>
+            <div
+              style={{
+                fontSize: 16,
+                fontWeight: 700,
+                letterSpacing: "-0.4px",
+                color: netWorth >= 0 ? "var(--color-income)" : "var(--color-danger)",
+              }}
+            >
+              {netWorth >= 0 ? "+" : "−"}
+              {formatAmount(Math.abs(netWorth))}
+            </div>
+            <div style={{ fontSize: 10, color: "var(--color-text-muted)", marginTop: 2 }}>
+              net worth
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ══ ZONE 2c: Balance anchor nudge (shown only when bank balance not set) ══ */}
       {bankBalance === null && period === "This Month" && (
         <div
           style={{
