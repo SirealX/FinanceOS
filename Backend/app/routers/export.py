@@ -5,13 +5,12 @@ Export the authenticated user's transactions to CSV or XML.
 
 GET /transactions/export?date_from=YYYY-MM-DD&date_to=YYYY-MM-DD&format=csv
 
-Constraints (per plan):
-  - Maximum date range: 3 months
+Constraints:
   - Formats: csv, xml
   - Scoped strictly to the authenticated user's data
   - File generated in memory, streamed directly — never written to disk
 
-Fields exported (per plan §5.3):
+Fields exported:
   date, description, amount, type, category, notes (payment_method), balance_after
 ─────────────────────────────────────────────────────────────────────────────
 """
@@ -29,8 +28,6 @@ from ..models import Transaction
 from ..dependencies import get_current_user
 
 router = APIRouter(prefix="/transactions", tags=["export"])
-
-_MAX_DAYS = 92  # ~3 months
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -108,16 +105,6 @@ def export_transactions(
     # ── Validation ─────────────────────────────────────────────────────────────
     if date_to < date_from:
         raise HTTPException(status_code=400, detail="date_to must be on or after date_from.")
-
-    span = (date_to - date_from).days
-    if span > _MAX_DAYS:
-        raise HTTPException(
-            status_code=400,
-            detail=(
-                f"Date range is {span} days. The maximum for export is 3 months (~{_MAX_DAYS} days). "
-                "Please narrow the date range."
-            ),
-        )
 
     fmt = format.lower().strip()
     if fmt not in ("csv", "xml"):

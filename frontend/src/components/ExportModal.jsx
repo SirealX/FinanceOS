@@ -24,11 +24,6 @@ export default function ExportModal({ onClose, defaultFormat = "csv" }) {
   const [loading,  setLoading]  = useState(false);
   const [error,    setError]    = useState(null);
 
-  const spanDays = Math.round(
-    (new Date(dateTo) - new Date(dateFrom)) / 86_400_000
-  );
-  const tooLong = spanDays > 92;
-
   async function handleExport() {
     setLoading(true);
     setError(null);
@@ -100,11 +95,6 @@ export default function ExportModal({ onClose, defaultFormat = "csv" }) {
               />
             </div>
           </div>
-          {tooLong && (
-            <div style={{ marginTop: 6, fontSize: 11, color: "var(--color-danger)" }}>
-              ⚠ Maximum range is 3 months ({spanDays} days selected).
-            </div>
-          )}
         </div>
 
         {/* Format picker */}
@@ -154,7 +144,7 @@ export default function ExportModal({ onClose, defaultFormat = "csv" }) {
           <button
             className="btn-primary"
             onClick={handleExport}
-            disabled={loading || tooLong || !dateFrom || !dateTo}
+            disabled={loading || !dateFrom || !dateTo}
           >
             {loading ? "Generating…" : `↓ Download .${format.toUpperCase()}`}
           </button>

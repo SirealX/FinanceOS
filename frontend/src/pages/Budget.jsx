@@ -550,6 +550,82 @@ export default function Budget() {
             />
           </div>
 
+          {/* Planned surplus / deficit banner */}
+          {(() => {
+            const plannedSurplus =
+              incomeStats.totalPlanned -
+              expenseStats.totalPlanned -
+              savingsStats.totalPlanned;
+            const isPositive = plannedSurplus >= 0;
+            return (
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  background: isPositive
+                    ? "rgba(16,185,129,0.06)"
+                    : "rgba(239,68,68,0.06)",
+                  border: `0.5px solid ${isPositive ? "rgba(16,185,129,0.18)" : "rgba(239,68,68,0.18)"}`,
+                  borderRadius: 10,
+                  padding: "10px 16px",
+                  marginBottom: 14,
+                }}
+              >
+                <div
+                  style={{
+                    fontSize: 12,
+                    color: "var(--color-text-secondary)",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                  }}
+                >
+                  <span>{isPositive ? "✅" : "⚠️"}</span>
+                  <span>
+                    Planned budget:{" "}
+                    <span style={{ color: "var(--color-income)" }}>
+                      {formatAmount(incomeStats.totalPlanned)}
+                    </span>{" "}
+                    income &minus;{" "}
+                    <span style={{ color: "var(--color-expense)" }}>
+                      {formatAmount(expenseStats.totalPlanned)}
+                    </span>{" "}
+                    expenses &minus;{" "}
+                    <span style={{ color: "var(--color-savings)" }}>
+                      {formatAmount(savingsStats.totalPlanned)}
+                    </span>{" "}
+                    savings
+                  </span>
+                </div>
+                <div
+                  style={{
+                    fontSize: 14,
+                    fontWeight: 700,
+                    letterSpacing: "-0.3px",
+                    color: isPositive
+                      ? "var(--color-income)"
+                      : "var(--color-danger)",
+                    whiteSpace: "nowrap",
+                    marginLeft: 16,
+                  }}
+                >
+                  {isPositive ? "+" : "−"}
+                  {formatAmount(Math.abs(plannedSurplus))}{" "}
+                  <span
+                    style={{
+                      fontSize: 10,
+                      fontWeight: 500,
+                      color: "var(--color-text-muted)",
+                    }}
+                  >
+                    planned {isPositive ? "surplus" : "deficit"}
+                  </span>
+                </div>
+              </div>
+            );
+          })()}
+
           {/* Overview bar chart */}
           <div className="card" style={{ marginBottom: 14 }}>
             <div

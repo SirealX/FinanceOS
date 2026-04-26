@@ -639,6 +639,8 @@ export default function Transactions() {
     handleTypeChange,
     categoryFilter,
     setCategoryFilter,
+    searchQuery,
+    setSearchQuery,
     categoryGroups,
     filterCategories,
     getCategoryConfig, // FIX (colors): live color lookup
@@ -733,6 +735,59 @@ export default function Transactions() {
             </h2>
             <span className="count-badge">{filtered.length}</span>
           </div>
+
+          {/* Search input */}
+          <div style={{ position: "relative", flexShrink: 0 }}>
+            <span
+              style={{
+                position: "absolute",
+                left: 10,
+                top: "50%",
+                transform: "translateY(-50%)",
+                fontSize: 13,
+                color: "var(--color-text-muted)",
+                pointerEvents: "none",
+              }}
+            >
+              🔍
+            </span>
+            <input
+              className="input"
+              type="text"
+              placeholder="Search description or category…"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              style={{
+                paddingLeft: 30,
+                paddingRight: searchQuery ? 28 : 10,
+                width: 240,
+                fontSize: 12,
+                height: 32,
+              }}
+            />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery("")}
+                style={{
+                  position: "absolute",
+                  right: 8,
+                  top: "50%",
+                  transform: "translateY(-50%)",
+                  background: "none",
+                  border: "none",
+                  cursor: "pointer",
+                  color: "var(--color-text-muted)",
+                  fontSize: 14,
+                  lineHeight: 1,
+                  padding: 0,
+                }}
+                title="Clear search"
+              >
+                ×
+              </button>
+            )}
+          </div>
+
           <div style={{ display: "flex", gap: 20, alignItems: "center" }}>
             <div
               style={{

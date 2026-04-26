@@ -192,6 +192,7 @@ export function useTransactions() {
   const [editingTx, setEditingTx] = useState(null);
   const [deletingId, setDeletingId] = useState(null);
   const [form, setForm] = useState(BLANK_FORM);
+  const [searchQuery, setSearchQuery] = useState("");
 
   const categoryGroups = useMemo(
     () => buildCategoryGroups(allCategories, form.type),
@@ -232,6 +233,7 @@ export function useTransactions() {
   }, [fetchTransactions]);
 
   // ── Filtered + sorted view ────────────────────────────────────────────────
+  const _searchLower = searchQuery.trim().toLowerCase();
   const filtered = transactions
     .filter((tx) => {
       if (typeFilter === "Income") return tx.type === "income";
@@ -244,6 +246,13 @@ export function useTransactions() {
       (tx) =>
         categoryFilter.length === 0 || categoryFilter.includes(tx.category),
     )
+    .filter((tx) => {
+      if (!_searchLower) return true;
+      return (
+        tx.description.toLowerCase().includes(_searchLower) ||
+        tx.category.toLowerCase().includes(_searchLower)
+      );
+    })
     .sort((a, b) => b.date.localeCompare(a.date));
 
   // ── Summary totals ────────────────────────────────────────────────────────
@@ -397,6 +406,8 @@ export function useTransactions() {
     handleTypeChange,
     categoryFilter,
     setCategoryFilter,
+    searchQuery,
+    setSearchQuery,
     categoryGroups,
     filterCategories,
     getCategoryConfig,
