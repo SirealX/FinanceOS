@@ -29,7 +29,7 @@ import {
   Tooltip,
 } from "chart.js";
 
-import { formatAmountK, useDashboard, formatAmount } from "../api/Dshboard";
+import { useDashboard } from "../api/Dshboard";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Chart.js registration — once at module level
@@ -128,7 +128,7 @@ function KpiCard({ label, value, delta, colorClass, icon, accent, subtitle }) {
 // savingsAmt = savings-type transactions this period
 // ─────────────────────────────────────────────────────────────────────────────
 
-function BalanceCard({ opening, closing, delta, icon, bankBalance, bankBalanceDate, liquidNet, savingsAmt }) {
+function BalanceCard({ opening, closing, delta, icon, bankBalance, bankBalanceDate, liquidNet, savingsAmt, fmtAmount, fmtSigned }) {
   const monthChange  = closing - opening;
   const isUp         = delta.dir === "up";
   const hasBankData  = bankBalance !== null && bankBalance !== undefined;
@@ -144,12 +144,10 @@ function BalanceCard({ opening, closing, delta, icon, bankBalance, bankBalanceDa
     ? { background: "rgba(16,185,129,0.07)", border: "0.5px solid rgba(16,185,129,0.18)" }
     : { background: "rgba(239,68,68,0.07)",  border: "0.5px solid rgba(239,68,68,0.18)"  };
 
-  const fmt = (n) =>
-    (n >= 0 ? "+" : "−") + "$" +
-    Math.abs(n).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-
-  const fmtAbs = (n) =>
-    "$" + Math.abs(n).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  // fmt / fmtAbs are passed in from the parent which sources them from SettingsContext,
+  // so they respect the user's chosen currency symbol and decimal places.
+  const fmt    = fmtSigned;  // signed: "+€1,234.56" / "−€1,234.56"
+  const fmtAbs = fmtAmount;  // unsigned: "€1,234.56"
 
   // Format the bank balance date as "Apr 24"
   const bankDateLabel = bankBalanceDate
@@ -378,7 +376,7 @@ function ExpenseDonut({ config }) {
 // BudgetRow
 // ─────────────────────────────────────────────────────────────────────────────
 
-function BudgetRow({ category, color, spent, planned }) {
+function BudgetRow({ category, color, spent, planned, fmt }) {
   const pct = Math.min((spent / planned) * 100, 100);
   const over = spent > planned;
 
@@ -413,7 +411,7 @@ function BudgetRow({ category, color, spent, planned }) {
                 : "var(--color-text-primary)",
             }}
           >
-            {formatAmount(spent)}
+            {fmt(spent)}
           </span>
           <span
             style={{
@@ -422,7 +420,7 @@ function BudgetRow({ category, color, spent, planned }) {
               marginLeft: 4,
             }}
           >
-            / {formatAmount(planned)}
+            / {fmt(planned)}
           </span>
         </div>
       </div>
@@ -440,7 +438,7 @@ function BudgetRow({ category, color, spent, planned }) {
 // TxRow
 // ─────────────────────────────────────────────────────────────────────────────
 
-function TxRow({ tx }) {
+function TxRow({ tx, fmt }) {
   const isIncome = tx.type === "income";
   return (
     <div className="tx-row">
@@ -466,7 +464,7 @@ function TxRow({ tx }) {
       <div className="tx-col-amount">
         <span className={`tx-amount ${tx.type}`}>
           {isIncome ? "+" : "−"}
-          {formatAmount(tx.amount)}
+          {fmt(tx.amount)}
         </span>
       </div>
     </div>
@@ -506,7 +504,12 @@ export default function Dashboard() {
     goToBudget,
     goToTransactions,
     goToSettings,
+    formatAmount,    // currency-aware (from SettingsContext via useDashboard)
+    formatAmountK,   // currency-aware compact version
   } = useDashboard();
+
+  // Signed formatter: "+€1,234.56" / "−€1,234.56"
+  const fmtSigned = (n) => (n >= 0 ? "+" : "−") + formatAmount(Math.abs(n));
 
   // Loading skeleton while API fetches complete
   if (loading) {
@@ -602,10 +605,7 @@ export default function Dashboard() {
         {period === "Last 3 Months" ? (
           <KpiCard
             label="NET SAVED"
-            value={
-              (kpi.netBalance >= 0 ? "+" : "−") +
-              formatAmount(Math.abs(kpi.netBalance))
-            }
+            value={fmtSigned(kpi.netBalance)}
             delta={kpi.netDelta}
             colorClass={kpi.netBalance >= 0 ? "income" : "expense"}
             accent={kpi.netBalance >= 0 ? "positive" : "negative"}
@@ -622,6 +622,8 @@ export default function Dashboard() {
             bankBalanceDate={bankBalanceDate}
             liquidNet={kpi.liquidNet ?? (kpi.income - kpi.expenses)}
             savingsAmt={kpi.savingsAmount ?? 0}
+            fmtAmount={formatAmount}
+            fmtSigned={fmtSigned}
           />
         )}
         <KpiCard
@@ -704,9 +706,7 @@ export default function Dashboard() {
             <span>
               <span style={{ color: "var(--color-text-muted)" }}>balance </span>
               <span style={{ fontWeight: 500, color: "var(--color-text-primary)" }}>
-                {bankBalance !== null
-                  ? (bankBalance >= 0 ? "+" : "−") + "$" + Math.abs(bankBalance).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-                  : "—"}
+                {bankBalance !== null ? fmtSigned(bankBalance) : "—"}
               </span>
             </span>
             <span style={{ color: "rgba(255,255,255,0.15)" }}>+</span>
@@ -733,8 +733,7 @@ export default function Dashboard() {
                 color: netWorth >= 0 ? "var(--color-income)" : "var(--color-danger)",
               }}
             >
-              {netWorth >= 0 ? "+" : "−"}
-              {formatAmount(Math.abs(netWorth))}
+              {fmtSigned(netWorth)}
             </div>
             <div style={{ fontSize: 10, color: "var(--color-text-muted)", marginTop: 2 }}>
               net worth
@@ -839,10 +838,7 @@ export default function Dashboard() {
                 color: "var(--color-expense)",
               }}
             >
-              −
-              {formatAmount(
-                upcomingBills.reduce((s, b) => s + parseFloat(b.amount), 0),
-              )}
+              −{formatAmount(upcomingBills.reduce((s, b) => s + parseFloat(b.amount), 0))}
             </span>
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -888,6 +884,7 @@ export default function Dashboard() {
                     >
                       {formatAmount(parseFloat(bill.amount))}
                     </span>
+
                   </div>
                 </div>
               );
@@ -1031,7 +1028,7 @@ export default function Dashboard() {
             </button>
           </div>
           {budgetRows.length > 0 ? (
-            budgetRows.map((row) => <BudgetRow key={row.category} {...row} />)
+            budgetRows.map((row) => <BudgetRow key={row.category} {...row} fmt={formatAmount} />)
           ) : (
             <div
               style={{
@@ -1083,7 +1080,7 @@ export default function Dashboard() {
           </div>
 
           {recentTransactions.length > 0 ? (
-            recentTransactions.map((tx) => <TxRow key={tx.id} tx={tx} />)
+            recentTransactions.map((tx) => <TxRow key={tx.id} tx={tx} fmt={formatAmount} />)
           ) : (
             <div
               style={{

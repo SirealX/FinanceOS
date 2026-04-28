@@ -201,7 +201,17 @@ function buildPayload(form, existingDebt) {
 
 export function useDebts() {
   const { isDemo: IS_DEMO } = useAuth();
-  const { currency, formatAmount } = useSettings();
+  const { currency, formatAmount, currencySymbol } = useSettings();
+
+  // Currency-aware compact formatter — used for chart ticks/tooltips and row labels
+  const formatAmountKCurrency = useCallback(
+    (n) => {
+      const abs = Math.abs(n);
+      if (abs >= 1_000) return currencySymbol + (abs / 1_000).toFixed(1) + "k";
+      return formatAmount(n);
+    },
+    [currencySymbol, formatAmount],
+  );
 
   const [debts, setDebts] = useState(IS_DEMO ? INITIAL_DEBTS : []);
   const [loading, setLoading] = useState(!IS_DEMO);
@@ -394,9 +404,10 @@ export function useDebts() {
     payingDebt,
     setPayingDebt,
     handlePay,
-    sliderParams, // FIX #6: expose to Debts.jsx
-    budgetSurplus, // FIX #13: available cash after minimums (for simulator marker)
-    formatAmount, // currency-aware (from SettingsContext)
+    sliderParams,                          // FIX #6: expose to Debts.jsx
+    budgetSurplus,                         // FIX #13: available cash after minimums
+    formatAmount,                          // currency-aware (from SettingsContext)
+    formatAmountK: formatAmountKCurrency,  // compact currency-aware
     isDemo: IS_DEMO,
   };
 }

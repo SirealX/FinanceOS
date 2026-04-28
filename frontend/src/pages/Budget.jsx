@@ -18,8 +18,6 @@ import {
 } from "chart.js";
 
 import {
-  formatAmount,
-  formatAmountK,
   PERIOD_OPTIONS,
   BUDGET_TABS,
   getBudgetChartConfig,
@@ -35,11 +33,11 @@ Chart.register(BarElement, BarController, CategoryScale, LinearScale, Tooltip);
 // The previous in-place update approach had a stale-closure bug that made it
 // fire on every render anyway.
 
-function BudgetChart({ rows, config }) {
+function BudgetChart({ rows, config, fmtK }) {
   const canvasRef = useRef(null);
   const chartRef = useRef(null);
 
-  const resolvedConfig = config ?? (rows ? getBudgetChartConfig(rows) : null);
+  const resolvedConfig = config ?? (rows ? getBudgetChartConfig(rows, fmtK) : null);
 
   useEffect(() => {
     if (!canvasRef.current || !resolvedConfig) return;
@@ -64,7 +62,7 @@ function BudgetChart({ rows, config }) {
 
 // ── Progress Row (single category) ───────────────────────────────────────────
 
-function ProgressRow({ name, color, scaledPlanned, actual, kind }) {
+function ProgressRow({ name, color, scaledPlanned, actual, kind, fmt }) {
   const pct =
     scaledPlanned > 0 ? Math.min((actual / scaledPlanned) * 100, 100) : 0;
   const over = actual > scaledPlanned && scaledPlanned > 0;
@@ -117,10 +115,10 @@ function ProgressRow({ name, color, scaledPlanned, actual, kind }) {
         </div>
         <div style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
           <span style={{ fontSize: 13, fontWeight: 600, color: amountColor }}>
-            {formatAmount(actual)}
+            {fmt(actual)}
           </span>
           <span style={{ fontSize: 11, color: "var(--color-text-muted)" }}>
-            / {formatAmount(scaledPlanned)}
+            / {fmt(scaledPlanned)}
           </span>
           <span
             style={{
@@ -151,7 +149,7 @@ function ProgressRow({ name, color, scaledPlanned, actual, kind }) {
 
 // ── All-tab KPI card ──────────────────────────────────────────────────────────
 
-function KindSummaryCard({ label, stats, color, icon }) {
+function KindSummaryCard({ label, stats, color, icon, fmt }) {
   const pct = stats.overallPct.toFixed(0);
   return (
     <div className="card card-compact" style={{ marginBottom: 0 }}>
@@ -167,7 +165,7 @@ function KindSummaryCard({ label, stats, color, icon }) {
         <span style={{ fontSize: 16 }}>{icon}</span>
       </div>
       <div className="kpi-value" style={{ color }}>
-        {formatAmount(stats.totalActual)}
+        {fmt(stats.totalActual)}
       </div>
       <div style={{ marginTop: 10 }}>
         <div className="progress-track budget">
@@ -187,9 +185,9 @@ function KindSummaryCard({ label, stats, color, icon }) {
             marginTop: 4,
           }}
         >
-          {pct}% of {formatAmount(stats.totalPlanned)} planned ·{" "}
+          {pct}% of {fmt(stats.totalPlanned)} planned ·{" "}
           {stats.remaining > 0
-            ? `${formatAmount(stats.remaining)} remaining`
+            ? `${fmt(stats.remaining)} remaining`
             : "at or over target"}
         </div>
       </div>
@@ -441,6 +439,8 @@ export default function Budget() {
     openModal,
     closeModal,
     handleSave,
+    formatAmount,   // currency-aware (from SettingsContext via useBudget)
+    formatAmountK,  // compact currency-aware
   } = useBudget();
 
   if (loading) {
@@ -455,9 +455,9 @@ export default function Budget() {
 
   const isAllTab = budgetTab === "all";
 
-  // Chart config for the All tab overview
+  // Chart config for the All tab overview — pass currency-aware fmtK
   const allTabChartConfig = isAllTab
-    ? getAllTabChartConfig(expenseRows, incomeRows, savingsRows)
+    ? getAllTabChartConfig(expenseRows, incomeRows, savingsRows, formatAmountK)
     : null;
 
   // For single-kind tabs, show stats from the active kind
@@ -535,18 +535,21 @@ export default function Budget() {
               stats={expenseStats}
               color="var(--color-expense)"
               icon="💳"
+              fmt={formatAmount}
             />
             <KindSummaryCard
               label="INCOME"
               stats={incomeStats}
               color="var(--color-income)"
               icon="💵"
+              fmt={formatAmount}
             />
             <KindSummaryCard
               label="SAVINGS"
               stats={savingsStats}
               color="var(--color-savings)"
               icon="🎯"
+              fmt={formatAmount}
             />
           </div>
 
@@ -687,6 +690,7 @@ export default function Budget() {
                   {...row}
                   actual={row.actual}
                   kind="expense"
+                  fmt={formatAmount}
                 />
               ))}
             </div>
@@ -714,6 +718,7 @@ export default function Budget() {
                   {...row}
                   actual={row.actual}
                   kind="income"
+                  fmt={formatAmount}
                 />
               ))}
             </div>
@@ -741,6 +746,7 @@ export default function Budget() {
                   {...row}
                   actual={row.actual}
                   kind="savings"
+                  fmt={formatAmount}
                 />
               ))}
             </div>
@@ -882,7 +888,7 @@ export default function Budget() {
             {activeRows.length > 0 ? (
               <>
                 <div className="chart-wrap bar" style={{ marginBottom: 28 }}>
-                  <BudgetChart rows={activeRows} />
+                  <BudgetChart rows={activeRows} fmtK={formatAmountK} />
                 </div>
                 <div
                   style={{
@@ -906,6 +912,7 @@ export default function Budget() {
                     {...row}
                     actual={row.actual}
                     kind={budgetTab}
+                    fmt={formatAmount}
                   />
                 ))}
               </>

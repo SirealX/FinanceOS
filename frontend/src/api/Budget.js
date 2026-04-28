@@ -83,7 +83,7 @@ export function periodMultiplier(period) {
 // ── Chart config builders ─────────────────────────────────────────────────────
 
 /** Grouped bar chart for a single kind (Expenses, Income, or Savings tab) */
-export function getBudgetChartConfig(rows) {
+export function getBudgetChartConfig(rows, fmtK = formatAmountK) {
   const labels = rows.map((r) => shortName(r.name));
   const planned = rows.map((r) => +r.scaledPlanned.toFixed(2));
   const actual = rows.map((r) => r.actual);
@@ -130,7 +130,7 @@ export function getBudgetChartConfig(rows) {
           padding: 10,
           callbacks: {
             label: (ctx) =>
-              ` ${ctx.dataset.label}: ${formatAmountK(ctx.parsed.y)}`,
+              ` ${ctx.dataset.label}: ${fmtK(ctx.parsed.y)}`,
           },
         },
       },
@@ -146,7 +146,7 @@ export function getBudgetChartConfig(rows) {
           ticks: {
             color: "#5E6E85",
             font: { size: 10 },
-            callback: (v) => formatAmountK(v),
+            callback: (v) => fmtK(v),
           },
         },
       },
@@ -155,7 +155,7 @@ export function getBudgetChartConfig(rows) {
 }
 
 /** Grouped bar chart for the All tab — three side-by-side bars per group */
-export function getAllTabChartConfig(expenseRows, incomeRows, savingsRows) {
+export function getAllTabChartConfig(expenseRows, incomeRows, savingsRows, fmtK = formatAmountK) {
   // Show one bar group per kind with totals
   const labels = ["Expenses", "Income", "Savings"];
   const planned = [
@@ -210,7 +210,7 @@ export function getAllTabChartConfig(expenseRows, incomeRows, savingsRows) {
           padding: 10,
           callbacks: {
             label: (ctx) =>
-              ` ${ctx.dataset.label}: ${formatAmountK(ctx.parsed.y)}`,
+              ` ${ctx.dataset.label}: ${fmtK(ctx.parsed.y)}`,
           },
         },
       },
@@ -226,7 +226,7 @@ export function getAllTabChartConfig(expenseRows, incomeRows, savingsRows) {
           ticks: {
             color: "#5E6E85",
             font: { size: 10 },
-            callback: (v) => formatAmountK(v),
+            callback: (v) => fmtK(v),
           },
         },
       },
@@ -251,7 +251,17 @@ const DEMO_SAVINGS_SPENT = {
 
 export function useBudget() {
   const { isDemo: IS_DEMO } = useAuth();
-  const { formatAmount } = useSettings();
+  const { formatAmount, currencySymbol } = useSettings();
+
+  // Currency-aware compact formatter for chart ticks / tooltips.
+  const formatAmountKCurrency = useCallback(
+    (n) => {
+      const abs = Math.abs(n);
+      if (abs >= 1_000) return currencySymbol + (abs / 1_000).toFixed(1) + "k";
+      return formatAmount(n);
+    },
+    [currencySymbol, formatAmount],
+  );
   const [allCategories, setAllCategories] = useState([]);
   const [actuals, setActuals] = useState([]);
   const [period, setPeriod] = useState("This Month");
@@ -496,7 +506,8 @@ export function useBudget() {
     closeModal,
     handleSave,
 
-    formatAmount, // currency-aware (from SettingsContext)
+    formatAmount,                          // currency-aware (from SettingsContext)
+    formatAmountK: formatAmountKCurrency,  // compact version, respects currency
     isDemo: IS_DEMO,
   };
 }

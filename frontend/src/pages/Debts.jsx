@@ -25,8 +25,6 @@ import {
 } from "chart.js";
 
 import {
-  formatAmount,
-  formatAmountK,
   initials,
   monthsToLabel,
   downsample,
@@ -34,12 +32,15 @@ import {
   useDebts,
 } from "../api/Debt";
 
+import { useSettings } from "../context/SettingsContext";
+
 // ── Slider label formatter ────────────────────────────────────────────────────
 // Formats the slider max label using compact notation for large currencies.
-function fmtSliderLabel(n) {
-  if (n >= 1_000_000) return "$" + (n / 1_000_000).toFixed(0) + "M";
-  if (n >= 1_000) return "$" + (n / 1_000).toFixed(0) + "k";
-  return "$" + n.toLocaleString();
+// Receives `sym` (the currency symbol) from the calling component.
+function fmtSliderLabel(n, sym) {
+  if (n >= 1_000_000) return sym + (n / 1_000_000).toFixed(0) + "M";
+  if (n >= 1_000) return sym + (n / 1_000).toFixed(0) + "k";
+  return sym + n.toLocaleString();
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -105,6 +106,14 @@ function IconDelete() {
 function PayoffChart({ avalancheHistory, snowballHistory }) {
   const canvasRef = useRef(null);
   const chartRef = useRef(null);
+  const { formatAmount: fmtAmount, currencySymbol } = useSettings();
+
+  // Currency-aware compact formatter for chart axes/tooltips
+  const fmtK = (n) => {
+    const abs = Math.abs(n);
+    if (abs >= 1_000) return currencySymbol + (abs / 1_000).toFixed(1) + "k";
+    return fmtAmount(n);
+  };
 
   useEffect(() => {
     if (!canvasRef.current) return;
@@ -142,7 +151,7 @@ function PayoffChart({ avalancheHistory, snowballHistory }) {
       borderWidth: 0.5,
       padding: 10,
       callbacks: {
-        label: (ctx) => ` ${ctx.dataset.label}: ${formatAmountK(ctx.parsed.y)}`,
+        label: (ctx) => ` ${ctx.dataset.label}: ${fmtK(ctx.parsed.y)}`,
       },
     };
 
@@ -194,7 +203,7 @@ function PayoffChart({ avalancheHistory, snowballHistory }) {
             ticks: {
               color: "#5E6E85",
               font: { size: 10 },
-              callback: (v) => formatAmountK(v),
+              callback: (v) => fmtK(v),
             },
           },
         },
@@ -216,7 +225,7 @@ function PayoffChart({ avalancheHistory, snowballHistory }) {
 // DebtRow
 // ─────────────────────────────────────────────────────────────────────────────
 
-function DebtRow({ debt, onEdit, onDelete, onPay }) {
+function DebtRow({ debt, onEdit, onDelete, onPay, fmt }) {
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   const paidOff = Math.max(0, debt.originalBalance - debt.balance);
@@ -315,7 +324,7 @@ function DebtRow({ debt, onEdit, onDelete, onPay }) {
               color: "var(--color-text-primary)",
             }}
           >
-            {formatAmount(debt.minPayment)}
+            {fmt(debt.minPayment)}
           </div>
         </div>
 
@@ -338,7 +347,7 @@ function DebtRow({ debt, onEdit, onDelete, onPay }) {
               letterSpacing: "-0.3px",
             }}
           >
-            {formatAmount(debt.balance)}
+            {fmt(debt.balance)}
           </div>
         </div>
 
@@ -430,10 +439,10 @@ function DebtRow({ debt, onEdit, onDelete, onPay }) {
           }}
         >
           <span style={{ fontSize: 11, color: "var(--color-text-muted)" }}>
-            {formatAmount(paidOff)} paid off
+            {fmt(paidOff)} paid off
           </span>
           <span style={{ fontSize: 11, color: "var(--color-text-muted)" }}>
-            {pctDone.toFixed(0)}% of {formatAmount(debt.originalBalance)}
+            {pctDone.toFixed(0)}% of {fmt(debt.originalBalance)}
           </span>
         </div>
         <div className="progress-track budget" style={{ height: 5 }}>
@@ -739,9 +748,13 @@ export default function Debts() {
     payingDebt,
     setPayingDebt,
     handlePay,
-    sliderParams, // FIX #6
+    sliderParams,  // FIX #6
     budgetSurplus, // FIX #13
+    formatAmount,  // currency-aware (from SettingsContext via useDebts)
+    formatAmountK, // compact currency-aware
   } = useDebts();
+
+  const { currencySymbol } = useSettings();
 
   if (loading) {
     return (
@@ -849,6 +862,7 @@ export default function Debts() {
                 onEdit={openEdit}
                 onDelete={handleDelete}
                 onPay={(debt) => setPayingDebt(debt)}
+                fmt={formatAmount}
               />
             ))}
           </div>
@@ -962,8 +976,8 @@ export default function Debts() {
                     color: "var(--color-text-muted)",
                   }}
                 >
-                  <span>$0</span>
-                  <span>{fmtSliderLabel(sliderParams.max)}</span>
+                  <span>{currencySymbol}0</span>
+                  <span>{fmtSliderLabel(sliderParams.max, currencySymbol)}</span>
                 </div>
 
                 {/* Budget capacity marker */}

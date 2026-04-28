@@ -1,9 +1,9 @@
 import { useState } from "react";
+import { useSettings } from "../context/SettingsContext";
 
 import {
   BILL_FREQUENCIES,
   PAYMENT_METHODS,
-  formatAmount,
   initials,
   liveStatus,
   dueDateLabel,
@@ -83,7 +83,7 @@ function StatusBadge({ status }) {
 
 // ── Bill Row ──────────────────────────────────────────────────────────────────
 
-function BillRow({ bill, catCfg, onTogglePaid, onEdit, onDelete }) {
+function BillRow({ bill, catCfg, onTogglePaid, onEdit, onDelete, fmt }) {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const status = liveStatus(bill);
   const dueLbl = dueDateLabel(bill);
@@ -218,7 +218,7 @@ function BillRow({ bill, catCfg, onTogglePaid, onEdit, onDelete }) {
             letterSpacing: "-0.3px",
           }}
         >
-          {formatAmount(bill.amount)}
+          {fmt(bill.amount)}
         </div>
         {bill.frequency !== "Monthly" && (
           <div
@@ -228,7 +228,7 @@ function BillRow({ bill, catCfg, onTogglePaid, onEdit, onDelete }) {
               marginTop: 1,
             }}
           >
-            {formatAmount(toMonthly(bill.amount, bill.frequency))}/mo
+            {fmt(toMonthly(bill.amount, bill.frequency))}/mo
           </div>
         )}
       </div>
@@ -326,6 +326,7 @@ function BillModal({
   onSave,
   onClose,
 }) {
+  const { currencySymbol } = useSettings();
   const canSave = form.name.trim() && +form.amount > 0 && form.dueDate;
 
   return (
@@ -384,7 +385,7 @@ function BillModal({
           }}
         >
           <div className="field-wrap">
-            <label className="field-label">Amount ($)</label>
+            <label className="field-label">Amount ({currencySymbol})</label>
             <input
               className="input"
               type="number"
@@ -561,7 +562,8 @@ export default function Bills() {
     handleConfirmPayment,
     closePayModal,
     billCategoryNames, // FIX #1
-    catCfg, // FIX #2
+    catCfg,            // FIX #2
+    formatAmount,      // currency-aware (from SettingsContext via useBills)
   } = useBills();
 
   if (loading) {
@@ -755,6 +757,7 @@ export default function Bills() {
               onTogglePaid={handleTogglePaid}
               onEdit={openEdit}
               onDelete={handleDelete}
+              fmt={formatAmount}
             />
           ))
         ) : (

@@ -100,7 +100,7 @@ const AXIS_STYLE = {
 
 // ── Chart config builders ─────────────────────────────────────────────────────
 
-export function getOverviewChartConfig(chartData) {
+export function getOverviewChartConfig(chartData, fmtK = formatAmountK) {
   return {
     type: "line",
     data: {
@@ -141,7 +141,7 @@ export function getOverviewChartConfig(chartData) {
           ...TOOLTIP_STYLE,
           callbacks: {
             label: (ctx) =>
-              ` ${ctx.dataset.label}: $${ctx.parsed.y.toLocaleString()}`,
+              ` ${ctx.dataset.label}: ${fmtK(ctx.parsed.y)}`,
           },
         },
       },
@@ -151,7 +151,7 @@ export function getOverviewChartConfig(chartData) {
           ...AXIS_STYLE.y,
           ticks: {
             ...AXIS_STYLE.y.ticks,
-            callback: (v) => "$" + (v / 1_000).toFixed(1) + "k",
+            callback: (v) => fmtK(v),
           },
         },
       },
@@ -167,7 +167,7 @@ export function getOverviewChartConfig(chartData) {
 //
 // A "Start" anchor point is prepended so the opening value is visible.
 
-export function getBalanceTrendConfig(chartData, projectedOpening) {
+export function getBalanceTrendConfig(chartData, projectedOpening, fmtK = formatAmountK) {
   if (!chartData?.labels?.length) return null;
 
   const labels = ["Start", ...chartData.labels];
@@ -240,10 +240,7 @@ export function getBalanceTrendConfig(chartData, projectedOpening) {
           ...TOOLTIP_STYLE,
           callbacks: {
             label: (ctx) =>
-              ` ${ctx.dataset.label}: $${ctx.parsed.y.toLocaleString("en-US", {
-                minimumFractionDigits: 2,
-                maximumFractionDigits: 2,
-              })}`,
+              ` ${ctx.dataset.label}: ${fmtK(ctx.parsed.y)}`,
           },
         },
       },
@@ -253,7 +250,7 @@ export function getBalanceTrendConfig(chartData, projectedOpening) {
           ...AXIS_STYLE.y,
           ticks: {
             ...AXIS_STYLE.y.ticks,
-            callback: (v) => "$" + (v / 1_000).toFixed(1) + "k",
+            callback: (v) => fmtK(v),
           },
         },
       },
@@ -357,6 +354,7 @@ export function useDashboard() {
   const {
     getAllCategoryConfig,
     formatAmount,
+    currencySymbol,
     displayName,
     bankBalance,
     bankBalanceDate,
@@ -364,6 +362,17 @@ export function useDashboard() {
     initialBalance,
     showBalanceGap,
   } = useSettings();
+
+  // Currency-aware compact formatter for chart ticks and tooltips.
+  // Built from the SettingsContext symbol so it respects the user's currency.
+  const formatAmountKCurrency = useCallback(
+    (n) => {
+      const abs = Math.abs(n);
+      if (abs >= 1_000) return currencySymbol + (abs / 1_000).toFixed(1) + "k";
+      return formatAmount(n);
+    },
+    [currencySymbol, formatAmount],
+  );
 
   const [kpiData, setKpiData] = useState(EMPTY_KPI);
   const [chartData, setChartData] = useState(EMPTY_CHART);
@@ -577,7 +586,7 @@ export function useDashboard() {
       chartOpening = Math.max(0, rawOpening);
     }
 
-    return getBalanceTrendConfig(chartData, chartOpening);
+    return getBalanceTrendConfig(chartData, chartOpening, formatAmountKCurrency);
   }, [
     IS_DEMO,
     period,
@@ -586,6 +595,7 @@ export function useDashboard() {
     projectedBankBalance,
     bankBalance,
     balanceAnchorApp,
+    formatAmountKCurrency,
   ]);
 
   const donutLegend = useMemo(() => {
@@ -595,8 +605,9 @@ export function useDashboard() {
   const overviewChartConfig = useMemo(() => {
     return getOverviewChartConfig(
       IS_DEMO ? DASHBOARD_CHART_DATA[period] : chartData,
+      formatAmountKCurrency,
     );
-  }, [chartData, period]);
+  }, [chartData, period, formatAmountKCurrency]);
 
   const donutChartConfig = useMemo(() => {
     return getDonutChartConfig(IS_DEMO ? DASHBOARD_DONUT : donutData);
@@ -638,6 +649,7 @@ export function useDashboard() {
     slowLoad,
     error,
     formatAmount,
+    formatAmountK: formatAmountKCurrency,
     // Bank balance reconciliation — only relevant for BalanceCard
     showBalanceGap: IS_DEMO ? false : (showBalanceGap ?? false),
     bankBalance: projectedBankBalance, // projected forward from anchor
