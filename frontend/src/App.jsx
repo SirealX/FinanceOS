@@ -9,6 +9,7 @@ import Savings from "./pages/Savings";
 import Alerts from "./pages/Alerts";
 import Settings from "./pages/Settings";
 import Login from "./pages/Login";
+import MonthEndReview from "./pages/MonthEndReview";
 
 import SetPassword from "./pages/SetPassword";
 import OnboardingWizard from "./components/OnboardingWizard";
@@ -136,6 +137,19 @@ const NAV_ITEMS_CONFIG = [
       </svg>
     ),
     component: <Savings />,
+  },
+  {
+    id: "review",
+    label: "Month Review",
+    icon: (
+      <svg className="nav-icon" viewBox="0 0 15 15">
+        <rect x="1.5" y="2" width="12" height="11" rx="1.5" />
+        <line x1="4.5" y1="5.5" x2="10.5" y2="5.5" strokeLinecap="round" />
+        <line x1="4.5" y1="8" x2="8" y2="8" strokeLinecap="round" />
+        <polyline points="7.5,10.5 9,9.5 10.5,10.5" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    ),
+    component: <MonthEndReview />,
   },
   {
     id: "alerts",

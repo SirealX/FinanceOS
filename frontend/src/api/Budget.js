@@ -278,15 +278,17 @@ export function useBudget() {
     const expenseCats = BUDGET_CATEGORY_DEFAULTS.map((c) => ({
       ...c,
       kind: "expense",
+      is_active: true,
+      is_variable: false,
     }));
     const incomeCats = [
-      { name: "Salary", color: "#10B981", planned: 4200, kind: "income" },
-      { name: "Side Income", color: "#10B981", planned: 500, kind: "income" },
-      { name: "Refund", color: "#38BDF8", planned: 0, kind: "income" },
-      { name: "Other Income", color: "#475569", planned: 0, kind: "income" },
+      { name: "Salary",      color: "#10B981", planned: 4200, kind: "income", is_active: true, is_variable: false },
+      { name: "Side Income", color: "#10B981", planned: 500,  kind: "income", is_active: true, is_variable: true  },
+      { name: "Refund",      color: "#38BDF8", planned: 0,    kind: "income", is_active: true, is_variable: true  },
+      { name: "Other Income",color: "#475569", planned: 0,    kind: "income", is_active: true, is_variable: true  },
     ];
     const savingsCats = [
-      { name: "Savings", color: "#A78BFA", planned: 300, kind: "savings" },
+      { name: "Savings", color: "#A78BFA", planned: 300, kind: "savings", is_active: true, is_variable: false },
     ];
     setAllCategories([...expenseCats, ...incomeCats, ...savingsCats]);
   }, []);
@@ -333,6 +335,8 @@ export function useBudget() {
   const mult = periodMultiplier(period);
 
   function buildRows(kind) {
+    // All categories of this kind, active and inactive (UI shows them all,
+    // but inactive ones are visually dimmed and excluded from totals).
     const cats = allCategories.filter((c) => c.kind === kind);
 
     if (IS_DEMO) {
@@ -387,12 +391,14 @@ export function useBudget() {
 
   // ── Stats per kind ────────────────────────────────────────────────────────
   function buildStats(rows, label) {
-    const totalPlanned = rows.reduce((s, r) => s + r.scaledPlanned, 0);
-    const totalActual = rows.reduce((s, r) => s + r.actual, 0);
-    const overCount = rows.filter(
+    // #3 — only active categories count toward budget totals
+    const active = rows.filter((r) => r.is_active !== false);
+    const totalPlanned = active.reduce((s, r) => s + r.scaledPlanned, 0);
+    const totalActual  = active.reduce((s, r) => s + r.actual, 0);
+    const overCount    = active.filter(
       (r) => r.scaledPlanned > 0 && r.actual > r.scaledPlanned,
     ).length;
-    const remaining = Math.max(totalPlanned - totalActual, 0);
+    const remaining  = Math.max(totalPlanned - totalActual, 0);
     const overallPct =
       totalPlanned > 0 ? Math.min((totalActual / totalPlanned) * 100, 100) : 0;
     return { totalPlanned, totalActual, overCount, remaining, overallPct };
@@ -446,7 +452,13 @@ export function useBudget() {
         );
         return prev.map((c) =>
           map[c.name]
-            ? { ...c, planned: map[c.name].planned, color: map[c.name].color }
+            ? {
+                ...c,
+                planned:     map[c.name].planned,
+                color:       map[c.name].color,
+                is_active:   map[c.name].is_active   ?? true,
+                is_variable: map[c.name].is_variable ?? false,
+              }
             : c,
         );
       });
@@ -458,11 +470,13 @@ export function useBudget() {
     setError(null);
     try {
       const payload = updatedCategories.map((c, i) => ({
-        name: c.name,
-        color: c.color,
-        planned: c.planned,
-        sort_order: i,
-        kind: c.kind,
+        name:        c.name,
+        color:       c.color,
+        planned:     c.planned,
+        sort_order:  i,
+        kind:        c.kind,
+        is_active:   c.is_active   ?? true,
+        is_variable: c.is_variable ?? false,
       }));
       const res = await updateBudgetCategories(payload);
       setAllCategories(res.data);

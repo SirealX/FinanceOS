@@ -62,7 +62,8 @@ function BudgetChart({ rows, config, fmtK }) {
 
 // ── Progress Row (single category) ───────────────────────────────────────────
 
-function ProgressRow({ name, color, scaledPlanned, actual, kind, fmt }) {
+function ProgressRow({ name, color, scaledPlanned, actual, kind, fmt, is_active }) {
+  const isActive = is_active !== false; // treat undefined as active
   const pct =
     scaledPlanned > 0 ? Math.min((actual / scaledPlanned) * 100, 100) : 0;
   const over = actual > scaledPlanned && scaledPlanned > 0;
@@ -74,7 +75,7 @@ function ProgressRow({ name, color, scaledPlanned, actual, kind, fmt }) {
     over && !isIncome ? "var(--color-danger)" : "var(--color-text-primary)";
 
   return (
-    <div style={{ marginBottom: 16 }}>
+    <div style={{ marginBottom: 16, opacity: isActive ? 1 : 0.4, transition: "opacity 0.2s" }}>
       <div
         style={{
           display: "flex",
@@ -97,17 +98,22 @@ function ProgressRow({ name, color, scaledPlanned, actual, kind, fmt }) {
           <span style={{ fontSize: 13, color: "var(--color-text-primary)" }}>
             {name}
           </span>
-          {over && !isIncome && (
+          {!isActive && (
+            <span className="badge badge-neutral" style={{ fontSize: 10 }}>
+              Inactive
+            </span>
+          )}
+          {isActive && over && !isIncome && (
             <span className="badge badge-expense" style={{ fontSize: 10 }}>
               Over budget
             </span>
           )}
-          {over && isIncome && (
+          {isActive && over && isIncome && (
             <span className="badge badge-income" style={{ fontSize: 10 }}>
               Exceeded target
             </span>
           )}
-          {actual === 0 && (
+          {isActive && actual === 0 && (
             <span className="badge badge-neutral" style={{ fontSize: 10 }}>
               No activity
             </span>
@@ -209,6 +215,14 @@ function BudgetModal({ allCategories, budgetTab, saving, onSave, onClose }) {
   function handleChange(i, val) {
     setDraft((prev) =>
       prev.map((c, idx) => (idx === i ? { ...c, _input: val } : c)),
+    );
+  }
+
+  function handleToggleActive(i) {
+    setDraft((prev) =>
+      prev.map((c, idx) =>
+        idx === i ? { ...c, is_active: !(c.is_active !== false) } : c,
+      ),
     );
   }
 
@@ -341,27 +355,63 @@ function BudgetModal({ allCategories, budgetTab, saving, onSave, onClose }) {
               >
                 {kindDraft.map((c) => {
                   const i = draft.indexOf(c);
+                  const isActive = c.is_active !== false;
                   return (
-                    <div key={c.name} className="field-wrap">
+                    <div
+                      key={c.name}
+                      className="field-wrap"
+                      style={{ opacity: isActive ? 1 : 0.5, transition: "opacity 0.2s" }}
+                    >
                       <label
                         className="field-label"
                         style={{
                           display: "flex",
                           alignItems: "center",
                           gap: 6,
+                          justifyContent: "space-between",
                         }}
                       >
-                        <span
+                        <span style={{ display: "flex", alignItems: "center", gap: 6, overflow: "hidden" }}>
+                          <span
+                            style={{
+                              width: 7,
+                              height: 7,
+                              borderRadius: "50%",
+                              background: c.color,
+                              display: "inline-block",
+                              flexShrink: 0,
+                            }}
+                          />
+                          <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                            {c.name}
+                          </span>
+                        </span>
+                        {/* Active / Inactive toggle */}
+                        <button
+                          type="button"
+                          title={isActive ? "Click to deactivate" : "Click to activate"}
+                          onClick={() => handleToggleActive(i)}
                           style={{
-                            width: 7,
-                            height: 7,
-                            borderRadius: "50%",
-                            background: c.color,
-                            display: "inline-block",
                             flexShrink: 0,
+                            fontSize: 9,
+                            fontWeight: 600,
+                            letterSpacing: "0.4px",
+                            textTransform: "uppercase",
+                            padding: "2px 6px",
+                            borderRadius: 4,
+                            border: "none",
+                            cursor: "pointer",
+                            background: isActive
+                              ? "rgba(16,185,129,0.15)"
+                              : "rgba(100,116,139,0.15)",
+                            color: isActive
+                              ? "var(--color-income)"
+                              : "var(--color-text-muted)",
+                            lineHeight: 1.6,
                           }}
-                        />
-                        {c.name}
+                        >
+                          {isActive ? "ON" : "OFF"}
+                        </button>
                       </label>
                       <div style={{ position: "relative" }}>
                         <span
@@ -386,7 +436,7 @@ function BudgetModal({ allCategories, budgetTab, saving, onSave, onClose }) {
                           value={c._input}
                           onChange={(e) => handleChange(i, e.target.value)}
                           style={{ paddingLeft: 22 }}
-                          disabled={c.system && kind === "savings"}
+                          disabled={(c.system && kind === "savings") || !isActive}
                         />
                       </div>
                     </div>

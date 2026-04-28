@@ -326,6 +326,12 @@ function DebtRow({ debt, onEdit, onDelete, onPay, fmt }) {
           >
             {fmt(debt.minPayment)}
           </div>
+          {/* #21 — due day */}
+          {debt.dueDay && (
+            <div style={{ fontSize: 10, color: "var(--color-text-muted)", marginTop: 2 }}>
+              due day {debt.dueDay}
+            </div>
+          )}
         </div>
 
         {/* Balance */}
@@ -607,6 +613,20 @@ function DebtModal({ form, isEditing, onChange, onSave, onClose }) {
               }
             />
           </div>
+        </div>
+
+        {/* Due day — optional, enables timely payment alerts */}
+        <div className="field-wrap" style={{ marginBottom: 20 }}>
+          <label className="field-label">Payment Due Day (optional)</label>
+          <input
+            className="input"
+            type="number"
+            min="1"
+            max="31"
+            placeholder="e.g. 15 (day of month)"
+            value={form.dueDay}
+            onChange={(e) => onChange({ ...form, dueDay: e.target.value })}
+          />
         </div>
 
         <div className="form-actions">

@@ -18,6 +18,7 @@ class DebtCreate(BaseModel):
     interest_rate: float
     min_payment: float
     priority_rank: Optional[int] = None
+    due_day: Optional[int] = None             # #21 — day of month payment is due
 
 
 class DebtUpdate(BaseModel):
@@ -27,6 +28,7 @@ class DebtUpdate(BaseModel):
     interest_rate: Optional[float] = None
     min_payment: Optional[float] = None
     priority_rank: Optional[int] = None
+    due_day: Optional[int] = None             # #21
 
 
 class DebtPaymentCreate(BaseModel):
@@ -57,6 +59,7 @@ def create_debt(
         interest_rate=data.interest_rate,
         min_payment=data.min_payment,
         priority_rank=data.priority_rank,
+        due_day=data.due_day,
     )
     db.add(debt)
     db.commit()

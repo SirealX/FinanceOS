@@ -89,6 +89,7 @@ class Debt(Base):
     interest_rate    = Column(Numeric(5, 2))
     min_payment      = Column(Numeric(10, 2))
     priority_rank    = Column(Integer)
+    due_day          = Column(Integer, nullable=True)  # day of month payment is due (1–31)
 
 
 class SavingsGoal(Base):
@@ -129,6 +130,10 @@ class Category(Base):
     system         = Column(Boolean, default=False)
     sort_order     = Column(Integer, default=0)
     planned_amount = Column(Numeric(10, 2), nullable=False, default=0)
+    # #3 — active/inactive toggle per category
+    is_active      = Column(Boolean, nullable=False, default=True)
+    # #16 — variable income flag (income kind only)
+    is_variable    = Column(Boolean, nullable=False, default=False)
 
 
 class Preferences(Base):
@@ -189,6 +194,39 @@ class Alert(Base):
     read_at         = Column(DateTime,    nullable=True)   # NULL = unread
     fired_immediate = Column(Boolean,     nullable=False, default=False)
     digest_date     = Column(Date,        nullable=True)   # date it was included in a digest
+
+
+class EarmarkedFund(Base):
+    """
+    #4 — Money reserved for a known future expense (envelope concept).
+    Does not count as income or expense — just reduces "Free to Spend".
+    """
+    __tablename__ = "earmarked_funds"
+    id         = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id    = Column(UUID(as_uuid=True), nullable=True, index=True)
+    name       = Column(String(100), nullable=False)
+    amount     = Column(Numeric(10, 2), nullable=False)
+    due_date   = Column(Date, nullable=True)
+    note       = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class RecurringTransaction(Base):
+    """
+    #22 — Template for transactions that repeat on a schedule.
+    The app creates a reminder (or auto-entry) on next_due each cycle.
+    """
+    __tablename__ = "recurring_transactions"
+    id          = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id     = Column(UUID(as_uuid=True), nullable=True, index=True)
+    description = Column(String(255), nullable=False)
+    amount      = Column(Numeric(10, 2), nullable=False)
+    category    = Column(String(100), nullable=True)
+    type        = Column(String(20), nullable=False)   # income | expense | savings | transfer
+    frequency   = Column(String(50), nullable=False)   # weekly | monthly | yearly
+    next_due    = Column(Date, nullable=False)
+    is_active   = Column(Boolean, nullable=False, default=True)
+    created_at  = Column(DateTime, default=datetime.utcnow)
 
 
 class AlertPreferences(Base):

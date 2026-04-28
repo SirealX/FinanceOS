@@ -654,6 +654,26 @@ export default function Bills() {
             {formatAmount(stats.paidTotal)} paid so far
           </div>
         </div>
+        {stats.sinkingFund > 0 && (
+          <div className="card card-compact" style={{ marginBottom: 0 }}>
+            <div className="kpi-label">Annual Sinking Fund</div>
+            <div
+              className="kpi-value"
+              style={{ color: "var(--color-savings)" }}
+            >
+              {formatAmount(stats.sinkingFund)}
+            </div>
+            <div
+              style={{
+                fontSize: 11,
+                color: "var(--color-text-muted)",
+                marginTop: 8,
+              }}
+            >
+              /mo to cover annual bills
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Zone 3 */}

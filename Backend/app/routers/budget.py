@@ -32,6 +32,8 @@ class CategoryIn(BaseModel):
     planned: float
     sort_order: int = 0
     kind: Optional[str] = "expense"
+    is_active: Optional[bool] = True    # #3 — active/inactive toggle
+    is_variable: Optional[bool] = False # #16 — variable income flag
 
 
 class BulkUpdateRequest(BaseModel):
@@ -62,12 +64,14 @@ def _period_bounds(period: str):
 
 def _serialize_cat(r: Category) -> dict:
     return {
-        "id":         str(r.id),
-        "name":       r.name,
-        "color":      r.color,
-        "kind":       r.kind,
-        "planned":    float(r.planned_amount),
-        "sort_order": r.sort_order,
+        "id":          str(r.id),
+        "name":        r.name,
+        "color":       r.color,
+        "kind":        r.kind,
+        "planned":     float(r.planned_amount),
+        "sort_order":  r.sort_order,
+        "is_active":   r.is_active if r.is_active is not None else True,
+        "is_variable": r.is_variable if r.is_variable is not None else False,
     }
 
 
@@ -145,6 +149,8 @@ def update_budget_categories(
             cat.planned_amount = cat_in.planned
             cat.color          = cat_in.color
             cat.sort_order     = i
+            cat.is_active      = cat_in.is_active if cat_in.is_active is not None else True
+            cat.is_variable    = cat_in.is_variable if cat_in.is_variable is not None else False
         else:
             # No user row yet — find the system template (if any) to inherit
             # color and system flag, then create a user-specific override.
@@ -163,6 +169,8 @@ def update_budget_categories(
                 planned_amount = cat_in.planned,
                 sort_order     = i,
                 system         = False,
+                is_active      = cat_in.is_active if cat_in.is_active is not None else True,
+                is_variable    = cat_in.is_variable if cat_in.is_variable is not None else False,
             )
             db.add(new_cat)
 

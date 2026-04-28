@@ -381,8 +381,10 @@ export function useDashboard() {
   const [recentTxRaw, setRecentTxRaw] = useState([]);
   const [savingsTotal, setSavingsTotal] = useState(null); // sum of goal current_amounts
   const [debtTotal, setDebtTotal] = useState(null); // sum of debt balances
+  const [debtMinTotal, setDebtMinTotal] = useState(null); // sum of min payments
   const [upcomingBills, setUpcomingBills] = useState([]); // unpaid bills due ≤ 30 days
   const [plannedIncome, setPlannedIncome] = useState(null); // sum of income budget planned
+  const [earmarkedTotal, setEarmarkedTotal] = useState(null); // #4 reserved funds total
   const [loading, setLoading] = useState(!IS_DEMO);
   const [slowLoad, setSlowLoad] = useState(false); // true when load takes >2.5 s
   const [error, setError] = useState(null);
@@ -413,21 +415,21 @@ export function useDashboard() {
         debtsRes,
         billsRes,
         incomeCatsRes,
+        earmarkedRes,
       ] = await Promise.all([
         client.get(`/summary?period=${p}`),
         client.get(`/cashflow?period=${p}`),
         client.get(`/expenses/breakdown?period=${p}`),
-        client.get(`/budget/actuals?period=${p}&kind=expense`), // FIX #5: expense only
+        client.get(`/budget/actuals?period=${p}&kind=expense`),
         client.get(
           `/transactions/?date_from=${_periodStart(activePeriod)}&date_to=${_periodEnd(activePeriod)}`,
         ),
-        client.get("/budget/categories?kind=expense"), // FIX #5 + #10: in parallel
-        client.get("/savings").catch(() => ({ data: [] })), // net worth component
-        client.get("/debts").catch(() => ({ data: [] })), // net worth component
-        client.get("/bills").catch(() => ({ data: [] })), // upcoming bills panel
-        client
-          .get("/budget/categories?kind=income")
-          .catch(() => ({ data: [] })), // planned income
+        client.get("/budget/categories?kind=expense"),
+        client.get("/savings").catch(() => ({ data: [] })),
+        client.get("/debts").catch(() => ({ data: [] })),
+        client.get("/bills").catch(() => ({ data: [] })),
+        client.get("/budget/categories?kind=income").catch(() => ({ data: [] })),
+        client.get("/earmarked/").catch(() => ({ data: [] })),   // #4
       ]);
 
       setKpiData(summaryRes.data);
@@ -464,8 +466,20 @@ export function useDashboard() {
         (acc, d) => acc + parseFloat(d.balance ?? 0),
         0,
       );
+      const dMinTotal = debtsRes.data.reduce(
+        (acc, d) => acc + parseFloat(d.min_payment ?? 0),
+        0,
+      );
       setSavingsTotal(sTotal);
       setDebtTotal(dTotal);
+      setDebtMinTotal(dMinTotal);
+
+      // #4 — earmarked reserved funds total
+      const eTotal = (earmarkedRes.data ?? []).reduce(
+        (acc, e) => acc + parseFloat(e.amount ?? 0),
+        0,
+      );
+      setEarmarkedTotal(eTotal);
 
       // Upcoming bills: unpaid bills due within the next 30 days
       const today30 = new Date();
@@ -614,14 +628,23 @@ export function useDashboard() {
   }, [donutData]);
 
   // ── Net worth ─────────────────────────────────────────────────────────────
-  // (bank_balance OR closing_balance) + savings_totals − debt_totals
-  // All three numbers live in separate tables; we just sum them here.
-  // null = still loading (hide the card until both fetches resolve).
   const netWorth = (() => {
-    if (IS_DEMO) return null; // hide in demo
+    if (IS_DEMO) return null;
     if (savingsTotal === null || debtTotal === null) return null;
     const liquidBase = projectedBankBalance ?? kpi.closingBalance ?? 0;
     return liquidBase + savingsTotal - debtTotal;
+  })();
+
+  // ── Free to Spend (#5) ────────────────────────────────────────────────────
+  // Projected bank balance minus upcoming unpaid bills minus earmarked funds.
+  // Only shown for "This Month" when we have a bank anchor (Mode A).
+  const freeToSpend = (() => {
+    if (IS_DEMO) return null;
+    const base = projectedBankBalance ?? kpi.closingBalance;
+    if (base === null || base === undefined) return null;
+    const billsSum = upcomingBills.reduce((s, b) => s + parseFloat(b.amount ?? 0), 0);
+    const earmarked = earmarkedTotal ?? 0;
+    return Math.max(0, base - billsSum - earmarked);
   })();
 
   return {
@@ -663,6 +686,12 @@ export function useDashboard() {
     upcomingBills: IS_DEMO ? [] : upcomingBills,
     // Planned income (for mid-month context on INCOME card)
     plannedIncome: IS_DEMO ? null : plannedIncome,
+    // #5 — Free to Spend
+    freeToSpend: IS_DEMO ? null : freeToSpend,
+    earmarkedTotal: IS_DEMO ? null : earmarkedTotal,
+    // #24 — holistic debt summary on dashboard
+    debtMinTotal: IS_DEMO ? null : debtMinTotal,
+    isDemo: IS_DEMO,
     goToBudget: () => navigate("budget"),
     goToTransactions: () => navigate("transactions"),
     goToSettings: () => navigate("settings"),

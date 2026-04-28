@@ -15,7 +15,7 @@
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import {
   Chart,
   LineElement,
@@ -30,6 +30,11 @@ import {
 } from "chart.js";
 
 import { useDashboard } from "../api/Dshboard";
+import {
+  getEarmarked,
+  createEarmarked,
+  deleteEarmarked,
+} from "../api/earmarked";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Chart.js registration — once at module level
@@ -565,6 +570,174 @@ function TxRow({ tx, fmt }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// EarmarkedPanel — reserved funds management (#4)
+// Self-contained: fetches and mutates via earmarked API directly.
+// ─────────────────────────────────────────────────────────────────────────────
+
+function EarmarkedPanel({ isDemo, fmt }) {
+  const [items, setItems]       = useState([]);
+  const [loading, setLoading]   = useState(!isDemo);
+  const [showForm, setShowForm] = useState(false);
+  const [saving, setSaving]     = useState(false);
+  const [form, setForm]         = useState({ name: "", amount: "", due_date: "", note: "" });
+
+  const load = useCallback(async () => {
+    if (isDemo) return;
+    try {
+      const res = await getEarmarked();
+      setItems(res.data ?? []);
+    } catch (_) { /* silently ignore */ }
+    finally { setLoading(false); }
+  }, [isDemo]);
+
+  useEffect(() => { load(); }, [load]);
+
+  async function handleAdd() {
+    if (!form.name.trim() || !form.amount) return;
+    setSaving(true);
+    try {
+      await createEarmarked({
+        name:     form.name.trim(),
+        amount:   parseFloat(form.amount),
+        due_date: form.due_date || null,
+        note:     form.note.trim() || null,
+      });
+      setForm({ name: "", amount: "", due_date: "", note: "" });
+      setShowForm(false);
+      await load();
+    } catch (_) { /* ignore */ }
+    finally { setSaving(false); }
+  }
+
+  async function handleDelete(id) {
+    try {
+      await deleteEarmarked(id);
+      setItems((prev) => prev.filter((x) => x.id !== id));
+    } catch (_) { /* ignore */ }
+  }
+
+  const total = items.reduce((s, x) => s + parseFloat(x.amount ?? 0), 0);
+
+  if (isDemo) return null; // earmarked is live-only
+
+  return (
+    <div className="card" style={{ marginBottom: 12 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <h2 className="section-header" style={{ margin: 0 }}>Reserved Funds</h2>
+          {items.length > 0 && <span className="count-badge">{items.length}</span>}
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          {total > 0 && (
+            <span style={{ fontSize: 13, fontWeight: 600, color: "var(--color-expense)" }}>
+              {fmt(total)} reserved
+            </span>
+          )}
+          <button className="btn-primary" style={{ fontSize: 12, padding: "5px 12px" }} onClick={() => setShowForm((v) => !v)}>
+            {showForm ? "Cancel" : "+ Add"}
+          </button>
+        </div>
+      </div>
+
+      {/* Inline add form */}
+      {showForm && (
+        <div
+          style={{
+            background: "var(--color-bg-input)",
+            border: "0.5px solid rgba(255,255,255,0.08)",
+            borderRadius: 8,
+            padding: "12px 14px",
+            marginBottom: 12,
+            display: "grid",
+            gridTemplateColumns: "1fr 1fr",
+            gap: 8,
+          }}
+        >
+          <div className="field-wrap" style={{ marginBottom: 0 }}>
+            <label className="field-label">Name</label>
+            <input className="input" placeholder="e.g. Emergency buffer" value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} />
+          </div>
+          <div className="field-wrap" style={{ marginBottom: 0 }}>
+            <label className="field-label">Amount</label>
+            <input className="input" type="number" min="0" step="1" placeholder="0" value={form.amount} onChange={(e) => setForm((f) => ({ ...f, amount: e.target.value }))} />
+          </div>
+          <div className="field-wrap" style={{ marginBottom: 0 }}>
+            <label className="field-label">Due Date (optional)</label>
+            <input className="input" type="date" value={form.due_date} onChange={(e) => setForm((f) => ({ ...f, due_date: e.target.value }))} />
+          </div>
+          <div className="field-wrap" style={{ marginBottom: 0 }}>
+            <label className="field-label">Note (optional)</label>
+            <input className="input" placeholder="e.g. Car repair fund" value={form.note} onChange={(e) => setForm((f) => ({ ...f, note: e.target.value }))} />
+          </div>
+          <div style={{ gridColumn: "1 / -1", display: "flex", justifyContent: "flex-end" }}>
+            <button className="btn-primary" style={{ fontSize: 12 }} onClick={handleAdd} disabled={saving || !form.name.trim() || !form.amount}>
+              {saving ? "Saving…" : "Save"}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Items list */}
+      {loading ? (
+        <div className="skeleton" style={{ height: 40, borderRadius: 8 }} />
+      ) : items.length === 0 ? (
+        <p style={{ fontSize: 12, color: "var(--color-text-muted)", margin: 0, textAlign: "center", padding: "12px 0" }}>
+          No reserved funds. Add one to track money earmarked for a specific purpose.
+        </p>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {items.map((item) => (
+            <div
+              key={item.id}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                padding: "8px 10px",
+                background: "var(--color-bg-input)",
+                borderRadius: 8,
+                border: "0.5px solid rgba(255,255,255,0.06)",
+              }}
+            >
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 500, color: "var(--color-text-primary)" }}>{item.name}</div>
+                {(item.due_date || item.note) && (
+                  <div style={{ fontSize: 11, color: "var(--color-text-muted)", marginTop: 2 }}>
+                    {item.due_date ? `Due ${item.due_date}` : ""}
+                    {item.due_date && item.note ? " · " : ""}
+                    {item.note ?? ""}
+                  </div>
+                )}
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                <span style={{ fontSize: 14, fontWeight: 600, color: "var(--color-expense)" }}>
+                  {fmt(parseFloat(item.amount))}
+                </span>
+                <button
+                  onClick={() => handleDelete(item.id)}
+                  style={{
+                    background: "none",
+                    border: "none",
+                    cursor: "pointer",
+                    color: "var(--color-text-muted)",
+                    fontSize: 15,
+                    lineHeight: 1,
+                    padding: "2px 4px",
+                  }}
+                  title="Remove"
+                >
+                  ×
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Dashboard — default export
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -594,6 +767,10 @@ export default function Dashboard() {
     netWorthDebts,
     upcomingBills,
     plannedIncome,
+    freeToSpend,
+    earmarkedTotal,
+    debtMinTotal,
+    isDemo,
     goToBudget,
     goToTransactions,
     goToSettings,
@@ -1029,6 +1206,76 @@ export default function Dashboard() {
           </div>
         </div>
       )}
+
+      {/* ══ ZONE 2e: Free to Spend (#5) + Debt summary (#24) ══ */}
+      {(freeToSpend !== null || debtMinTotal !== null) && (
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: freeToSpend !== null && debtMinTotal !== null ? "1fr 1fr" : "1fr",
+            gap: 12,
+            marginBottom: 12,
+          }}
+        >
+          {/* Free to Spend */}
+          {freeToSpend !== null && (
+            <div
+              className="card card-compact"
+              style={{
+                marginBottom: 0,
+                background: freeToSpend > 0 ? "rgba(16,185,129,0.05)" : "rgba(239,68,68,0.05)",
+                border: freeToSpend > 0 ? "0.5px solid rgba(16,185,129,0.18)" : "0.5px solid rgba(239,68,68,0.18)",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                <span style={{ fontSize: 15 }}>💵</span>
+                <span className="kpi-label" style={{ margin: 0 }}>FREE TO SPEND</span>
+              </div>
+              <div
+                style={{
+                  fontSize: 22,
+                  fontWeight: 700,
+                  letterSpacing: "-0.5px",
+                  color: freeToSpend > 0 ? "var(--color-income)" : "var(--color-danger)",
+                }}
+              >
+                {formatAmount(freeToSpend)}
+              </div>
+              <div style={{ fontSize: 11, color: "var(--color-text-muted)", marginTop: 6, lineHeight: 1.5 }}>
+                balance
+                {upcomingBills.length > 0 && ` − ${formatAmount(upcomingBills.reduce((s, b) => s + parseFloat(b.amount), 0))} bills`}
+                {earmarkedTotal > 0 && ` − ${formatAmount(earmarkedTotal)} reserved`}
+              </div>
+            </div>
+          )}
+
+          {/* Debt summary */}
+          {debtMinTotal !== null && debtMinTotal > 0 && netWorthDebts > 0 && (
+            <div className="card card-compact" style={{ marginBottom: 0 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                <span style={{ fontSize: 15 }}>💳</span>
+                <span className="kpi-label" style={{ margin: 0 }}>DEBT SUMMARY</span>
+              </div>
+              <div
+                style={{
+                  fontSize: 22,
+                  fontWeight: 700,
+                  letterSpacing: "-0.5px",
+                  color: "var(--color-expense)",
+                }}
+              >
+                {formatAmount(netWorthDebts)}
+              </div>
+              <div style={{ fontSize: 11, color: "var(--color-text-muted)", marginTop: 6, lineHeight: 1.5 }}>
+                {formatAmount(debtMinTotal)}/mo in minimum payments
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ══ ZONE 2f: Reserved Funds (Earmarked) ══ */}
+      <EarmarkedPanel isDemo={isDemo} fmt={formatAmount} />
 
       {/* ══ ZONE 3a: Cash Flow + Expense Donut ══ */}
       <div className="grid-chart-secondary" style={{ marginBottom: 12 }}>

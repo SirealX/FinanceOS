@@ -30,6 +30,7 @@ export const BLANK_FORM = {
   originalBalance: "",
   apr: "",
   minPayment: "",
+  dueDay: "",   // #21 — day of month payment is due (1–31, blank = not set)
 };
 
 let _id = 10;
@@ -179,12 +180,14 @@ function normalizeDebt(raw) {
     apr: parseFloat(raw.interest_rate),
     minPayment: parseFloat(raw.min_payment),
     priority: raw.priority_rank ?? 1,
+    dueDay:   raw.due_day ?? null,   // #21
   };
 }
 
 function buildPayload(form, existingDebt) {
   const bal     = parseFloat(form.balance);
   const origBal = parseFloat(form.originalBalance);
+  const dueDay  = parseInt(form.dueDay, 10);
   return {
     name:             form.name.trim(),
     balance:          bal,
@@ -194,6 +197,7 @@ function buildPayload(form, existingDebt) {
     interest_rate:    parseFloat(form.apr) || 0,
     min_payment:      parseFloat(form.minPayment),
     priority_rank:    existingDebt ? existingDebt.priority : 999,
+    due_day:          !isNaN(dueDay) && dueDay >= 1 && dueDay <= 31 ? dueDay : null,  // #21
   };
 }
 
@@ -297,6 +301,7 @@ export function useDebts() {
       originalBalance: String(debt.originalBalance),
       apr: String(debt.apr),
       minPayment: String(debt.minPayment),
+      dueDay: debt.dueDay != null ? String(debt.dueDay) : "",  // #21
     });
     setShowModal(true);
   }
@@ -310,6 +315,7 @@ export function useDebts() {
     const origBal = parseFloat(form.originalBalance) || bal;
 
     if (IS_DEMO) {
+      const parsedDay = parseInt(form.dueDay, 10);
       const entry = {
         id: editingDebt ? editingDebt.id : uid(),
         name: form.name.trim(),
@@ -319,6 +325,7 @@ export function useDebts() {
         apr: parseFloat(form.apr) || 0,
         minPayment: parseFloat(form.minPayment),
         priority: editingDebt ? editingDebt.priority : debts.length + 1,
+        dueDay: !isNaN(parsedDay) && parsedDay >= 1 && parsedDay <= 31 ? parsedDay : null,
       };
       if (editingDebt) {
         setDebts((prev) =>

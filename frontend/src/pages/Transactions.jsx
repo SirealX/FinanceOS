@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect, useCallback } from "react";
 
 import {
   PERIOD_OPTIONS,
@@ -9,6 +9,14 @@ import {
   initials,
   useTransactions,
 } from "../api/Transaction";
+
+import {
+  getRecurring,
+  createRecurring,
+  updateRecurring,
+  deleteRecurring,
+  logRecurring,
+} from "../api/recurring";
 
 import ImportWizard from "./ImportWizard";
 import ExportModal from "../components/ExportModal";
@@ -69,22 +77,28 @@ function TxRow({
   const cfg = getCategoryConfig(tx.category);
   const isIncome = tx.type === "income";
   const isSavings = tx.type === "savings";
+  const isTransfer = tx.type === "transfer";  // #15
   const isDeleting = deletingId === tx.id;
   const isDraft = tx.isDraft;
 
   // FIX #8: Purple tint only on savings that are STILL drafts.
   // Once payment method is confirmed (isDraft=false), savings rows look normal.
+  // Transfers get a subtle cyan tint so they stand out as neutral movements.
   const savingsDraft = isSavings && isDraft;
-  const rowBorderColor = savingsDraft
-    ? "rgba(167,139,250,0.5)"
-    : isDraft
-      ? "rgba(239,68,68,0.6)"
-      : "transparent";
-  const rowBg = savingsDraft
-    ? "rgba(167,139,250,0.04)"
-    : isDraft
-      ? "rgba(239,68,68,0.03)"
-      : undefined;
+  const rowBorderColor = isTransfer
+    ? "rgba(56,189,248,0.4)"
+    : savingsDraft
+      ? "rgba(167,139,250,0.5)"
+      : isDraft
+        ? "rgba(239,68,68,0.6)"
+        : "transparent";
+  const rowBg = isTransfer
+    ? "rgba(56,189,248,0.03)"
+    : savingsDraft
+      ? "rgba(167,139,250,0.04)"
+      : isDraft
+        ? "rgba(239,68,68,0.03)"
+        : undefined;
 
   return (
     <div
@@ -92,7 +106,7 @@ function TxRow({
       style={{
         gap: 12,
         borderLeft: `2px solid ${rowBorderColor}`,
-        paddingLeft: savingsDraft || isDraft ? 8 : undefined,
+        paddingLeft: isTransfer || savingsDraft || isDraft ? 8 : undefined,
         background: rowBg,
       }}
     >
@@ -108,7 +122,20 @@ function TxRow({
       <div className="tx-col-desc">
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
           <span className="tx-name">{tx.description}</span>
-          {isDraft && !isSavings && (
+          {/* #15 — Transfer badge */}
+          {isTransfer && (
+            <span
+              className="badge"
+              style={{
+                background: "rgba(56,189,248,0.12)",
+                color: "#38BDF8",
+                fontSize: 10,
+              }}
+            >
+              Transfer
+            </span>
+          )}
+          {isDraft && !isSavings && !isTransfer && (
             <span
               className="badge"
               style={{
@@ -164,7 +191,13 @@ function TxRow({
       >
         <span
           className="cat-dot"
-          style={{ background: isSavings ? "var(--color-savings)" : cfg.color }}
+          style={{
+            background: isTransfer
+              ? "#38BDF8"
+              : isSavings
+                ? "var(--color-savings)"
+                : cfg.color,
+          }}
         />
         <span style={{ fontSize: 12, color: "var(--color-text-secondary)" }}>
           {tx.category}
@@ -175,18 +208,51 @@ function TxRow({
 
       <div className="tx-col-type">
         <span
-          className={`badge ${isIncome ? "badge-income" : isSavings ? "badge-savings" : "badge-expense"}`}
+          className={`badge ${
+            isIncome
+              ? "badge-income"
+              : isSavings
+                ? "badge-savings"
+                : isTransfer
+                  ? ""
+                  : "badge-expense"
+          }`}
+          style={
+            isTransfer
+              ? { background: "rgba(56,189,248,0.12)", color: "#38BDF8" }
+              : undefined
+          }
         >
-          {isIncome ? "Income" : isSavings ? "Savings" : "Expense"}
+          {isIncome
+            ? "Income"
+            : isSavings
+              ? "Savings"
+              : isTransfer
+                ? "Transfer"
+                : "Expense"}
         </span>
       </div>
 
       <div className="tx-col-amount">
         <span
-          className={`tx-amount ${isIncome ? "income" : isSavings ? "savings" : "expense"}`}
-          style={isSavings ? { color: "var(--color-savings)" } : undefined}
+          className={`tx-amount ${
+            isIncome
+              ? "income"
+              : isSavings
+                ? "savings"
+                : isTransfer
+                  ? ""
+                  : "expense"
+          }`}
+          style={
+            isSavings
+              ? { color: "var(--color-savings)" }
+              : isTransfer
+                ? { color: "#38BDF8" }
+                : undefined
+          }
         >
-          {isIncome ? "+" : "−"}
+          {isIncome ? "+" : isTransfer ? "↔ " : "−"}
           {fmt(tx.amount)}
         </span>
       </div>
@@ -522,6 +588,7 @@ function TxModal({
             >
               <option value="expense">Expense</option>
               <option value="income">Income</option>
+              <option value="transfer">Transfer</option>
               {isSavings && <option value="savings">Savings</option>}
             </select>
           </div>
@@ -608,6 +675,241 @@ function TxModal({
   );
 }
 
+// ── Recurring Transactions Panel (#22) ───────────────────────────────────────
+// Self-contained component — fetches and manages recurring transaction templates.
+// "Log Now" creates a real transaction and advances next_due via the backend.
+
+const RECUR_FREQ = ["monthly", "weekly", "yearly", "daily"];
+const RECUR_TYPES = ["expense", "income", "transfer"];
+const BLANK_RECUR = { description: "", amount: "", type: "expense", category: "", frequency: "monthly", next_due: "" };
+
+function RecurringPanel({ isDemo, categoryGroups }) {
+  const [items, setItems]       = useState([]);
+  const [loading, setLoading]   = useState(!isDemo);
+  const [showModal, setShowModal] = useState(false);
+  const [editingRec, setEditingRec] = useState(null);
+  const [form, setForm]           = useState(BLANK_RECUR);
+  const [saving, setSaving]       = useState(false);
+  const [logging, setLogging]     = useState(null); // id being logged
+
+  const load = useCallback(async () => {
+    if (isDemo) return;
+    try {
+      const res = await getRecurring();
+      setItems(res.data ?? []);
+    } catch (_) { /* ignore */ }
+    finally { setLoading(false); }
+  }, [isDemo]);
+
+  useEffect(() => { load(); }, [load]);
+
+  function openAdd() {
+    setEditingRec(null);
+    setForm(BLANK_RECUR);
+    setShowModal(true);
+  }
+  function openEdit(item) {
+    setEditingRec(item);
+    setForm({
+      description: item.description,
+      amount:      String(item.amount),
+      type:        item.type,
+      category:    item.category ?? "",
+      frequency:   item.frequency,
+      next_due:    item.next_due ?? "",
+    });
+    setShowModal(true);
+  }
+  function closeModal() { setShowModal(false); setEditingRec(null); }
+
+  async function handleSave() {
+    if (!form.description.trim() || !form.amount) return;
+    setSaving(true);
+    const payload = {
+      description: form.description.trim(),
+      amount:      parseFloat(form.amount),
+      type:        form.type,
+      category:    form.category.trim() || form.description.trim(),
+      frequency:   form.frequency,
+      next_due:    form.next_due || null,
+      is_active:   true,
+    };
+    try {
+      if (editingRec) {
+        await updateRecurring(editingRec.id, payload);
+      } else {
+        await createRecurring(payload);
+      }
+      await load();
+      closeModal();
+    } catch (_) { /* ignore */ }
+    finally { setSaving(false); }
+  }
+
+  async function handleDelete(id) {
+    try {
+      await deleteRecurring(id);
+      setItems((prev) => prev.filter((x) => x.id !== id));
+    } catch (_) { /* ignore */ }
+  }
+
+  async function handleLog(item) {
+    setLogging(item.id);
+    try {
+      await logRecurring(item.id);
+      await load(); // refresh next_due
+    } catch (_) { /* ignore */ }
+    finally { setLogging(null); }
+  }
+
+  if (isDemo) return null;
+
+  return (
+    <>
+      <div className="card" style={{ marginTop: 12 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <h2 className="section-header" style={{ margin: 0 }}>Recurring</h2>
+            {items.length > 0 && <span className="count-badge">{items.length}</span>}
+          </div>
+          <button className="btn-primary" style={{ fontSize: 12, padding: "5px 12px" }} onClick={openAdd}>
+            + Add Template
+          </button>
+        </div>
+
+        {loading ? (
+          <div className="skeleton" style={{ height: 48, borderRadius: 8 }} />
+        ) : items.length === 0 ? (
+          <p style={{ fontSize: 12, color: "var(--color-text-muted)", margin: 0, textAlign: "center", padding: "12px 0" }}>
+            No recurring templates yet. Add one to quickly log regular transactions.
+          </p>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            {items.map((item) => {
+              const isExp = item.type === "expense";
+              const isInc = item.type === "income";
+              const amtColor = isInc ? "var(--color-income)" : isExp ? "var(--color-expense)" : "#38BDF8";
+              return (
+                <div
+                  key={item.id}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    padding: "8px 12px",
+                    background: "var(--color-bg-input)",
+                    borderRadius: 8,
+                    border: "0.5px solid rgba(255,255,255,0.06)",
+                    gap: 10,
+                  }}
+                >
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 13, fontWeight: 500, color: "var(--color-text-primary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {item.description}
+                    </div>
+                    <div style={{ fontSize: 11, color: "var(--color-text-muted)", marginTop: 2 }}>
+                      {item.frequency} · {item.category}
+                      {item.next_due ? ` · next ${item.next_due}` : ""}
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
+                    <span style={{ fontSize: 14, fontWeight: 600, color: amtColor }}>
+                      {isInc ? "+" : isExp ? "−" : "↔ "}{fmt(item.amount)}
+                    </span>
+                    <button
+                      className="btn-primary"
+                      style={{ fontSize: 11, padding: "4px 10px" }}
+                      onClick={() => handleLog(item)}
+                      disabled={logging === item.id}
+                      title="Log this transaction now"
+                    >
+                      {logging === item.id ? "…" : "Log"}
+                    </button>
+                    <button
+                      style={{ background: "none", border: "none", cursor: "pointer", color: "var(--color-text-muted)", fontSize: 13, padding: "2px 4px" }}
+                      onClick={() => openEdit(item)}
+                      title="Edit"
+                    >
+                      ✎
+                    </button>
+                    <button
+                      style={{ background: "none", border: "none", cursor: "pointer", color: "var(--color-text-muted)", fontSize: 15, padding: "2px 4px" }}
+                      onClick={() => handleDelete(item.id)}
+                      title="Delete"
+                    >
+                      ×
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* Add/Edit Modal */}
+      {showModal && (
+        <div
+          style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50 }}
+          onClick={(e) => e.target === e.currentTarget && closeModal()}
+        >
+          <div className="card" style={{ width: 440, maxWidth: "calc(100vw - 40px)", margin: 0, maxHeight: "90vh", overflowY: "auto" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+              <h2 className="section-header" style={{ margin: 0 }}>{editingRec ? "Edit Template" : "New Recurring Template"}</h2>
+              <button className="btn-danger" onClick={closeModal} style={{ fontSize: 18, lineHeight: 1, padding: "2px 6px" }}>×</button>
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              <div className="field-wrap">
+                <label className="field-label">Description</label>
+                <input className="input" placeholder="e.g. Netflix subscription" value={form.description} onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))} />
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                <div className="field-wrap" style={{ marginBottom: 0 }}>
+                  <label className="field-label">Amount</label>
+                  <input className="input" type="number" min="0" step="0.01" placeholder="0.00" value={form.amount} onChange={(e) => setForm((f) => ({ ...f, amount: e.target.value }))} />
+                </div>
+                <div className="field-wrap" style={{ marginBottom: 0 }}>
+                  <label className="field-label">Type</label>
+                  <select className="input" value={form.type} onChange={(e) => setForm((f) => ({ ...f, type: e.target.value }))}>
+                    {RECUR_TYPES.map((t) => <option key={t} value={t}>{t.charAt(0).toUpperCase() + t.slice(1)}</option>)}
+                  </select>
+                </div>
+                <div className="field-wrap" style={{ marginBottom: 0 }}>
+                  <label className="field-label">Frequency</label>
+                  <select className="input" value={form.frequency} onChange={(e) => setForm((f) => ({ ...f, frequency: e.target.value }))}>
+                    {RECUR_FREQ.map((f) => <option key={f} value={f}>{f.charAt(0).toUpperCase() + f.slice(1)}</option>)}
+                  </select>
+                </div>
+                <div className="field-wrap" style={{ marginBottom: 0 }}>
+                  <label className="field-label">Next Due</label>
+                  <input className="input" type="date" value={form.next_due} onChange={(e) => setForm((f) => ({ ...f, next_due: e.target.value }))} />
+                </div>
+              </div>
+              <div className="field-wrap">
+                <label className="field-label">Category (optional)</label>
+                <select className="input" value={form.category} onChange={(e) => setForm((f) => ({ ...f, category: e.target.value }))}>
+                  <option value="">— same as description —</option>
+                  {categoryGroups.map((g) => (
+                    <optgroup key={g.header} label={g.header}>
+                      {g.options.map((name) => <option key={name} value={name}>{name}</option>)}
+                    </optgroup>
+                  ))}
+                </select>
+              </div>
+              <div className="form-actions">
+                <button className="btn-primary" onClick={handleSave} disabled={saving || !form.description.trim() || !form.amount}>
+                  {saving ? "Saving…" : editingRec ? "Update" : "Create"}
+                </button>
+                <button className="btn-secondary" onClick={closeModal} disabled={saving}>Cancel</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
 // ── Transactions View — default export ────────────────────────────────────────
 
 export default function Transactions() {
@@ -644,6 +946,7 @@ export default function Transactions() {
     categoryGroups,
     filterCategories,
     getCategoryConfig, // FIX (colors): live color lookup
+    isDemo,
   } = useTransactions();
 
   const [showImport, setShowImport] = useState(false);
@@ -691,7 +994,7 @@ export default function Transactions() {
       {/* ── Zone 2: Filter Pills — now includes Savings ── */}
       <div className="pill-group-row">
         <div className="pill-group">
-          {["All", "Income", "Expense", "Savings"].map((f) => (
+          {["All", "Income", "Expense", "Savings", "Transfer"].map((f) => (
             <button
               key={f}
               className={`pill${typeFilter === f ? " active" : ""}`}
@@ -941,6 +1244,9 @@ export default function Transactions() {
 
       {/* ── Export Modal ── */}
       {showExport && <ExportModal onClose={() => setShowExport(false)} />}
+
+      {/* ── Recurring Transactions (#22) ── */}
+      <RecurringPanel isDemo={isDemo} categoryGroups={categoryGroups} />
     </>
   );
 }

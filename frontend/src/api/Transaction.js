@@ -54,6 +54,11 @@ const KIND_LABELS = {
 const KIND_ORDER = ["expense", "income"];
 
 export function buildCategoryGroups(allCategories, type) {
+  // #15 — Transfers use a fixed placeholder category; no budget categories apply.
+  if (type === "transfer") {
+    return [{ header: "── Transfer ──────────────", options: ["Transfer"] }];
+  }
+
   const allowed = type === "income" ? ["income"] : ["expense"];
 
   const grouped = {};
@@ -236,9 +241,10 @@ export function useTransactions() {
   const _searchLower = searchQuery.trim().toLowerCase();
   const filtered = transactions
     .filter((tx) => {
-      if (typeFilter === "Income") return tx.type === "income";
-      if (typeFilter === "Expense") return tx.type === "expense";
-      if (typeFilter === "Savings") return tx.type === "savings";
+      if (typeFilter === "Income")   return tx.type === "income";
+      if (typeFilter === "Expense")  return tx.type === "expense";
+      if (typeFilter === "Savings")  return tx.type === "savings";
+      if (typeFilter === "Transfer") return tx.type === "transfer";  // #15
       return true;
     })
     .filter((tx) => inPeriod(tx.date, periodFilter))

@@ -2,7 +2,7 @@ import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.routers import transactions, bills, summary, debts, savings, budget, preferences, categories, alerts
-from app.routers import import_router, export, jwks
+from app.routers import import_router, export, jwks, earmarked, recurring
 from app.alert_scheduler import scheduler_router
 from dotenv import load_dotenv
 
@@ -51,6 +51,8 @@ app.include_router(categories.router)   # FIX: was imported but never registered
 app.include_router(preferences.router)  # FIX: was imported but never registered
 app.include_router(import_router.router)
 app.include_router(export.router)
+app.include_router(earmarked.router)   # #4
+app.include_router(recurring.router)   # #22
 app.include_router(scheduler_router)
 app.include_router(jwks.router)          # FAPI 2.0 — public JWKS for Bancolombia
 

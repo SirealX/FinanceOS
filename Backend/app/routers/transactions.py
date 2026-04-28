@@ -97,6 +97,8 @@ def get_transactions(
     return result
 
 
+ALLOWED_MANUAL_TYPES = {"income", "expense", "transfer"}
+
 @router.post("/", status_code=201)
 def create_transaction(
     data: TransactionCreate,
@@ -107,6 +109,11 @@ def create_transaction(
         raise HTTPException(
             status_code=400,
             detail="Savings transactions can only be created from the Savings tab.",
+        )
+    if data.type not in ALLOWED_MANUAL_TYPES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid type '{data.type}'. Must be one of: {', '.join(ALLOWED_MANUAL_TYPES)}.",
         )
     tx = Transaction(**data.dict(), source="manual", user_id=current_user)
     db.add(tx)
