@@ -25,3 +25,6 @@ python-multipart==0.0.9
 
 # XLSX parsing — required by file_parser.py for bank statement imports
 openpyxl==3.1.5
+
+# Date arithmetic — required by recurring.py (/log endpoint advances next_due)
+python-dateutil==2.9.0.post0
