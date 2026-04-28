@@ -430,7 +430,7 @@ export function useDashboard() {
       const actualsMap = Object.fromEntries(
         actualsRes.data.map((a) => [a.category, a.spent]),
       );
-      //const mult = activePeriod === "Last 3 Months" ? 3 : 1;
+      const mult = activePeriod === "Last 3 Months" ? 3 : 1;
 
       setBudgetRows(
         budgetCats.map((c) => ({
@@ -475,7 +475,6 @@ export function useDashboard() {
       setUpcomingBills(upcoming);
 
       // Planned income total from income budget categories
-      const mult = activePeriod === "Last 3 Months" ? 3 : 1;
       const pIncome = (incomeCatsRes.data ?? []).reduce(
         (s, c) => s + (parseFloat(c.planned) || 0) * mult,
         0,
