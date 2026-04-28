@@ -170,18 +170,18 @@ export function getOverviewChartConfig(chartData) {
 export function getBalanceTrendConfig(chartData, projectedOpening) {
   if (!chartData?.labels?.length) return null;
 
-  const labels    = ["Start", ...chartData.labels];
-  const balLine   = [Math.max(0, projectedOpening)];
+  const labels = ["Start", ...chartData.labels];
+  const balLine = [Math.max(0, projectedOpening)];
   const spentLine = [0];
 
-  let running      = projectedOpening;
-  let spent        = 0;
-  let incomeAccum  = 0;
+  let running = projectedOpening;
+  let spent = 0;
+  let incomeAccum = 0;
 
   for (let i = 0; i < chartData.income.length; i++) {
     incomeAccum += chartData.income[i];
-    running     += chartData.income[i] - chartData.expenses[i];
-    spent       += chartData.expenses[i];
+    running += chartData.income[i] - chartData.expenses[i];
+    spent += chartData.expenses[i];
 
     // Balance can never go below zero — in real life you can't hold a negative
     // bank balance without a loan/overdraft which would itself be an income entry.
@@ -190,7 +190,7 @@ export function getBalanceTrendConfig(chartData, projectedOpening) {
     // Spending can never exceed what was actually available to spend:
     // everything you started with plus every dollar of income received so far.
     const availableToSpend = Math.max(0, projectedOpening) + incomeAccum;
-    const safeSpent        = Math.min(spent, availableToSpend);
+    const safeSpent = Math.min(spent, availableToSpend);
 
     balLine.push(safeBalance);
     spentLine.push(safeSpent);
@@ -355,8 +355,14 @@ export function useDashboard() {
   const [period, setPeriod] = useState("This Month");
   const navigate = useNav();
   const {
-    getAllCategoryConfig, formatAmount, displayName,
-    bankBalance, bankBalanceDate, balanceAnchorApp, initialBalance, showBalanceGap,
+    getAllCategoryConfig,
+    formatAmount,
+    displayName,
+    bankBalance,
+    bankBalanceDate,
+    balanceAnchorApp,
+    initialBalance,
+    showBalanceGap,
   } = useSettings();
 
   const [kpiData, setKpiData] = useState(EMPTY_KPI);
@@ -364,12 +370,12 @@ export function useDashboard() {
   const [donutData, setDonutData] = useState(EMPTY_DONUT);
   const [budgetRows, setBudgetRows] = useState([]);
   const [recentTxRaw, setRecentTxRaw] = useState([]);
-  const [savingsTotal, setSavingsTotal] = useState(null);  // sum of goal current_amounts
-  const [debtTotal, setDebtTotal]       = useState(null);  // sum of debt balances
-  const [upcomingBills, setUpcomingBills] = useState([]);  // unpaid bills due ≤ 30 days
+  const [savingsTotal, setSavingsTotal] = useState(null); // sum of goal current_amounts
+  const [debtTotal, setDebtTotal] = useState(null); // sum of debt balances
+  const [upcomingBills, setUpcomingBills] = useState([]); // unpaid bills due ≤ 30 days
   const [plannedIncome, setPlannedIncome] = useState(null); // sum of income budget planned
   const [loading, setLoading] = useState(!IS_DEMO);
-  const [slowLoad, setSlowLoad] = useState(false);  // true when load takes >2.5 s
+  const [slowLoad, setSlowLoad] = useState(false); // true when load takes >2.5 s
   const [error, setError] = useState(null);
 
   // ── FIX #10: All API calls in a single Promise.all ─────────────────────────
@@ -407,10 +413,12 @@ export function useDashboard() {
           `/transactions/?date_from=${_periodStart(activePeriod)}&date_to=${_periodEnd(activePeriod)}`,
         ),
         client.get("/budget/categories?kind=expense"), // FIX #5 + #10: in parallel
-        client.get("/savings").catch(() => ({ data: [] })),  // net worth component
-        client.get("/debts").catch(() => ({ data: [] })),    // net worth component
-        client.get("/bills").catch(() => ({ data: [] })),                 // upcoming bills panel
-        client.get("/budget/categories?kind=income").catch(() => ({ data: [] })), // planned income
+        client.get("/savings").catch(() => ({ data: [] })), // net worth component
+        client.get("/debts").catch(() => ({ data: [] })), // net worth component
+        client.get("/bills").catch(() => ({ data: [] })), // upcoming bills panel
+        client
+          .get("/budget/categories?kind=income")
+          .catch(() => ({ data: [] })), // planned income
       ]);
 
       setKpiData(summaryRes.data);
@@ -422,7 +430,7 @@ export function useDashboard() {
       const actualsMap = Object.fromEntries(
         actualsRes.data.map((a) => [a.category, a.spent]),
       );
-      const mult = activePeriod === "Last 3 Months" ? 3 : 1;
+      //const mult = activePeriod === "Last 3 Months" ? 3 : 1;
 
       setBudgetRows(
         budgetCats.map((c) => ({
@@ -440,10 +448,12 @@ export function useDashboard() {
 
       // Net worth components
       const sTotal = savingsRes.data.reduce(
-        (acc, g) => acc + parseFloat(g.current_amount ?? 0), 0,
+        (acc, g) => acc + parseFloat(g.current_amount ?? 0),
+        0,
       );
       const dTotal = debtsRes.data.reduce(
-        (acc, d) => acc + parseFloat(d.balance ?? 0), 0,
+        (acc, d) => acc + parseFloat(d.balance ?? 0),
+        0,
       );
       setSavingsTotal(sTotal);
       setDebtTotal(dTotal);
@@ -467,7 +477,8 @@ export function useDashboard() {
       // Planned income total from income budget categories
       const mult = activePeriod === "Last 3 Months" ? 3 : 1;
       const pIncome = (incomeCatsRes.data ?? []).reduce(
-        (s, c) => s + (parseFloat(c.planned) || 0) * mult, 0,
+        (s, c) => s + (parseFloat(c.planned) || 0) * mult,
+        0,
       );
       setPlannedIncome(pIncome);
     } catch (err) {
@@ -502,7 +513,7 @@ export function useDashboard() {
         netBalance: kpiData.net_balance,
         // liquidNet: income − expenses (savings not subtracted).
         // Saving money should not look like losing money on the balance card.
-        liquidNet: kpiData.liquid_net ?? (kpiData.income - kpiData.expenses),
+        liquidNet: kpiData.liquid_net ?? kpiData.income - kpiData.expenses,
         openingBalance: kpiData.opening_balance ?? 0,
         closingBalance: kpiData.closing_balance ?? kpiData.net_balance,
         income: kpiData.income,
@@ -529,7 +540,7 @@ export function useDashboard() {
   // without the user having to re-enter their balance.
   const projectedBankBalance = (() => {
     if (IS_DEMO || bankBalance === null) return null;
-    if (period !== "This Month") return null;   // anchor is present-day only
+    if (period !== "This Month") return null; // anchor is present-day only
     if (balanceAnchorApp === null) return bankBalance;
     const currentClosing = kpiData.closing_balance ?? 0;
     return bankBalance + (currentClosing - balanceAnchorApp);
@@ -544,7 +555,7 @@ export function useDashboard() {
 
     const rawOpening = kpiData.opening_balance ?? 0;
     const rawClosing = kpiData.closing_balance ?? 0;
-    const monthNet   = rawClosing - rawOpening;
+    const monthNet = rawClosing - rawOpening;
 
     let chartOpening;
 
@@ -552,7 +563,6 @@ export function useDashboard() {
       // This Month + bank balance set: derive projected opening from projected
       // closing so the chart starts from real money, not tracked-only figures.
       chartOpening = projectedBankBalance - monthNet;
-
     } else if (bankBalance !== null && balanceAnchorApp !== null) {
       // Last Month (projectedBankBalance is null for past periods): the historical
       // gap between the app's tracking and the real bank is a constant offset —
@@ -561,7 +571,6 @@ export function useDashboard() {
       //   offset = bankBalance − balanceAnchorApp
       //   projectedLastMonthOpening = rawOpening + offset
       chartOpening = rawOpening + (bankBalance - balanceAnchorApp);
-
     } else {
       // No anchor at all — use raw opening but clamp to 0 so the chart at least
       // starts at a non-negative value (avoids the spending-above-balance absurdity
@@ -570,7 +579,15 @@ export function useDashboard() {
     }
 
     return getBalanceTrendConfig(chartData, chartOpening);
-  }, [IS_DEMO, period, chartData, kpiData, projectedBankBalance, bankBalance, balanceAnchorApp]);
+  }, [
+    IS_DEMO,
+    period,
+    chartData,
+    kpiData,
+    projectedBankBalance,
+    bankBalance,
+    balanceAnchorApp,
+  ]);
 
   const donutLegend = useMemo(() => {
     return buildDonutLegend(IS_DEMO ? DASHBOARD_DONUT : donutData);
@@ -591,7 +608,7 @@ export function useDashboard() {
   // All three numbers live in separate tables; we just sum them here.
   // null = still loading (hide the card until both fetches resolve).
   const netWorth = (() => {
-    if (IS_DEMO) return null;                              // hide in demo
+    if (IS_DEMO) return null; // hide in demo
     if (savingsTotal === null || debtTotal === null) return null;
     const liquidBase = projectedBankBalance ?? kpi.closingBalance ?? 0;
     return liquidBase + savingsTotal - debtTotal;
@@ -623,14 +640,14 @@ export function useDashboard() {
     error,
     formatAmount,
     // Bank balance reconciliation — only relevant for BalanceCard
-    showBalanceGap:        IS_DEMO ? false : (showBalanceGap   ?? false),
-    bankBalance:           projectedBankBalance,   // projected forward from anchor
-    bankBalanceDate:       IS_DEMO ? null  : (bankBalanceDate  ?? null),
-    initialBalance:        IS_DEMO ? null  : (initialBalance   ?? null),
+    showBalanceGap: IS_DEMO ? false : (showBalanceGap ?? false),
+    bankBalance: projectedBankBalance, // projected forward from anchor
+    bankBalanceDate: IS_DEMO ? null : (bankBalanceDate ?? null),
+    initialBalance: IS_DEMO ? null : (initialBalance ?? null),
     // Net worth breakdown
     netWorth,
     netWorthSavings: savingsTotal,
-    netWorthDebts:   debtTotal,
+    netWorthDebts: debtTotal,
     // Upcoming bills
     upcomingBills: IS_DEMO ? [] : upcomingBills,
     // Planned income (for mid-month context on INCOME card)
