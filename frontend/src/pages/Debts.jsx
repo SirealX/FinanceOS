@@ -643,6 +643,7 @@ function DebtModal({ form, isEditing, onChange, onSave, onClose }) {
 }
 // Add PaymentModal component
 function PaymentModal({ debt, onSave, onClose }) {
+  const { formatAmount } = useSettings();
   const [amount, setAmount] = useState(String(debt.minPayment));
   const [method, setMethod] = useState("Bank Transfer");
   const canSave = +amount > 0;
