@@ -136,10 +136,24 @@ export function remaining(goal) {
  *   color          — CSS var appropriate to urgency
  *
  * Pure function — no side-effects, no network calls.
+ *
+ * @param {object}   goal — normalized savings goal ({ current, target, deadline })
+ * @param {function} fmt  — optional currency-aware formatter, e.g. formatAmount from
+ *                          SettingsContext.  Defaults to a basic USD formatter so the
+ *                          function remains callable without a React context (tests,
+ *                          storybooks, etc.).  Always pass fmt in real UI code so the
+ *                          label respects the user's chosen currency.
  */
-export function goalStatus(goal) {
-  const rem       = remaining(goal);
-  const days      = daysLeft(goal.deadline);
+export function goalStatus(goal, fmt) {
+  // Fall back to a basic formatter only when no currency-aware one is provided.
+  // In practice every call-site inside the app should pass formatAmount from
+  // SettingsContext so the symbol and decimal places are correct for the currency.
+  const fmtAmount = fmt ?? ((n) =>
+    "$" + Math.round(n).toLocaleString("en-US")
+  );
+
+  const rem        = remaining(goal);
+  const days       = daysLeft(goal.deadline);
   const monthsLeft = days / 30.44;
 
   if (goal.current >= goal.target) {
@@ -179,7 +193,7 @@ export function goalStatus(goal) {
   return {
     monthlyNeeded,
     monthsLeft,
-    label: `$${monthlyNeeded.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}/mo needed · ${urgencyNote}`,
+    label: `${fmtAmount(monthlyNeeded)}/mo needed · ${urgencyNote}`,
     color,
   };
 }

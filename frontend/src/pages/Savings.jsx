@@ -15,7 +15,6 @@
 import { useState } from "react";
 
 import {
-  formatAmount,
   pct,
   deadlineLabel,
   remaining,
@@ -23,6 +22,9 @@ import {
   SAVINGS_EMOJI_PRESETS,
   useSavings,
 } from "../api/Saving";
+// NOTE: formatAmount is NOT imported from Saving.js here.
+// It is destructured from useSavings() (which sources it from SettingsContext)
+// so it respects the user's chosen currency symbol and decimal format.
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Icons
@@ -104,14 +106,15 @@ function IconClock({ color }) {
 // GoalCard
 // ─────────────────────────────────────────────────────────────────────────────
 
-function GoalCard({ goal, onEdit, onDelete, onAddFunds }) {
+function GoalCard({ goal, onEdit, onDelete, onAddFunds, fmt }) {
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   const isComplete = goal.current >= goal.target;
   const progress = pct(goal.current, goal.target);
   const dl = deadlineLabel(goal.deadline, isComplete);
   const barColor = isComplete ? "var(--color-income)" : "var(--color-savings)";
-  const status = goalStatus(goal);
+  // Pass the currency-aware formatter so the on-track label uses the right symbol
+  const status = goalStatus(goal, fmt);
 
   return (
     <div
@@ -252,7 +255,7 @@ function GoalCard({ goal, onEdit, onDelete, onAddFunds }) {
           marginBottom: 2,
         }}
       >
-        {formatAmount(goal.current)}
+        {fmt(goal.current)}
       </div>
       <div
         style={{
@@ -261,7 +264,7 @@ function GoalCard({ goal, onEdit, onDelete, onAddFunds }) {
           marginBottom: 14,
         }}
       >
-        of {formatAmount(goal.target)} goal
+        of {fmt(goal.target)} goal
       </div>
 
       {/* Progress bar */}
@@ -290,7 +293,7 @@ function GoalCard({ goal, onEdit, onDelete, onAddFunds }) {
         </span>
         {!isComplete && (
           <span style={{ fontSize: 11, color: "var(--color-text-muted)" }}>
-            {formatAmount(remaining(goal))} to go
+            {fmt(remaining(goal))} to go
           </span>
         )}
       </div>
@@ -511,7 +514,7 @@ function GoalModal({ form, isEditing, onChange, onSave, onClose }) {
 // FundsModal — log a contribution toward a goal
 // ─────────────────────────────────────────────────────────────────────────────
 
-function FundsModal({ goal, form, onChange, onSave, onClose }) {
+function FundsModal({ goal, form, onChange, onSave, onClose, fmt }) {
   const canSave = +form.amount > 0;
   const after = goal.current + (+form.amount || 0);
   const willComplete = after >= goal.target;
@@ -584,10 +587,10 @@ function FundsModal({ goal, form, onChange, onSave, onClose }) {
             }}
           >
             <span style={{ color: "var(--color-text-muted)" }}>
-              {formatAmount(goal.current)} saved
+              {fmt(goal.current)} saved
             </span>
             <span style={{ color: "var(--color-text-muted)" }}>
-              {formatAmount(goal.target)} goal
+              {fmt(goal.target)} goal
             </span>
           </div>
           <div className="progress-track goal">
@@ -615,7 +618,7 @@ function FundsModal({ goal, form, onChange, onSave, onClose }) {
             >
               {willComplete
                 ? "🎉 This contribution completes your goal!"
-                : `${formatAmount(after)} after deposit · ${pct(after, goal.target).toFixed(1)}%`}
+                : `${fmt(after)} after deposit · ${pct(after, goal.target).toFixed(1)}%`}
             </div>
           )}
         </div>
@@ -685,6 +688,7 @@ export default function Savings() {
     openFunds,
     closeFunds,
     handleSaveFunds,
+    formatAmount, // currency-aware formatter from SettingsContext (via useSavings)
   } = useSavings();
 
   if (loading) {
@@ -797,6 +801,7 @@ export default function Savings() {
               onEdit={openEdit}
               onDelete={handleDeleteGoal}
               onAddFunds={openFunds}
+              fmt={formatAmount}
             />
           ))}
         </div>
@@ -835,6 +840,7 @@ export default function Savings() {
           onChange={setFundsForm}
           onSave={handleSaveFunds}
           onClose={closeFunds}
+          fmt={formatAmount}
         />
       )}
     </>
