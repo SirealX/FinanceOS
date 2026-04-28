@@ -11,6 +11,7 @@ import Settings from "./pages/Settings";
 import Login from "./pages/Login";
 
 import SetPassword from "./pages/SetPassword";
+import OnboardingWizard from "./components/OnboardingWizard";
 
 import { NavProvider } from "./context/NavContext";
 import { SettingsProvider, useSettings } from "./context/SettingsContext";
@@ -262,8 +263,40 @@ function WelcomeModal() {
 
 function AppShell() {
   const { user, isDemo, signOut } = useAuth();
-  const { displayName, loading: prefsLoading } = useSettings();
+  const {
+    displayName,
+    initialBalance,
+    bankBalance,
+    loading: prefsLoading,
+  } = useSettings();
   const [activeId, setActiveId] = useState("dashboard");
+
+  // ── Onboarding wizard: one-time flag ────────────────────────────────────────
+  // We track whether the wizard should be shown using a piece of local state
+  // that is set ONCE when preferences finish loading. This prevents the wizard
+  // from unmounting mid-flow when step 1 saves initialBalance and SettingsContext
+  // re-renders with a non-null value.
+  //
+  // Trigger condition: user has a name (past WelcomeModal) but has never set a
+  // starting balance and has no bank-balance anchor.
+  const [onboardingActive, setOnboardingActive] = useState(false);
+  const onboardingInitialised = useRef(false);
+
+  useEffect(() => {
+    if (
+      isDemo ||
+      prefsLoading ||
+      onboardingInitialised.current
+    ) return;
+    onboardingInitialised.current = true;
+    if (
+      displayName !== null &&
+      initialBalance === null &&
+      bankBalance === null
+    ) {
+      setOnboardingActive(true);
+    }
+  }, [isDemo, prefsLoading, displayName, initialBalance, bankBalance]);
   const [draftCount, setDraftCount] = useState(0);
   const [alertCount, setAlertCount] = useState(0);
   const consecutiveFailures = useRef(0);
@@ -284,7 +317,9 @@ function AppShell() {
         role: "Personal",
       };
 
-  // Show the welcome modal when the user is logged in (not demo) and has no name yet
+  // Show the welcome modal when the user is logged in (not demo) and has no name yet.
+  // The onboarding wizard appears on the NEXT render after the name is saved, so
+  // the two modals are mutually exclusive.
   const showWelcome = !isDemo && !prefsLoading && displayName === null;
 
   async function fetchDraftCount() {
@@ -354,6 +389,10 @@ function AppShell() {
   return (
     <NavProvider onNavigate={handleNavigate}>
       {showWelcome && <WelcomeModal />}
+      {/* Onboarding wizard: only shown after WelcomeModal is dismissed */}
+      {!showWelcome && onboardingActive && (
+        <OnboardingWizard onComplete={() => setOnboardingActive(false)} />
+      )}
       <div className="app-shell">
         {/* ── Sidebar ── */}
         <aside className="app-sidebar">

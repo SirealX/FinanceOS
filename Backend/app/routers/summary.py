@@ -11,7 +11,7 @@ from typing import List
 import calendar
 
 from ..database import get_db
-from ..models import Transaction
+from ..models import Transaction, Preferences
 from ..dependencies import get_current_user
 
 router = APIRouter(tags=["summary"])
@@ -179,16 +179,22 @@ def get_summary(
 
     net_balance  = income - expenses - savings
     # liquid_net: cash flow this period excluding savings contributions.
-    # Savings are still YOUR money (in a goal), so this separates "spent"
-    # from "earmarked for a goal" — prevents saving from looking like losing.
     liquid_net   = income - expenses
     # savings_rate: % of income deliberately directed to savings goals.
-    # Old formula (income-expenses)/income measured "unspent income", not
-    # intentional saving. New formula counts only savings-type transactions.
     savings_rate = round((savings / income * 100), 1) if income > 0 else 0.0
 
+    # ── Initial balance offset ────────────────────────────────────────────────
+    # initial_balance is the user's account balance when they started tracking.
+    # It is only applied in Mode B (no bank anchor) — in Mode A the projected
+    # bank balance already captures reality, so adding initial_balance again
+    # would shift the projection incorrectly for existing anchored users.
+    prefs = db.query(Preferences).filter(Preferences.user_id == current_user).first()
+    initial_balance = float(prefs.initial_balance or 0) if prefs else 0.0
+    has_anchor      = prefs is not None and prefs.balance_anchor_app is not None
+    balance_offset  = initial_balance if not has_anchor else 0.0
+
     # ── Carry-over balances ────────────────────────────────────────────────────
-    opening_balance = _net_from_totals(open_totals)
+    opening_balance = _net_from_totals(open_totals) + balance_offset
     closing_balance = opening_balance + net_balance
 
     prev_income   = prev_totals.get("income",  0.0)
@@ -197,7 +203,7 @@ def get_summary(
     prev_net      = prev_income - prev_expenses - prev_savings
     prev_rate     = round((prev_savings / prev_income * 100), 1) if prev_income > 0 else 0.0
 
-    prev_opening = _net_from_totals(prev_open_totals)
+    prev_opening = _net_from_totals(prev_open_totals) + balance_offset
     prev_closing = prev_opening + prev_net
 
 

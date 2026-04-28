@@ -743,7 +743,13 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* ══ ZONE 2c: Balance anchor nudge (shown only when bank balance not set) ══ */}
+      {/* ══ ZONE 2c: Balance nudge ══
+          Two variants depending on how much setup the user has done:
+          A) initialBalance AND bankBalance both null → "no starting point set"
+             (Fix #1: most important nudge — without this, opening balance is $0)
+          B) initialBalance is set but bankBalance is null → "anchor to real bank"
+             (existing nudge — user is tracking but not verified against real account)
+      */}
       {bankBalance === null && period === "This Month" && (
         <div
           style={{
@@ -753,28 +759,58 @@ export default function Dashboard() {
             gap: 12,
             padding: "10px 16px",
             borderRadius: 10,
-            background: "rgba(99,102,241,0.07)",
-            border: "0.5px solid rgba(99,102,241,0.22)",
+            background: initialBalance === null
+              ? "rgba(245,158,11,0.07)"
+              : "rgba(99,102,241,0.07)",
+            border: initialBalance === null
+              ? "0.5px solid rgba(245,158,11,0.28)"
+              : "0.5px solid rgba(99,102,241,0.22)",
             marginBottom: 12,
           }}
         >
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <span style={{ fontSize: 15, flexShrink: 0 }}>🏦</span>
-            <span style={{ fontSize: 13, color: "var(--color-text-secondary)", lineHeight: 1.45 }}>
-              Your balance is based on tracked transactions only and may not match your real bank account.{" "}
-              <strong style={{ fontWeight: 500, color: "var(--color-text-primary)" }}>
-                Add your current bank balance in Settings
-              </strong>{" "}
-              to anchor the numbers to reality.
-            </span>
-          </div>
-          <button
-            className="btn-ghost"
-            style={{ fontSize: 12, flexShrink: 0, whiteSpace: "nowrap" }}
-            onClick={goToSettings}
-          >
-            Go to Settings →
-          </button>
+          {initialBalance === null ? (
+            /* ── Variant A: No starting balance at all ── */
+            <>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <span style={{ fontSize: 15, flexShrink: 0 }}>⚠️</span>
+                <span style={{ fontSize: 13, color: "var(--color-text-secondary)", lineHeight: 1.45 }}>
+                  No starting balance has been set — your opening balance is $0.{" "}
+                  <strong style={{ fontWeight: 500, color: "var(--color-text-primary)" }}>
+                    Add your actual account balance in Settings
+                  </strong>{" "}
+                  so the numbers reflect reality from day one.
+                </span>
+              </div>
+              <button
+                className="btn-ghost"
+                style={{ fontSize: 12, flexShrink: 0, whiteSpace: "nowrap" }}
+                onClick={goToSettings}
+              >
+                Set balance →
+              </button>
+            </>
+          ) : (
+            /* ── Variant B: Initial balance set, bank anchor missing ── */
+            <>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <span style={{ fontSize: 15, flexShrink: 0 }}>🏦</span>
+                <span style={{ fontSize: 13, color: "var(--color-text-secondary)", lineHeight: 1.45 }}>
+                  Your balance is based on tracked transactions only and may not match your real bank account.{" "}
+                  <strong style={{ fontWeight: 500, color: "var(--color-text-primary)" }}>
+                    Add your current bank balance in Settings
+                  </strong>{" "}
+                  to anchor the numbers to reality.
+                </span>
+              </div>
+              <button
+                className="btn-ghost"
+                style={{ fontSize: 12, flexShrink: 0, whiteSpace: "nowrap" }}
+                onClick={goToSettings}
+              >
+                Go to Settings →
+              </button>
+            </>
+          )}
         </div>
       )}
 
