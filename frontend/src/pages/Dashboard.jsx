@@ -128,11 +128,22 @@ function KpiCard({ label, value, delta, colorClass, icon, accent, subtitle }) {
 // savingsAmt = savings-type transactions this period
 // ─────────────────────────────────────────────────────────────────────────────
 
-function BalanceCard({ opening, closing, delta, icon, bankBalance, bankBalanceDate, liquidNet, savingsAmt, fmtAmount, fmtSigned }) {
-  const monthChange  = closing - opening;
-  const isUp         = delta.dir === "up";
-  const hasBankData  = bankBalance !== null && bankBalance !== undefined;
-  const hasSavings   = savingsAmt > 0;
+function BalanceCard({
+  opening,
+  closing,
+  delta,
+  icon,
+  bankBalance,
+  bankBalanceDate,
+  liquidNet,
+  savingsAmt,
+  fmtAmount,
+  fmtSigned,
+}) {
+  const monthChange = closing - opening;
+  const isUp = delta.dir === "up";
+  const hasBankData = bankBalance !== null && bankBalance !== undefined;
+  const hasSavings = savingsAmt > 0;
 
   // When a real bank balance is available, derive the projected opening so that
   // "start of month" reflects actual money, not just tracked transactions.
@@ -141,32 +152,66 @@ function BalanceCard({ opening, closing, delta, icon, bankBalance, bankBalanceDa
   // Accent tint: green if the headline number is positive, red otherwise
   const headlinePositive = hasBankData ? bankBalance >= 0 : opening >= 0;
   const accentStyle = headlinePositive
-    ? { background: "rgba(16,185,129,0.07)", border: "0.5px solid rgba(16,185,129,0.18)" }
-    : { background: "rgba(239,68,68,0.07)",  border: "0.5px solid rgba(239,68,68,0.18)"  };
+    ? {
+        background: "rgba(16,185,129,0.07)",
+        border: "0.5px solid rgba(16,185,129,0.18)",
+      }
+    : {
+        background: "rgba(239,68,68,0.07)",
+        border: "0.5px solid rgba(239,68,68,0.18)",
+      };
 
   // fmt / fmtAbs are passed in from the parent which sources them from SettingsContext,
   // so they respect the user's chosen currency symbol and decimal places.
-  const fmt    = fmtSigned;  // signed: "+€1,234.56" / "−€1,234.56"
-  const fmtAbs = fmtAmount;  // unsigned: "€1,234.56"
+  const fmt = fmtSigned; // signed: "+€1,234.56" / "−€1,234.56"
+  const fmtAbs = fmtAmount; // unsigned: "€1,234.56"
 
   // Format the bank balance date as "Apr 24"
   const bankDateLabel = bankBalanceDate
-    ? new Date(bankBalanceDate + "T00:00:00").toLocaleString("en-US", { month: "short", day: "numeric" })
+    ? new Date(bankBalanceDate + "T00:00:00").toLocaleString("en-US", {
+        month: "short",
+        day: "numeric",
+      })
     : null;
 
   const divider = (
-    <div style={{ height: "0.5px", background: "rgba(255,255,255,0.08)", margin: "10px 0 8px" }} />
+    <div
+      style={{
+        height: "0.5px",
+        background: "rgba(255,255,255,0.08)",
+        margin: "10px 0 8px",
+      }}
+    />
   );
 
   const smallRow = (label, value, isPositive, suffix) => (
-    <div style={{ fontSize: 12, display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+    <div
+      style={{
+        fontSize: 12,
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "center",
+        marginBottom: 4,
+      }}
+    >
       <span style={{ color: "var(--color-text-muted)" }}>{label}</span>
       <span>
-        <span style={{ fontWeight: 600, color: isPositive ? "var(--color-income)" : "var(--color-expense)" }}>
+        <span
+          style={{
+            fontWeight: 600,
+            color: isPositive ? "var(--color-income)" : "var(--color-expense)",
+          }}
+        >
           {fmt(value)}
         </span>
         {suffix && (
-          <span style={{ marginLeft: 6, color: "var(--color-text-muted)", fontSize: 11 }}>
+          <span
+            style={{
+              marginLeft: 6,
+              color: "var(--color-text-muted)",
+              fontSize: 11,
+            }}
+          >
             {suffix}
           </span>
         )}
@@ -176,31 +221,69 @@ function BalanceCard({ opening, closing, delta, icon, bankBalance, bankBalanceDa
 
   // Savings row — always green, labelled clearly so saving feels like a win
   const savingsRow = hasSavings ? (
-    <div style={{ fontSize: 12, display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+    <div
+      style={{
+        fontSize: 12,
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "center",
+        marginBottom: 4,
+      }}
+    >
       <span style={{ color: "var(--color-text-muted)" }}>saved to goals</span>
       <span style={{ fontWeight: 600, color: "var(--color-income)" }}>
         +{fmtAbs(savingsAmt)}
-        <span style={{ marginLeft: 6, color: "var(--color-text-muted)", fontSize: 11 }}>earmarked ✓</span>
+        <span
+          style={{
+            marginLeft: 6,
+            color: "var(--color-text-muted)",
+            fontSize: 11,
+          }}
+        >
+          earmarked ✓
+        </span>
       </span>
     </div>
   ) : null;
 
   return (
-    <div className="card card-compact" style={{ marginBottom: 0, ...accentStyle }}>
+    <div
+      className="card card-compact"
+      style={{ marginBottom: 0, ...accentStyle }}
+    >
       {/* Header row */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 }}>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "flex-start",
+          marginBottom: 10,
+        }}
+      >
         <span className="kpi-label">BALANCE</span>
-        <span style={{ color: "var(--color-text-hint)", opacity: 0.6 }}>{icon}</span>
+        <span style={{ color: "var(--color-text-hint)", opacity: 0.6 }}>
+          {icon}
+        </span>
       </div>
 
       {hasBankData ? (
         <>
           {/* ── Mode A: bank balance as headline ── */}
-          <div className={`kpi-value ${bankBalance >= 0 ? "income" : "expense"}`}>
+          <div
+            className={`kpi-value ${bankBalance >= 0 ? "income" : "expense"}`}
+          >
             {fmt(bankBalance)}
           </div>
-          <div style={{ fontSize: 11, color: "var(--color-text-muted)", marginTop: 4 }}>
-            {bankDateLabel ? `as of ${bankDateLabel} · current bank balance` : "current bank balance"}
+          <div
+            style={{
+              fontSize: 11,
+              color: "var(--color-text-muted)",
+              marginTop: 4,
+            }}
+          >
+            {bankDateLabel
+              ? `as of ${bankDateLabel} · current bank balance`
+              : "current bank balance"}
           </div>
 
           {divider}
@@ -209,7 +292,9 @@ function BalanceCard({ opening, closing, delta, icon, bankBalance, bankBalanceDa
             "start of month",
             projectedOpening,
             projectedOpening >= 0,
-            projectedOpening >= 0 ? "you started this month ahead" : "you started this month in the red",
+            projectedOpening >= 0
+              ? "you started this month ahead"
+              : "you started this month in the red",
           )}
           {smallRow(
             "cash flow",
@@ -225,8 +310,16 @@ function BalanceCard({ opening, closing, delta, icon, bankBalance, bankBalanceDa
           <div className={`kpi-value ${opening >= 0 ? "income" : "expense"}`}>
             {fmt(opening)}
           </div>
-          <div style={{ fontSize: 11, color: "var(--color-text-muted)", marginTop: 4 }}>
-            {opening >= 0 ? "you started this month ahead" : "you started this month in the red"}
+          <div
+            style={{
+              fontSize: 11,
+              color: "var(--color-text-muted)",
+              marginTop: 4,
+            }}
+          >
+            {opening >= 0
+              ? "you started this month ahead"
+              : "you started this month in the red"}
           </div>
 
           {divider}
@@ -324,7 +417,7 @@ function OverviewChart({ config }) {
 
 function BalanceTrendChart({ config }) {
   const canvasRef = useRef(null);
-  const chartRef  = useRef(null);
+  const chartRef = useRef(null);
 
   useEffect(() => {
     if (!canvasRef.current || !config) return;
@@ -504,8 +597,8 @@ export default function Dashboard() {
     goToBudget,
     goToTransactions,
     goToSettings,
-    formatAmount,    // currency-aware (from SettingsContext via useDashboard)
-    formatAmountK,   // currency-aware compact version
+    formatAmount, // currency-aware (from SettingsContext via useDashboard)
+    formatAmountK, // currency-aware compact version
   } = useDashboard();
 
   // Signed formatter: "+€1,234.56" / "−€1,234.56"
@@ -620,7 +713,7 @@ export default function Dashboard() {
             icon={<NetBalanceIcon />}
             bankBalance={bankBalance}
             bankBalanceDate={bankBalanceDate}
-            liquidNet={kpi.liquidNet ?? (kpi.income - kpi.expenses)}
+            liquidNet={kpi.liquidNet ?? kpi.income - kpi.expenses}
             savingsAmt={kpi.savingsAmount ?? 0}
             fmtAmount={formatAmount}
             fmtSigned={fmtSigned}
@@ -649,9 +742,11 @@ export default function Dashboard() {
           subtitle={(() => {
             if (kpi.income <= 0) return "no income recorded yet";
             const pct = Math.round((kpi.expenses / kpi.income) * 100);
-            if (pct > 100) return `${pct}% of income — spending exceeds earnings`;
-            if (pct >= 90)  return `${pct}% of income — very little left over`;
-            if (pct >= 75)  return `${pct}% of income — leaving ${100 - pct}% for saving`;
+            if (pct > 100)
+              return `${pct}% of income — spending exceeds earnings`;
+            if (pct >= 90) return `${pct}% of income — very little left over`;
+            if (pct >= 75)
+              return `${pct}% of income — leaving ${100 - pct}% for saving`;
             return `${pct}% of income this period`;
           })()}
         />
@@ -663,11 +758,11 @@ export default function Dashboard() {
           icon={<SavingsIcon />}
           subtitle={(() => {
             const r = kpi.savingsRate;
-            if (r === 0)   return "no savings recorded — aim for 15%+";
-            if (r < 5)     return `${r}% — room to grow, aim for 15%+`;
-            if (r < 10)    return `${r}% — making progress, target is 15–20%`;
-            if (r < 15)    return `${r}% — getting close to the 15–20% target`;
-            if (r <= 20)   return `${r}% — solid, right in the 15–20% sweet spot`;
+            if (r === 0) return "no savings recorded — aim for 15%+";
+            if (r < 5) return `${r}% — room to grow, aim for 15%+`;
+            if (r < 10) return `${r}% — making progress, target is 15–20%`;
+            if (r < 15) return `${r}% — getting close to the 15–20% target`;
+            if (r <= 20) return `${r}% — solid, right in the 15–20% sweet spot`;
             return `${r}% — excellent, above the recommended 20%`;
           })()}
         />
@@ -683,12 +778,12 @@ export default function Dashboard() {
             gap: 12,
             padding: "10px 16px",
             borderRadius: 10,
-            background: netWorth >= 0
-              ? "rgba(16,185,129,0.05)"
-              : "rgba(239,68,68,0.05)",
-            border: netWorth >= 0
-              ? "0.5px solid rgba(16,185,129,0.14)"
-              : "0.5px solid rgba(239,68,68,0.14)",
+            background:
+              netWorth >= 0 ? "rgba(16,185,129,0.05)" : "rgba(239,68,68,0.05)",
+            border:
+              netWorth >= 0
+                ? "0.5px solid rgba(16,185,129,0.14)"
+                : "0.5px solid rgba(239,68,68,0.14)",
             marginBottom: 12,
           }}
         >
@@ -705,7 +800,9 @@ export default function Dashboard() {
             <span style={{ fontSize: 14, flexShrink: 0 }}>💼</span>
             <span>
               <span style={{ color: "var(--color-text-muted)" }}>balance </span>
-              <span style={{ fontWeight: 500, color: "var(--color-text-primary)" }}>
+              <span
+                style={{ fontWeight: 500, color: "var(--color-text-primary)" }}
+              >
                 {bankBalance !== null ? fmtSigned(bankBalance) : "—"}
               </span>
             </span>
@@ -730,12 +827,19 @@ export default function Dashboard() {
                 fontSize: 16,
                 fontWeight: 700,
                 letterSpacing: "-0.4px",
-                color: netWorth >= 0 ? "var(--color-income)" : "var(--color-danger)",
+                color:
+                  netWorth >= 0 ? "var(--color-income)" : "var(--color-danger)",
               }}
             >
               {fmtSigned(netWorth)}
             </div>
-            <div style={{ fontSize: 10, color: "var(--color-text-muted)", marginTop: 2 }}>
+            <div
+              style={{
+                fontSize: 10,
+                color: "var(--color-text-muted)",
+                marginTop: 2,
+              }}
+            >
               net worth
             </div>
           </div>
@@ -758,12 +862,14 @@ export default function Dashboard() {
             gap: 12,
             padding: "10px 16px",
             borderRadius: 10,
-            background: initialBalance === null
-              ? "rgba(245,158,11,0.07)"
-              : "rgba(99,102,241,0.07)",
-            border: initialBalance === null
-              ? "0.5px solid rgba(245,158,11,0.28)"
-              : "0.5px solid rgba(99,102,241,0.22)",
+            background:
+              initialBalance === null
+                ? "rgba(245,158,11,0.07)"
+                : "rgba(99,102,241,0.07)",
+            border:
+              initialBalance === null
+                ? "0.5px solid rgba(245,158,11,0.28)"
+                : "0.5px solid rgba(99,102,241,0.22)",
             marginBottom: 12,
           }}
         >
@@ -772,9 +878,20 @@ export default function Dashboard() {
             <>
               <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                 <span style={{ fontSize: 15, flexShrink: 0 }}>⚠️</span>
-                <span style={{ fontSize: 13, color: "var(--color-text-secondary)", lineHeight: 1.45 }}>
+                <span
+                  style={{
+                    fontSize: 13,
+                    color: "var(--color-text-secondary)",
+                    lineHeight: 1.45,
+                  }}
+                >
                   No starting balance has been set — your opening balance is $0.{" "}
-                  <strong style={{ fontWeight: 500, color: "var(--color-text-primary)" }}>
+                  <strong
+                    style={{
+                      fontWeight: 500,
+                      color: "var(--color-text-primary)",
+                    }}
+                  >
                     Add your actual account balance in Settings
                   </strong>{" "}
                   so the numbers reflect reality from day one.
@@ -793,9 +910,21 @@ export default function Dashboard() {
             <>
               <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                 <span style={{ fontSize: 15, flexShrink: 0 }}>🏦</span>
-                <span style={{ fontSize: 13, color: "var(--color-text-secondary)", lineHeight: 1.45 }}>
-                  Your balance is based on tracked transactions only and may not match your real bank account.{" "}
-                  <strong style={{ fontWeight: 500, color: "var(--color-text-primary)" }}>
+                <span
+                  style={{
+                    fontSize: 13,
+                    color: "var(--color-text-secondary)",
+                    lineHeight: 1.45,
+                  }}
+                >
+                  Your balance is based on tracked transactions only and may not
+                  match your real bank account.{" "}
+                  <strong
+                    style={{
+                      fontWeight: 500,
+                      color: "var(--color-text-primary)",
+                    }}
+                  >
                     Add your current bank balance in Settings
                   </strong>{" "}
                   to anchor the numbers to reality.
@@ -815,7 +944,10 @@ export default function Dashboard() {
 
       {/* ══ ZONE 2d: Upcoming bills — committed outgoing ══ */}
       {upcomingBills.length > 0 && (
-        <div className="card" style={{ marginBottom: 12, padding: "12px 16px" }}>
+        <div
+          className="card"
+          style={{ marginBottom: 12, padding: "12px 16px" }}
+        >
           <div
             style={{
               display: "flex",
@@ -826,7 +958,10 @@ export default function Dashboard() {
           >
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <span style={{ fontSize: 14 }}>📅</span>
-              <h2 className="section-header" style={{ margin: 0, fontSize: 13 }}>
+              <h2
+                className="section-header"
+                style={{ margin: 0, fontSize: 13 }}
+              >
                 Committed this month
               </h2>
               <span className="count-badge">{upcomingBills.length}</span>
@@ -838,7 +973,10 @@ export default function Dashboard() {
                 color: "var(--color-expense)",
               }}
             >
-              −{formatAmount(upcomingBills.reduce((s, b) => s + parseFloat(b.amount), 0))}
+              −
+              {formatAmount(
+                upcomingBills.reduce((s, b) => s + parseFloat(b.amount), 0),
+              )}
             </span>
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -884,7 +1022,6 @@ export default function Dashboard() {
                     >
                       {formatAmount(parseFloat(bill.amount))}
                     </span>
-
                   </div>
                 </div>
               );
@@ -988,7 +1125,13 @@ export default function Dashboard() {
               <h2 className="section-header" style={{ margin: 0 }}>
                 Balance Over Time
               </h2>
-              <p style={{ fontSize: 11, color: "var(--color-text-muted)", marginTop: 3 }}>
+              <p
+                style={{
+                  fontSize: 11,
+                  color: "var(--color-text-muted)",
+                  marginTop: 3,
+                }}
+              >
                 How your balance moves as spending accumulates week by week
               </p>
             </div>
@@ -1028,7 +1171,9 @@ export default function Dashboard() {
             </button>
           </div>
           {budgetRows.length > 0 ? (
-            budgetRows.map((row) => <BudgetRow key={row.category} {...row} fmt={formatAmount} />)
+            budgetRows.map((row) => (
+              <BudgetRow key={row.category} {...row} fmt={formatAmount} />
+            ))
           ) : (
             <div
               style={{
@@ -1080,7 +1225,9 @@ export default function Dashboard() {
           </div>
 
           {recentTransactions.length > 0 ? (
-            recentTransactions.map((tx) => <TxRow key={tx.id} tx={tx} fmt={formatAmount} />)
+            recentTransactions.map((tx) => (
+              <TxRow key={tx.id} tx={tx} fmt={formatAmount} />
+            ))
           ) : (
             <div
               style={{

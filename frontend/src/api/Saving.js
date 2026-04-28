@@ -166,23 +166,34 @@ export function goalStatus(goal, fmt) {
   }
 
   if (monthsLeft <= 0) {
+    // Goal date passed but it's aspirational — encourage rather than alarm.
     return {
       monthlyNeeded: rem,
       monthsLeft: 0,
-      label: "Deadline passed — update your target date",
-      color: "var(--color-danger)",
+      label: "Past goal date · keep saving!",
+      color: "var(--color-text-muted)",
+    };
+  }
+
+  // When less than one full month remains, dividing rem by a fraction < 1
+  // produces a monthly rate that exceeds the goal total — nonsensical to display.
+  // Show the raw remaining amount + days instead.
+  if (monthsLeft <= 1) {
+    const daysRemaining = Math.max(1, Math.ceil(days));
+    return {
+      monthlyNeeded: rem,
+      monthsLeft,
+      label: `${fmtAmount(rem)} left · ${daysRemaining}d to go`,
+      color: "var(--color-expense)",
     };
   }
 
   const monthlyNeeded = rem / monthsLeft;
 
-  // Urgency tiers
+  // Urgency tiers for goals with more than 1 month remaining
   let color;
   let urgencyNote;
-  if (monthsLeft <= 1) {
-    color       = "var(--color-danger)";
-    urgencyNote = "last month!";
-  } else if (monthsLeft <= 3) {
+  if (monthsLeft <= 3) {
     color       = "var(--color-expense)";
     urgencyNote = `${monthsLeft.toFixed(1)} mo left`;
   } else {
