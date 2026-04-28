@@ -501,6 +501,8 @@ export default function Dashboard() {
     netWorth,
     netWorthSavings,
     netWorthDebts,
+    upcomingBills,
+    plannedIncome,
     goToBudget,
     goToTransactions,
     goToSettings,
@@ -628,6 +630,13 @@ export default function Dashboard() {
           delta={kpi.incomeDelta}
           colorClass="income"
           icon={<IncomeIcon />}
+          subtitle={(() => {
+            if (plannedIncome === null || plannedIncome === 0) return null;
+            const pct = Math.round((kpi.income / plannedIncome) * 100);
+            if (kpi.income >= plannedIncome)
+              return `${pct}% of ${formatAmount(plannedIncome)} planned — target reached ✓`;
+            return `${formatAmount(plannedIncome - kpi.income)} of ${formatAmount(plannedIncome)} still expected`;
+          })()}
         />
         <KpiCard
           label="EXPENSES"
@@ -766,6 +775,88 @@ export default function Dashboard() {
           >
             Go to Settings →
           </button>
+        </div>
+      )}
+
+      {/* ══ ZONE 2d: Upcoming bills — committed outgoing ══ */}
+      {upcomingBills.length > 0 && (
+        <div className="card" style={{ marginBottom: 12, padding: "12px 16px" }}>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              marginBottom: 10,
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <span style={{ fontSize: 14 }}>📅</span>
+              <h2 className="section-header" style={{ margin: 0, fontSize: 13 }}>
+                Committed this month
+              </h2>
+              <span className="count-badge">{upcomingBills.length}</span>
+            </div>
+            <span
+              style={{
+                fontSize: 13,
+                fontWeight: 600,
+                color: "var(--color-expense)",
+              }}
+            >
+              −
+              {formatAmount(
+                upcomingBills.reduce((s, b) => s + parseFloat(b.amount), 0),
+              )}
+            </span>
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            {upcomingBills.map((bill) => {
+              const daysUntil = Math.ceil(
+                (new Date(bill.due_date + "T00:00:00") - new Date()) /
+                  86_400_000,
+              );
+              const urgentColor =
+                daysUntil <= 3
+                  ? "var(--color-danger)"
+                  : daysUntil <= 7
+                    ? "var(--color-expense)"
+                    : "var(--color-text-muted)";
+              return (
+                <div
+                  key={bill.id}
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    fontSize: 12,
+                  }}
+                >
+                  <span style={{ color: "var(--color-text-secondary)" }}>
+                    {bill.name}
+                  </span>
+                  <div
+                    style={{ display: "flex", alignItems: "center", gap: 12 }}
+                  >
+                    <span style={{ color: urgentColor, fontSize: 11 }}>
+                      {daysUntil === 0
+                        ? "due today"
+                        : daysUntil === 1
+                          ? "due tomorrow"
+                          : `due in ${daysUntil}d`}
+                    </span>
+                    <span
+                      style={{
+                        fontWeight: 600,
+                        color: "var(--color-text-primary)",
+                      }}
+                    >
+                      {formatAmount(parseFloat(bill.amount))}
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
 

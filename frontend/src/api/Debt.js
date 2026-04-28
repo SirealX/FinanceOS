@@ -13,6 +13,7 @@ import { useAuth } from "../context/Authcontexts";
 import { DEBT_TYPES, INITIAL_DEBTS } from "../data/MockData";
 import { getDebts, createDebt, updateDebt, deleteDebt, payDebt } from "./debts";
 import { useSettings } from "../context/SettingsContext";
+import client from "./client";
 
 // ── Re-exports ────────────────────────────────────────────────────────────────
 
@@ -210,6 +211,7 @@ export function useDebts() {
   const [form, setForm] = useState(BLANK_FORM);
   const [extraPmt, setExtraPmt] = useState(0); // start at 0; user slides up
   const [payingDebt, setPayingDebt] = useState(null);
+  const [budgetSurplus, setBudgetSurplus] = useState(null); // available after minimums
 
   // FIX #6: slider params derived from current currency setting
   const sliderParams = useMemo(() => getSliderParams(currency), [currency]);
@@ -219,8 +221,22 @@ export function useDebts() {
     setLoading(true);
     setError(null);
     try {
-      const res = await getDebts();
-      setDebts(res.data.map(normalizeDebt));
+      const [debtsRes, summaryRes] = await Promise.all([
+        getDebts(),
+        client.get("/summary?period=this_month").catch(() => null),
+      ]);
+      const loaded = debtsRes.data.map(normalizeDebt);
+      setDebts(loaded);
+
+      // Budget capacity = this month's liquid cash flow minus the minimum
+      // payments that are already committed. This is the realistic ceiling
+      // for extra debt payments without touching savings or going negative.
+      if (summaryRes) {
+        const liquidNet  = summaryRes.data.liquid_net ?? 0;
+        const totalMin   = loaded.reduce((s, d) => s + d.minPayment, 0);
+        const available  = Math.max(0, Math.round(liquidNet - totalMin));
+        setBudgetSurplus(available);
+      }
     } catch (err) {
       setError("Could not load debts. Is the backend running?");
       console.error(err);
@@ -379,6 +395,7 @@ export function useDebts() {
     setPayingDebt,
     handlePay,
     sliderParams, // FIX #6: expose to Debts.jsx
+    budgetSurplus, // FIX #13: available cash after minimums (for simulator marker)
     formatAmount, // currency-aware (from SettingsContext)
     isDemo: IS_DEMO,
   };

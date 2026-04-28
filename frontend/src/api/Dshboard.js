@@ -366,6 +366,8 @@ export function useDashboard() {
   const [recentTxRaw, setRecentTxRaw] = useState([]);
   const [savingsTotal, setSavingsTotal] = useState(null);  // sum of goal current_amounts
   const [debtTotal, setDebtTotal]       = useState(null);  // sum of debt balances
+  const [upcomingBills, setUpcomingBills] = useState([]);  // unpaid bills due ≤ 30 days
+  const [plannedIncome, setPlannedIncome] = useState(null); // sum of income budget planned
   const [loading, setLoading] = useState(!IS_DEMO);
   const [slowLoad, setSlowLoad] = useState(false);  // true when load takes >2.5 s
   const [error, setError] = useState(null);
@@ -394,6 +396,8 @@ export function useDashboard() {
         budgetCatsRes,
         savingsRes,
         debtsRes,
+        billsRes,
+        incomeCatsRes,
       ] = await Promise.all([
         client.get(`/summary?period=${p}`),
         client.get(`/cashflow?period=${p}`),
@@ -405,6 +409,8 @@ export function useDashboard() {
         client.get("/budget/categories?kind=expense"), // FIX #5 + #10: in parallel
         client.get("/savings").catch(() => ({ data: [] })),  // net worth component
         client.get("/debts").catch(() => ({ data: [] })),    // net worth component
+        client.get("/bills").catch(() => ({ data: [] })),                 // upcoming bills panel
+        client.get("/budget/categories?kind=income").catch(() => ({ data: [] })), // planned income
       ]);
 
       setKpiData(summaryRes.data);
@@ -441,6 +447,29 @@ export function useDashboard() {
       );
       setSavingsTotal(sTotal);
       setDebtTotal(dTotal);
+
+      // Upcoming bills: unpaid bills due within the next 30 days
+      const today30 = new Date();
+      today30.setDate(today30.getDate() + 30);
+      const todayStr = new Date().toISOString().slice(0, 10);
+      const cutoffStr = today30.toISOString().slice(0, 10);
+      const upcoming = (billsRes.data ?? [])
+        .filter(
+          (b) =>
+            b.status === "unpaid" &&
+            b.due_date >= todayStr &&
+            b.due_date <= cutoffStr,
+        )
+        .sort((a, b) => a.due_date.localeCompare(b.due_date))
+        .slice(0, 5);
+      setUpcomingBills(upcoming);
+
+      // Planned income total from income budget categories
+      const mult = activePeriod === "Last 3 Months" ? 3 : 1;
+      const pIncome = (incomeCatsRes.data ?? []).reduce(
+        (s, c) => s + (parseFloat(c.planned) || 0) * mult, 0,
+      );
+      setPlannedIncome(pIncome);
     } catch (err) {
       setError("Could not load dashboard data.");
       console.error(err);
@@ -602,6 +631,10 @@ export function useDashboard() {
     netWorth,
     netWorthSavings: savingsTotal,
     netWorthDebts:   debtTotal,
+    // Upcoming bills
+    upcomingBills: IS_DEMO ? [] : upcomingBills,
+    // Planned income (for mid-month context on INCOME card)
+    plannedIncome: IS_DEMO ? null : plannedIncome,
     goToBudget: () => navigate("budget"),
     goToTransactions: () => navigate("transactions"),
     goToSettings: () => navigate("settings"),

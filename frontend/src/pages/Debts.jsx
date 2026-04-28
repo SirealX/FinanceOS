@@ -740,6 +740,7 @@ export default function Debts() {
     setPayingDebt,
     handlePay,
     sliderParams, // FIX #6
+    budgetSurplus, // FIX #13
   } = useDebts();
 
   if (loading) {
@@ -964,6 +965,50 @@ export default function Debts() {
                   <span>$0</span>
                   <span>{fmtSliderLabel(sliderParams.max)}</span>
                 </div>
+
+                {/* Budget capacity marker */}
+                {budgetSurplus !== null && (
+                  <div
+                    style={{
+                      marginTop: 10,
+                      padding: "8px 12px",
+                      borderRadius: 7,
+                      background: budgetSurplus > 0
+                        ? "rgba(16,185,129,0.06)"
+                        : "rgba(239,68,68,0.06)",
+                      border: `0.5px solid ${budgetSurplus > 0 ? "rgba(16,185,129,0.18)" : "rgba(239,68,68,0.18)"}`,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      gap: 12,
+                    }}
+                  >
+                    <div style={{ fontSize: 11, color: "var(--color-text-secondary)" }}>
+                      {budgetSurplus > 0 ? (
+                        <>
+                          💡 Based on this month's cash flow, you have{" "}
+                          <strong style={{ color: "var(--color-income)" }}>
+                            {formatAmount(budgetSurplus)}
+                          </strong>{" "}
+                          available after minimums.
+                        </>
+                      ) : (
+                        <>⚠ This month's cash flow covers minimums only — no extra capacity right now.</>
+                      )}
+                    </div>
+                    {budgetSurplus > 0 && (
+                      <button
+                        className="btn-ghost"
+                        style={{ fontSize: 11, whiteSpace: "nowrap", flexShrink: 0 }}
+                        onClick={() =>
+                          setExtraPmt(Math.min(budgetSurplus, sliderParams.max))
+                        }
+                      >
+                        Use this →
+                      </button>
+                    )}
+                  </div>
+                )}
               </div>
 
               {/* Strategy comparison cards */}
