@@ -203,7 +203,7 @@ function KindSummaryCard({ label, stats, color, icon, fmt }) {
 
 // ── Set Budget Modal ──────────────────────────────────────────────────────────
 
-function BudgetModal({ allCategories, budgetTab, saving, onSave, onClose }) {
+function BudgetModal({ allCategories, budgetTab, saving, onSave, onClose, fmt }) {
   // Only edit the categories relevant to the current tab
   // On the All tab, edit all three kinds
   const toEdit = allCategories
@@ -324,7 +324,7 @@ function BudgetModal({ allCategories, budgetTab, saving, onSave, onClose }) {
               letterSpacing: "-0.3px",
             }}
           >
-            {formatAmount(totalPlanned)}
+            {fmt(totalPlanned)}
           </span>
         </div>
 
@@ -987,6 +987,7 @@ export default function Budget() {
           saving={saving}
           onSave={handleSave}
           onClose={closeModal}
+          fmt={formatAmount}
         />
       )}
     </>
