@@ -29,7 +29,7 @@ const PERIOD_MAP = {
 
 // ── Demo helpers ───────────────────────────────────────────────────────────────
 
-function buildDemoData(period, formatAmount) {
+function buildDemoData(period) {
   // Budget categories + mock spend for the period
   const spentArr = BUDGET_SPENT[period] ?? BUDGET_SPENT["Last Month"] ?? [];
   const categories = BUDGET_CATEGORY_DEFAULTS.map((c, i) => ({
@@ -142,7 +142,7 @@ export function useMonthEndReview() {
   // ── Demo seed ────────────────────────────────────────────────────────────────
   useEffect(() => {
     if (!IS_DEMO) return;
-    const demo = buildDemoData(period, formatAmount);
+    const demo = buildDemoData(period);
     setSummary(demo.summary);
     setCategories(demo.categories);
     setBills(demo.bills);

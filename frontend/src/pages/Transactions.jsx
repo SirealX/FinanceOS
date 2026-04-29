@@ -7,6 +7,7 @@ import {
   fmt,
   formatDate,
   initials,
+  buildCategoryGroups,
   useTransactions,
 } from "../api/Transaction";
 
@@ -20,6 +21,7 @@ import {
 
 import ImportWizard from "./ImportWizard";
 import ExportModal from "../components/ExportModal";
+import { useSettings } from "../context/SettingsContext";
 
 // ── Icons ─────────────────────────────────────────────────────────────────────
 
@@ -683,7 +685,7 @@ const RECUR_FREQ = ["monthly", "weekly", "yearly", "daily"];
 const RECUR_TYPES = ["expense", "income", "transfer"];
 const BLANK_RECUR = { description: "", amount: "", type: "expense", category: "", frequency: "monthly", next_due: "" };
 
-function RecurringPanel({ isDemo, categoryGroups }) {
+function RecurringPanel({ isDemo }) {
   const [items, setItems]       = useState([]);
   const [loading, setLoading]   = useState(!isDemo);
   const [showModal, setShowModal] = useState(false);
@@ -691,6 +693,14 @@ function RecurringPanel({ isDemo, categoryGroups }) {
   const [form, setForm]           = useState(BLANK_RECUR);
   const [saving, setSaving]       = useState(false);
   const [logging, setLogging]     = useState(null); // id being logged
+
+  // Build category groups from the form's own type so income templates show
+  // income categories and expense templates show expense categories.
+  const { allCategories } = useSettings();
+  const recurCategoryGroups = useMemo(
+    () => buildCategoryGroups(allCategories, form.type),
+    [allCategories, form.type],
+  );
 
   const load = useCallback(async () => {
     if (isDemo) return;
@@ -889,7 +899,7 @@ function RecurringPanel({ isDemo, categoryGroups }) {
                 <label className="field-label">Category (optional)</label>
                 <select className="input" value={form.category} onChange={(e) => setForm((f) => ({ ...f, category: e.target.value }))}>
                   <option value="">— same as description —</option>
-                  {categoryGroups.map((g) => (
+                  {recurCategoryGroups.map((g) => (
                     <optgroup key={g.header} label={g.header}>
                       {g.options.map((name) => <option key={name} value={name}>{name}</option>)}
                     </optgroup>
@@ -1246,7 +1256,7 @@ export default function Transactions() {
       {showExport && <ExportModal onClose={() => setShowExport(false)} />}
 
       {/* ── Recurring Transactions (#22) ── */}
-      <RecurringPanel isDemo={isDemo} categoryGroups={categoryGroups} />
+      <RecurringPanel isDemo={isDemo} />
     </>
   );
 }

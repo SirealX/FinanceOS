@@ -218,7 +218,7 @@ export default function MonthEndReview() {
           />
           <SummaryKpi
             label="NET"
-            value={`${netSign}${formatAmount(Math.abs(net))}`}
+            value={`${netSign}${formatAmountK(Math.abs(net))}`}
             color={netColor}
             sub={net >= 0 ? "surplus — well done" : "deficit — over budget"}
           />

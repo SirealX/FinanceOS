@@ -51,6 +51,42 @@ def create_goal(
         deadline_date=data.deadline_date,
     )
     db.add(goal)
+    db.flush()
+
+    # BUG-04 fix: if the user pre-filled an existing balance when creating the
+    # goal, record it as a confirmed savings transaction so it is visible in
+    # the ledger, budget actuals, and balance calculations.
+    if data.current_amount and data.current_amount > 0:
+        today = DateType.today()
+        hub = BudgetCategory(
+            user_id=current_user,
+            transaction_id=None,
+            transaction_name=f"Contribution: {data.goal_name}",
+            transaction_payment_method=None,
+            categories_name="Savings",
+            type=f"Savings: {data.goal_name}",
+            amount=data.current_amount,
+            date=today,
+        )
+        db.add(hub)
+        db.flush()
+        tx = Transaction(
+            user_id=current_user,
+            date=today,
+            description=f"Contribution: {data.goal_name}",
+            category="Savings",
+            type="savings",
+            amount=data.current_amount,
+            payment_method=None,
+            source="savings_contribution",
+            is_draft=False,
+            reviewed=True,
+            budget_category_id=hub.id,
+        )
+        db.add(tx)
+        db.flush()
+        hub.transaction_id = tx.id
+
     db.commit()
     db.refresh(goal)
     return goal
@@ -126,8 +162,9 @@ def log_contribution(
         type="savings",
         amount=data.amount,
         payment_method=None,
-        source="manual",
-        is_draft=True,
+        source="savings_contribution",
+        is_draft=False,
+        reviewed=True,
         budget_category_id=hub.id,
     )
     db.add(tx)

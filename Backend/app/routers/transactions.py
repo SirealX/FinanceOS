@@ -55,6 +55,7 @@ def get_transactions(
     is_draft:  Optional[bool]     = Query(None),
     date_from: Optional[DataType] = Query(None),
     date_to:   Optional[DataType] = Query(None),
+    search:    Optional[str]      = Query(None),
     current_user: str = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -65,6 +66,7 @@ def get_transactions(
     if is_draft is not None:  q = q.filter(Transaction.is_draft == is_draft)
     if date_from:             q = q.filter(Transaction.date >= date_from)
     if date_to:               q = q.filter(Transaction.date <= date_to)
+    if search:                q = q.filter(Transaction.description.ilike(f"%{search}%"))
 
     txs = q.order_by(Transaction.date.desc()).all()
 

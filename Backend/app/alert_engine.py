@@ -40,6 +40,7 @@ from .models import (
     AlertPreferences,
     Bill,
     BudgetCategory,
+    Category,
     Debt,
     SavingsGoal,
     Transaction,
@@ -424,20 +425,19 @@ def _check_budget_exceeded(
         .all()
     )
 
-    # Get planned amounts via budget_categories
+    # BUG-02 fix: planned amounts live in Category.planned_amount, not BudgetCategory.
+    # BudgetCategory stores actual bill/debt/savings amounts — using it as the
+    # "planned" source was comparing actual vs actual, not actual vs planned.
     planned_rows = (
-        db.query(
-            BudgetCategory.categories_name,
-            func.sum(BudgetCategory.amount).label("planned"),
-        )
+        db.query(Category.name, Category.planned_amount)
         .filter(
-            BudgetCategory.user_id == user_id,
-            func.to_char(BudgetCategory.date, "YYYY-MM") == month_key,
+            Category.user_id  == user_id,
+            Category.kind     == "expense",
+            Category.is_active == True,
         )
-        .group_by(BudgetCategory.categories_name)
         .all()
     )
-    planned_map = {r.categories_name: r.planned for r in planned_rows}
+    planned_map = {r.name: r.planned_amount for r in planned_rows}
 
     result = []
     for row in rows:
