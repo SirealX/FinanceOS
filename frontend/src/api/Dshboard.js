@@ -380,6 +380,7 @@ export function useDashboard() {
   const [budgetRows, setBudgetRows] = useState([]);
   const [recentTxRaw, setRecentTxRaw] = useState([]);
   const [savingsTotal, setSavingsTotal] = useState(null); // sum of goal current_amounts
+  const [savingsGoals, setSavingsGoals] = useState([]);   // individual goal objects (#24)
   const [debtTotal, setDebtTotal] = useState(null); // sum of debt balances
   const [debtMinTotal, setDebtMinTotal] = useState(null); // sum of min payments
   const [upcomingBills, setUpcomingBills] = useState([]); // unpaid bills due ≤ 30 days
@@ -471,6 +472,7 @@ export function useDashboard() {
         0,
       );
       setSavingsTotal(sTotal);
+      setSavingsGoals(savingsRes.data ?? []); // #24 — individual goals for dashboard panel
       setDebtTotal(dTotal);
       setDebtMinTotal(dMinTotal);
 
@@ -538,6 +540,12 @@ export function useDashboard() {
         liquidNet: kpiData.liquid_net ?? kpiData.income - kpiData.expenses,
         openingBalance: kpiData.opening_balance ?? 0,
         closingBalance: kpiData.closing_balance ?? kpiData.net_balance,
+        // Issue #6 — liquid opening/closing treat savings as earmarked, not spent.
+        // Mode B headline and the 3-month NET SAVED card use these so the balance
+        // never drops just because the user made a savings contribution.
+        liquidOpeningBalance: kpiData.liquid_opening_balance ?? kpiData.opening_balance ?? 0,
+        liquidClosingBalance: kpiData.liquid_closing_balance ?? kpiData.closing_balance ?? 0,
+        liquidOpeningDelta:   kpiData.liquid_opening_delta   ?? kpiData.opening_delta ?? kpiData.net_delta,
         income: kpiData.income,
         expenses: kpiData.expenses,
         savingsAmount: kpiData.savings ?? 0,
@@ -682,6 +690,8 @@ export function useDashboard() {
     netWorth,
     netWorthSavings: savingsTotal,
     netWorthDebts: debtTotal,
+    // #24 — individual savings goals for dashboard progress panel
+    savingsGoals: IS_DEMO ? [] : savingsGoals,
     // Upcoming bills
     upcomingBills: IS_DEMO ? [] : upcomingBills,
     // Planned income (for mid-month context on INCOME card)

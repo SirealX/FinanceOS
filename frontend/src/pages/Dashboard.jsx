@@ -770,6 +770,7 @@ export default function Dashboard() {
     freeToSpend,
     earmarkedTotal,
     debtMinTotal,
+    savingsGoals,
     isDemo,
     goToBudget,
     goToTransactions,
@@ -873,20 +874,26 @@ export default function Dashboard() {
               point, so show cumulative Net Saved instead.
         */}
         {period === "Last 3 Months" ? (
+          // Issue #6 — use liquidNet (income − expenses) not netBalance which
+          // subtracted savings, making saving look like losing money over 3 months.
           <KpiCard
-            label="NET SAVED"
-            value={fmtSigned(kpi.netBalance)}
+            label="NET CASH FLOW"
+            value={fmtSigned(kpi.liquidNet)}
             delta={kpi.netDelta}
-            colorClass={kpi.netBalance >= 0 ? "income" : "expense"}
-            accent={kpi.netBalance >= 0 ? "positive" : "negative"}
-            subtitle="income − expenses over 3 months"
+            colorClass={kpi.liquidNet >= 0 ? "income" : "expense"}
+            accent={kpi.liquidNet >= 0 ? "positive" : "negative"}
+            subtitle={
+              kpi.savingsAmount > 0
+                ? `income − expenses · +${formatAmount(kpi.savingsAmount)} saved to goals`
+                : "income − expenses over 3 months"
+            }
             icon={<NetBalanceIcon />}
           />
         ) : (
           <BalanceCard
-            opening={kpi.openingBalance}
-            closing={kpi.closingBalance}
-            delta={kpi.openingDelta}
+            opening={kpi.liquidOpeningBalance ?? kpi.openingBalance}
+            closing={kpi.liquidClosingBalance ?? kpi.closingBalance}
+            delta={kpi.liquidOpeningDelta ?? kpi.openingDelta}
             icon={<NetBalanceIcon />}
             bankBalance={bankBalance}
             bankBalanceDate={bankBalanceDate}
@@ -1267,8 +1274,29 @@ export default function Dashboard() {
                 {formatAmount(netWorthDebts)}
               </div>
               <div style={{ fontSize: 11, color: "var(--color-text-muted)", marginTop: 6, lineHeight: 1.5 }}>
-                {formatAmount(debtMinTotal)}/mo in minimum payments
+                {formatAmount(debtMinTotal)}/mo in minimums
               </div>
+              {/* Cross-connect: show whether budget covers minimums (#24) */}
+              {(() => {
+                const debtBudgetRow = budgetRows.find(
+                  (r) => r.category === "Debt Payments",
+                );
+                if (!debtBudgetRow) return null;
+                const covered = debtBudgetRow.planned >= debtMinTotal;
+                return (
+                  <div
+                    style={{
+                      fontSize: 11,
+                      marginTop: 4,
+                      color: covered ? "var(--color-income)" : "var(--color-danger)",
+                    }}
+                  >
+                    {covered
+                      ? `✓ ${formatAmount(debtBudgetRow.planned)} budgeted`
+                      : `⚠ only ${formatAmount(debtBudgetRow.planned)} budgeted`}
+                  </div>
+                );
+              })()}
             </div>
           )}
         </div>
@@ -1395,6 +1423,156 @@ export default function Dashboard() {
           </div>
           <div className="chart-wrap line">
             <BalanceTrendChart config={balanceTrendConfig} />
+          </div>
+        </div>
+      )}
+
+      {/* ══ ZONE 3b-2: Savings Goals progress (#24) ══
+          Cross-connects the Savings section into the dashboard — users no longer
+          need to navigate away to check where they stand on their goals.
+      */}
+      {savingsGoals.length > 0 && (
+        <div className="card" style={{ marginBottom: 12 }}>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              marginBottom: 14,
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <h2 className="section-header" style={{ margin: 0 }}>
+                Savings Goals
+              </h2>
+              <span className="count-badge">{savingsGoals.length}</span>
+            </div>
+            {netWorthSavings > 0 && (
+              <span
+                style={{
+                  fontSize: 13,
+                  fontWeight: 600,
+                  color: "var(--color-savings)",
+                }}
+              >
+                {formatAmount(netWorthSavings)} saved
+              </span>
+            )}
+          </div>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))",
+              gap: 12,
+            }}
+          >
+            {savingsGoals.map((goal) => {
+              const current = parseFloat(goal.current_amount ?? 0);
+              const target  = parseFloat(goal.target_amount  ?? 0);
+              const pct     = target > 0 ? Math.min((current / target) * 100, 100) : 0;
+              const done    = pct >= 100;
+              const deadlineLabel = goal.deadline_date
+                ? (() => {
+                    const d = new Date(goal.deadline_date + "T00:00:00");
+                    const diff = Math.ceil((d - new Date()) / 86_400_000);
+                    if (diff < 0)  return "overdue";
+                    if (diff === 0) return "due today";
+                    if (diff <= 30) return `${diff}d left`;
+                    return d.toLocaleString("en-US", { month: "short", year: "numeric" });
+                  })()
+                : null;
+              return (
+                <div
+                  key={goal.id}
+                  style={{
+                    background: done
+                      ? "rgba(16,185,129,0.06)"
+                      : "var(--color-bg-input)",
+                    border: done
+                      ? "0.5px solid rgba(16,185,129,0.2)"
+                      : "0.5px solid rgba(255,255,255,0.06)",
+                    borderRadius: 10,
+                    padding: "12px 14px",
+                  }}
+                >
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      marginBottom: 8,
+                    }}
+                  >
+                    <span
+                      style={{
+                        fontSize: 13,
+                        fontWeight: 500,
+                        color: "var(--color-text-primary)",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                        maxWidth: "75%",
+                      }}
+                    >
+                      {goal.goal_name}
+                    </span>
+                    <span
+                      style={{
+                        fontSize: 11,
+                        fontWeight: 600,
+                        color: done ? "var(--color-income)" : "var(--color-text-muted)",
+                      }}
+                    >
+                      {done ? "✓ Done" : `${pct.toFixed(0)}%`}
+                    </span>
+                  </div>
+                  <div
+                    className="progress-track budget"
+                    style={{ marginBottom: 8 }}
+                  >
+                    <div
+                      className="progress-fill"
+                      style={{
+                        width: `${pct}%`,
+                        background: done
+                          ? "var(--color-income)"
+                          : "var(--color-savings)",
+                        transition: "width 0.35s ease",
+                      }}
+                    />
+                  </div>
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      fontSize: 11,
+                      color: "var(--color-text-muted)",
+                    }}
+                  >
+                    <span>
+                      {formatAmount(current)}{" "}
+                      <span style={{ color: "rgba(255,255,255,0.2)" }}>/</span>{" "}
+                      {formatAmount(target)}
+                    </span>
+                    {deadlineLabel && (
+                      <span
+                        style={{
+                          color:
+                            deadlineLabel === "overdue"
+                              ? "var(--color-danger)"
+                              : deadlineLabel.includes("d left")
+                                ? "var(--color-expense)"
+                                : "var(--color-text-muted)",
+                        }}
+                      >
+                        {deadlineLabel}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
       )}

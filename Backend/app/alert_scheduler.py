@@ -31,6 +31,7 @@ from sqlalchemy.orm import Session
 from .database import SessionLocal
 from .models import AlertPreferences, Preferences
 from .alert_engine import evaluate_alerts, assemble_digest
+from .routers.bills import roll_forward_bills
 
 try:
     from . import notifications as _notif
@@ -99,6 +100,9 @@ def _process_user(
     db: Session,
 ) -> list:
     """Run all scheduler-triggered checks for a single user."""
+    # Issue #8 — roll forward paid bills whose cycle has ended
+    roll_forward_bills(user_id, db)
+
     return evaluate_alerts(
         user_id = user_id,
         source  = "scheduler",

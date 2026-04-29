@@ -65,6 +65,7 @@ _ALERT_META = {
     "bill_due":          {"tier": 1, "severity": "warning"},
     "large_transaction": {"tier": 1, "severity": "warning"},
     "low_balance":       {"tier": 1, "severity": "critical"},
+    "debt_due":          {"tier": 1, "severity": "warning"},   # #21 — payment due soon
     "debt_overdue":      {"tier": 1, "severity": "critical"},
     "goal_reached":      {"tier": 1, "severity": "info"},     # queued to digest
     "budget_exceeded":   {"tier": 2, "severity": "warning"},
@@ -136,9 +137,9 @@ def evaluate_alerts(
     if source == "scheduler" and prefs.low_balance_floor is not None:
         new_alerts += _check_low_balance(user_id, prefs, db)
 
-    # 1d. Debt overdue (scheduler)
+    # 1d. Debt due soon + overdue (scheduler)
     if source == "scheduler":
-        new_alerts += _check_debt_overdue(user_id, today, db)
+        new_alerts += _check_debt_overdue(user_id, prefs, today, db)
 
     # ── Tier 1 — Savings goal reached (any source except skip list) ───────────
     new_alerts += _check_goal_reached(user_id, source, db)
@@ -249,19 +250,24 @@ def _check_low_balance(
 
 def _check_debt_overdue(
     user_id: str,
+    prefs: AlertPreferences,
     today: date,
     db: Session,
 ) -> list[Alert]:
     """
-    Fire when a debt has no recorded payment this month and today is past
-    the 28th (fallback grace-period cutoff — actual due date is per-debt).
-    Since the Debt model tracks balance/interest but not a due_date field,
-    we use the month boundary: if today >= 28th and balance > 0, flag it.
-    Adjust this logic once a due_date column is added to Debt.
-    """
-    if today.day < 28:
-        return []
+    Issue #21 — Debt payment alerts now fire at the right time.
 
+    Two behaviours, depending on whether the debt has a due_day set:
+
+    A) due_day is set (e.g. 15):
+       • debt_due      — fires bill_due_days before the due day (same advance
+                         window the user configured for bill reminders).
+       • debt_overdue  — fires the day after the due day if still unpaid.
+
+    B) due_day is null (legacy / user hasn't set it):
+       • Falls back to the old behaviour: fires debt_overdue on the 28th so
+         existing users lose nothing while they gradually fill in due days.
+    """
     debts = (
         db.query(Debt)
         .filter(Debt.user_id == user_id, Debt.balance > 0)
@@ -269,14 +275,17 @@ def _check_debt_overdue(
     )
     result = []
     month_key = today.strftime("%Y-%m")
+
     for debt in debts:
-        # Check if a payment transaction exists for this debt this month
+        debt_id = str(debt.id)
+
+        # ── Check if already paid this month ──────────────────────────────────
         paid_this_month = (
             db.query(Transaction)
             .filter(
                 Transaction.user_id  == user_id,
                 Transaction.type     == "expense",
-                Transaction.source.in_(["bill_payment", "manual"]),
+                Transaction.source.in_(["bill_payment", "manual", "debt_payment"]),
                 func.to_char(Transaction.date, "YYYY-MM") == month_key,
                 Transaction.description.ilike(f"%{debt.name}%"),
             )
@@ -285,22 +294,73 @@ def _check_debt_overdue(
         if paid_this_month:
             continue
 
-        key = f"{str(debt.id)}:{month_key}"
-        if _already_fired(user_id, "debt_overdue", key, db):
-            continue
+        # ── Path A: due_day is known ───────────────────────────────────────────
+        if debt.due_day:
+            # Resolve this month's due date, clamping to last day of month
+            import calendar
+            last_day = calendar.monthrange(today.year, today.month)[1]
+            due_day_clamped = min(debt.due_day, last_day)
+            due_date = today.replace(day=due_day_clamped)
 
-        result.append(_make_alert(
-            user_id     = user_id,
-            type_       = "debt_overdue",
-            title       = f"Debt Payment Overdue — {debt.name}",
-            body        = (
-                f"No payment recorded for {debt.name} this month. "
-                f"Minimum payment: {_fmt(debt.min_payment)}."
-            ),
-            source      = "scheduler",
-            entity_type = "debt",
-            entity_id   = str(debt.id),
-        ))
+            advance_days = prefs.bill_due_days or 5  # default 5 days ahead
+            warn_from = due_date - timedelta(days=advance_days)
+
+            if warn_from <= today < due_date:
+                # Upcoming — fire "payment due soon"
+                key = f"{debt_id}:{month_key}:due"
+                if not _already_fired(user_id, "debt_due", key, db):
+                    days_left = (due_date - today).days
+                    result.append(_make_alert(
+                        user_id     = user_id,
+                        type_       = "debt_due",
+                        title       = f"Debt Payment Due Soon — {debt.name}",
+                        body        = (
+                            f"Payment due in {days_left} day{'s' if days_left != 1 else ''} "
+                            f"(day {debt.due_day}). Minimum: {_fmt(debt.min_payment)}."
+                        ),
+                        source      = "scheduler",
+                        entity_type = "debt",
+                        entity_id   = debt_id,
+                    ))
+
+            elif today > due_date:
+                # Past due — fire "overdue"
+                key = f"{debt_id}:{month_key}:overdue"
+                if not _already_fired(user_id, "debt_overdue", key, db):
+                    result.append(_make_alert(
+                        user_id     = user_id,
+                        type_       = "debt_overdue",
+                        title       = f"Debt Payment Overdue — {debt.name}",
+                        body        = (
+                            f"No payment recorded for {debt.name} this month. "
+                            f"Minimum payment: {_fmt(debt.min_payment)}."
+                        ),
+                        source      = "scheduler",
+                        entity_type = "debt",
+                        entity_id   = debt_id,
+                    ))
+
+        # ── Path B: no due_day set — legacy fallback (fire on the 28th) ───────
+        else:
+            if today.day < 28:
+                continue
+            key = f"{debt_id}:{month_key}"
+            if _already_fired(user_id, "debt_overdue", key, db):
+                continue
+            result.append(_make_alert(
+                user_id     = user_id,
+                type_       = "debt_overdue",
+                title       = f"Debt Payment Overdue — {debt.name}",
+                body        = (
+                    f"No payment recorded for {debt.name} this month. "
+                    f"Tip: set a payment due day on this debt for earlier reminders. "
+                    f"Minimum payment: {_fmt(debt.min_payment)}."
+                ),
+                source      = "scheduler",
+                entity_type = "debt",
+                entity_id   = debt_id,
+            ))
+
     return result
 
 

@@ -656,7 +656,7 @@ export default function Bills() {
         </div>
         {stats.sinkingFund > 0 && (
           <div className="card card-compact" style={{ marginBottom: 0 }}>
-            <div className="kpi-label">Annual Sinking Fund</div>
+            <div className="kpi-label">Sinking Fund</div>
             <div
               className="kpi-value"
               style={{ color: "var(--color-savings)" }}
@@ -670,7 +670,7 @@ export default function Bills() {
                 marginTop: 8,
               }}
             >
-              /mo to cover annual bills
+              /mo to cover non-monthly bills
             </div>
           </div>
         )}

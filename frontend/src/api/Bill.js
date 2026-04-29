@@ -202,12 +202,11 @@ export function useBills() {
         (s, b) => s + toMonthly(b.amount, b.frequency),
         0,
       ),
-      // #12 — monthly provision for annual bills (sinking fund)
-      // Sum of (annual bill amount / 12) so users can see how much to
-      // set aside each month to cover their yearly lump-sum payments.
+      // #12 — monthly provision for all non-monthly bills (sinking fund)
+      // Uses toMonthly() so Annual, Quarterly, and Weekly are all covered.
       sinkingFund: bills
-        .filter((b) => b.frequency === "Annual")
-        .reduce((s, b) => s + b.amount / 12, 0),
+        .filter((b) => b.frequency !== "Monthly")
+        .reduce((s, b) => s + toMonthly(b.amount, b.frequency), 0),
       dueSoon: bills.filter((b) => liveStatus(b) === "due-soon").length,
       overdue: bills.filter((b) => liveStatus(b) === "overdue").length,
       paidCount: bills.filter((b) => b.status === "paid").length,

@@ -62,7 +62,7 @@ function BudgetChart({ rows, config, fmtK }) {
 
 // ── Progress Row (single category) ───────────────────────────────────────────
 
-function ProgressRow({ name, color, scaledPlanned, actual, kind, fmt, is_active }) {
+function ProgressRow({ name, color, scaledPlanned, actual, kind, fmt, is_active, is_variable }) {
   const isActive = is_active !== false; // treat undefined as active
   const pct =
     scaledPlanned > 0 ? Math.min((actual / scaledPlanned) * 100, 100) : 0;
@@ -101,6 +101,19 @@ function ProgressRow({ name, color, scaledPlanned, actual, kind, fmt, is_active 
           {!isActive && (
             <span className="badge badge-neutral" style={{ fontSize: 10 }}>
               Inactive
+            </span>
+          )}
+          {isActive && is_variable && isIncome && (
+            <span
+              className="badge"
+              style={{
+                fontSize: 9,
+                background: "rgba(139,92,246,0.15)",
+                color: "#a78bfa",
+                border: "0.5px solid rgba(139,92,246,0.3)",
+              }}
+            >
+              variable
             </span>
           )}
           {isActive && over && !isIncome && (
@@ -222,6 +235,15 @@ function BudgetModal({ allCategories, budgetTab, saving, onSave, onClose, fmt })
     setDraft((prev) =>
       prev.map((c, idx) =>
         idx === i ? { ...c, is_active: !(c.is_active !== false) } : c,
+      ),
+    );
+  }
+
+  // #16 — toggle variable flag on income categories
+  function handleToggleVariable(i) {
+    setDraft((prev) =>
+      prev.map((c, idx) =>
+        idx === i ? { ...c, is_variable: !c.is_variable } : c,
       ),
     );
   }
@@ -412,6 +434,33 @@ function BudgetModal({ allCategories, budgetTab, saving, onSave, onClose, fmt })
                         >
                           {isActive ? "ON" : "OFF"}
                         </button>
+                        {/* #16 — Variable income toggle (income categories only) */}
+                        {kind === "income" && (
+                          <button
+                            type="button"
+                            title={c.is_variable ? "Mark as guaranteed income" : "Mark as variable income"}
+                            onClick={() => handleToggleVariable(i)}
+                            style={{
+                              flexShrink: 0,
+                              fontSize: 9,
+                              fontWeight: 600,
+                              letterSpacing: "0.4px",
+                              padding: "2px 6px",
+                              borderRadius: 4,
+                              border: "none",
+                              cursor: "pointer",
+                              background: c.is_variable
+                                ? "rgba(139,92,246,0.15)"
+                                : "rgba(100,116,139,0.10)",
+                              color: c.is_variable
+                                ? "#a78bfa"
+                                : "var(--color-text-muted)",
+                              lineHeight: 1.6,
+                            }}
+                          >
+                            {c.is_variable ? "VAR" : "FIX"}
+                          </button>
+                        )}
                       </label>
                       <div style={{ position: "relative" }}>
                         <span
@@ -609,7 +658,13 @@ export default function Budget() {
               incomeStats.totalPlanned -
               expenseStats.totalPlanned -
               savingsStats.totalPlanned;
+            const guaranteedSurplus =
+              (incomeStats.guaranteedPlanned ?? incomeStats.totalPlanned) -
+              expenseStats.totalPlanned -
+              savingsStats.totalPlanned;
+            const hasVariableIncome = (incomeStats.variablePlanned ?? 0) > 0;
             const isPositive = plannedSurplus >= 0;
+            const isGuaranteedPositive = guaranteedSurplus >= 0;
             return (
               <div
                 style={{
@@ -653,27 +708,63 @@ export default function Budget() {
                 </div>
                 <div
                   style={{
-                    fontSize: 14,
-                    fontWeight: 700,
-                    letterSpacing: "-0.3px",
-                    color: isPositive
-                      ? "var(--color-income)"
-                      : "var(--color-danger)",
-                    whiteSpace: "nowrap",
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "flex-end",
                     marginLeft: 16,
+                    gap: 2,
                   }}
                 >
-                  {isPositive ? "+" : "−"}
-                  {formatAmount(Math.abs(plannedSurplus))}{" "}
-                  <span
+                  <div
                     style={{
-                      fontSize: 10,
-                      fontWeight: 500,
-                      color: "var(--color-text-muted)",
+                      fontSize: 14,
+                      fontWeight: 700,
+                      letterSpacing: "-0.3px",
+                      color: isPositive
+                        ? "var(--color-income)"
+                        : "var(--color-danger)",
+                      whiteSpace: "nowrap",
                     }}
                   >
-                    planned {isPositive ? "surplus" : "deficit"}
-                  </span>
+                    {isPositive ? "+" : "−"}
+                    {formatAmount(Math.abs(plannedSurplus))}{" "}
+                    <span
+                      style={{
+                        fontSize: 10,
+                        fontWeight: 500,
+                        color: "var(--color-text-muted)",
+                      }}
+                    >
+                      {hasVariableIncome
+                        ? "best case"
+                        : `planned ${isPositive ? "surplus" : "deficit"}`}
+                    </span>
+                  </div>
+                  {hasVariableIncome && (
+                    <div
+                      style={{
+                        fontSize: 12,
+                        fontWeight: 600,
+                        letterSpacing: "-0.2px",
+                        color: isGuaranteedPositive
+                          ? "rgba(16,185,129,0.75)"
+                          : "var(--color-danger)",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {isGuaranteedPositive ? "+" : "−"}
+                      {formatAmount(Math.abs(guaranteedSurplus))}{" "}
+                      <span
+                        style={{
+                          fontSize: 10,
+                          fontWeight: 500,
+                          color: "var(--color-text-muted)",
+                        }}
+                      >
+                        guaranteed floor
+                      </span>
+                    </div>
+                  )}
                 </div>
               </div>
             );
@@ -762,15 +853,61 @@ export default function Budget() {
                 </h2>
                 <span className="count-badge">{incomeRows.length}</span>
               </div>
-              {incomeRows.map((row) => (
-                <ProgressRow
-                  key={row.name}
-                  {...row}
-                  actual={row.actual}
-                  kind="income"
-                  fmt={formatAmount}
-                />
-              ))}
+              {(() => {
+                const guaranteedRows = incomeRows.filter((r) => !r.is_variable);
+                const variableRows   = incomeRows.filter((r) => r.is_variable);
+                const hasBothGroups  = guaranteedRows.length > 0 && variableRows.length > 0;
+                return (
+                  <>
+                    {hasBothGroups && (
+                      <div
+                        style={{
+                          fontSize: 10,
+                          fontWeight: 600,
+                          color: "var(--color-text-muted)",
+                          textTransform: "uppercase",
+                          letterSpacing: "0.08em",
+                          marginBottom: 8,
+                        }}
+                      >
+                        Guaranteed
+                      </div>
+                    )}
+                    {guaranteedRows.map((row) => (
+                      <ProgressRow
+                        key={row.name}
+                        {...row}
+                        actual={row.actual}
+                        kind="income"
+                        fmt={formatAmount}
+                      />
+                    ))}
+                    {hasBothGroups && (
+                      <div
+                        style={{
+                          fontSize: 10,
+                          fontWeight: 600,
+                          color: "#a855f7",
+                          textTransform: "uppercase",
+                          letterSpacing: "0.08em",
+                          margin: "12px 0 8px",
+                        }}
+                      >
+                        Variable
+                      </div>
+                    )}
+                    {variableRows.map((row) => (
+                      <ProgressRow
+                        key={row.name}
+                        {...row}
+                        actual={row.actual}
+                        kind="income"
+                        fmt={formatAmount}
+                      />
+                    ))}
+                  </>
+                );
+              })()}
             </div>
           )}
 

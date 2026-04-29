@@ -117,6 +117,19 @@ def _net_from_totals(totals: dict) -> float:
     )
 
 
+def _liquid_net_from_totals(totals: dict) -> float:
+    """
+    Issue #6 — income − expense only (savings NOT subtracted).
+    Savings are the user's own money moved to a goal bucket — not spending.
+    Using this for opening/closing balances means saving never makes the
+    balance card look like money was lost.
+    """
+    return (
+        totals.get("income",  0.0)
+        - totals.get("expense", 0.0)
+    )
+
+
 # ── Legacy per-month helpers (used by /cashflow only) ─────────────────────────
 
 def _total_for_month(db: Session, user_id: str, tx_type: str, year: int, month: int) -> float:
@@ -197,6 +210,11 @@ def get_summary(
     opening_balance = _net_from_totals(open_totals) + balance_offset
     closing_balance = opening_balance + net_balance
 
+    # Issue #6 — liquid versions exclude savings from the running balance so
+    # saving money never makes the balance card look like spending.
+    liquid_opening_balance = _liquid_net_from_totals(open_totals) + balance_offset
+    liquid_closing_balance = liquid_opening_balance + liquid_net
+
     prev_income   = prev_totals.get("income",  0.0)
     prev_expenses = prev_totals.get("expense", 0.0)
     prev_savings  = prev_totals.get("savings", 0.0)
@@ -205,6 +223,9 @@ def get_summary(
 
     prev_opening = _net_from_totals(prev_open_totals) + balance_offset
     prev_closing = prev_opening + prev_net
+
+    prev_liquid_opening = _liquid_net_from_totals(prev_open_totals) + balance_offset
+    prev_liquid_closing = prev_liquid_opening + (prev_income - prev_expenses)
 
 
     def _delta(current: float, previous: float) -> dict:
@@ -225,6 +246,11 @@ def get_summary(
         "liquid_net":       round(liquid_net,      2),
         "opening_balance":  round(opening_balance, 2),
         "closing_balance":  round(closing_balance, 2),
+        # Issue #6 — liquid balances treat savings as earmarked money, not spent.
+        # opening/closing here are computed without subtracting savings from history
+        # so the balance card in Mode B never drops just because the user saved.
+        "liquid_opening_balance": round(liquid_opening_balance, 2),
+        "liquid_closing_balance": round(liquid_closing_balance, 2),
         "savings_rate":     savings_rate,
         "income_delta":     _delta(income,          prev_income),
         "expenses_delta":   _delta(expenses,        prev_expenses),
@@ -232,6 +258,7 @@ def get_summary(
         "savings_delta":    _delta(savings_rate,    prev_rate),
         "closing_delta":    _delta(closing_balance, prev_closing),
         "opening_delta":    current_opening_vs_prev,
+        "liquid_opening_delta": _delta(liquid_opening_balance, prev_liquid_opening),
     }
 
 

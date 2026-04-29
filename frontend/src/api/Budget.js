@@ -390,7 +390,7 @@ export function useBudget() {
   );
 
   // ── Stats per kind ────────────────────────────────────────────────────────
-  function buildStats(rows, label) {
+  function buildStats(rows, kind) {
     // #3 — only active categories count toward budget totals
     const active = rows.filter((r) => r.is_active !== false);
     const totalPlanned = active.reduce((s, r) => s + r.scaledPlanned, 0);
@@ -401,7 +401,23 @@ export function useBudget() {
     const remaining  = Math.max(totalPlanned - totalActual, 0);
     const overallPct =
       totalPlanned > 0 ? Math.min((totalActual / totalPlanned) * 100, 100) : 0;
-    return { totalPlanned, totalActual, overCount, remaining, overallPct };
+
+    // #16 — guaranteed vs variable split (meaningful for income rows only)
+    const guaranteed = kind === "income"
+      ? active.filter((r) => !r.is_variable)
+      : active;
+    const variable = kind === "income"
+      ? active.filter((r) => r.is_variable)
+      : [];
+    const guaranteedPlanned = guaranteed.reduce((s, r) => s + r.scaledPlanned, 0);
+    const variablePlanned   = variable.reduce((s, r) => s + r.scaledPlanned, 0);
+    const guaranteedActual  = guaranteed.reduce((s, r) => s + r.actual, 0);
+    const variableActual    = variable.reduce((s, r) => s + r.actual, 0);
+
+    return {
+      totalPlanned, totalActual, overCount, remaining, overallPct,
+      guaranteedPlanned, variablePlanned, guaranteedActual, variableActual,
+    };
   }
 
   const expenseStats = useMemo(
@@ -409,7 +425,7 @@ export function useBudget() {
     [expenseRows],
   );
   const incomeStats = useMemo(
-    () => buildStats(incomeRows, "income"),
+    () => buildStats(incomeRows, "income"),  // #16 — includes guaranteed/variable split
     [incomeRows],
   );
   const savingsStats = useMemo(

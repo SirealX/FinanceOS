@@ -1,15 +1,155 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from ..database import get_db
-from ..models import Bill, BudgetCategory, Transaction
+from ..models import Bill, BudgetCategory, Category, Transaction
 from ..services.entity_sync import entity_to_transaction
 from ..dependencies import get_current_user
 from pydantic import BaseModel
 from datetime import date as DateType
 from typing import Optional
+from dateutil.relativedelta import relativedelta
 import uuid
 
 router = APIRouter(prefix="/bills", tags=["bills"])
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Issue #12 — Sinking fund: sync monthly provision for non-monthly bills
+# ─────────────────────────────────────────────────────────────────────────────
+
+_SINKING_CATEGORY_NAME  = "Sinking Fund"
+_SINKING_CATEGORY_COLOR = "#8b5cf6"   # purple — distinct from regular expenses
+
+
+def _to_monthly_provision(amount: float, frequency: str) -> float:
+    """Convert a bill's full amount to its monthly set-aside equivalent."""
+    freq = (frequency or "Monthly").strip()
+    if freq == "Annual":    return amount / 12
+    if freq == "Quarterly": return amount / 3
+    if freq == "Weekly":    return (amount * 52) / 12
+    return 0.0   # Monthly bills don't need a provision — they're already monthly
+
+
+def sync_bill_provisions_to_budget(user_id: str, db: Session) -> None:
+    """
+    Sum the monthly provision amounts for all non-monthly bills and keep a
+    'Sinking Fund' budget Category row up to date.
+
+    Annual bill of $360  → $30/mo provision
+    Quarterly bill of $120 → $40/mo provision
+
+    - Creates the category if it doesn't exist yet.
+    - Sets planned_amount = 0 when no non-monthly bills remain.
+    - Called automatically on every bill create / update / delete.
+    """
+    non_monthly = (
+        db.query(Bill)
+        .filter(
+            Bill.user_id  == user_id,
+            Bill.frequency.notin_(["Monthly", "monthly"]),
+        )
+        .all()
+    )
+    total_provision = sum(
+        _to_monthly_provision(float(b.amount or 0), b.frequency)
+        for b in non_monthly
+    )
+
+    cat = db.query(Category).filter(
+        Category.user_id == user_id,
+        Category.name    == _SINKING_CATEGORY_NAME,
+        Category.kind    == "expense",
+    ).first()
+
+    if cat:
+        cat.planned_amount = round(total_provision, 2)
+    else:
+        if total_provision == 0:
+            return   # no non-monthly bills yet, nothing to create
+        cat = Category(
+            id             = uuid.uuid4(),
+            user_id        = user_id,
+            name           = _SINKING_CATEGORY_NAME,
+            kind           = "expense",
+            color          = _SINKING_CATEGORY_COLOR,
+            planned_amount = round(total_provision, 2),
+            sort_order     = 998,   # just above debt payments
+            system         = False,
+            is_active      = True,
+        )
+        db.add(cat)
+
+    db.flush()
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Issue #8 — Bills auto-reset
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _next_due_date(current_due: DateType, frequency: str) -> DateType:
+    """Advance a due date by exactly one billing cycle."""
+    freq = (frequency or "monthly").lower()
+    if freq in ("weekly",):         return current_due + relativedelta(weeks=1)
+    if freq in ("monthly",):        return current_due + relativedelta(months=1)
+    if freq in ("quarterly",):      return current_due + relativedelta(months=3)
+    if freq in ("annual", "yearly"): return current_due + relativedelta(years=1)
+    # Unknown frequency — default to monthly so the bill stays live
+    return current_due + relativedelta(months=1)
+
+
+def roll_forward_bills(user_id: str, db: Session) -> int:
+    """
+    For every paid bill whose due_date is now in the past, advance the
+    due_date by one frequency interval and reset status to unpaid.
+
+    - The linked payment transaction is preserved (it's a historical record).
+    - transaction_id on the bill is cleared so the next cycle starts fresh.
+    - The budget_category hub row has its date advanced to match.
+
+    Called from:
+      • GET /bills          — so the page is always current on open
+      • alert_scheduler     — daily background pass for all users
+
+    Returns the number of bills rolled forward.
+    """
+    today = DateType.today()
+    stale = (
+        db.query(Bill)
+        .filter(
+            Bill.user_id == user_id,
+            Bill.status  == "paid",
+            Bill.due_date < today,
+        )
+        .all()
+    )
+
+    count = 0
+    for bill in stale:
+        # Advance until the next due date is in the future
+        next_due = _next_due_date(bill.due_date, bill.frequency)
+        while next_due < today:
+            next_due = _next_due_date(next_due, bill.frequency)
+
+        bill.due_date      = next_due
+        bill.status        = "unpaid"
+        bill.transaction_id = None   # clear link; old tx remains in history
+
+        # Keep the budget_category hub date aligned with the new due_date
+        if bill.budget_category_id:
+            hub = db.query(BudgetCategory).filter(
+                BudgetCategory.id == bill.budget_category_id
+            ).first()
+            if hub:
+                hub.transaction_id             = None
+                hub.transaction_payment_method = None
+                hub.date                       = next_due
+
+        count += 1
+
+    if count:
+        db.commit()
+
+    return count
 
 
 class BillCreate(BaseModel):
@@ -38,6 +178,9 @@ def get_bills(
     current_user: str = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    # Issue #8 — roll forward any paid bills whose cycle has ended
+    roll_forward_bills(current_user, db)
+
     q = db.query(Bill).filter(Bill.user_id == current_user)
     if status:
         q = q.filter(Bill.status == status.lower())
@@ -77,6 +220,8 @@ def create_bill(
         budget_category_id=budget_cat.id,
     )
     db.add(bill)
+    db.flush()
+    sync_bill_provisions_to_budget(current_user, db)  # #12
     db.commit()
     db.refresh(bill)
     return bill
@@ -179,6 +324,7 @@ def update_bill(
 
         entity_to_transaction(hub, db)
 
+    sync_bill_provisions_to_budget(current_user, db)  # #12
     db.commit()
     db.refresh(bill)
     return bill
@@ -215,6 +361,7 @@ def delete_bill(
 
     db.delete(bill)
     db.flush()
+    sync_bill_provisions_to_budget(current_user, db)  # #12
 
     if budget_cat_id:
         hub = db.query(BudgetCategory).filter(
