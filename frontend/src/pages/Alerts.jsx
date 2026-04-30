@@ -5,6 +5,24 @@ import {
   getSeverityConfig,
   getAlertIcon,
 } from "../api/Alert";
+import { useNav } from "../context/NavContext";
+
+// Maps alert type → the nav tab it links to in interactive mode
+const ALERT_NAV_MAP = {
+  bill_due:          "bills",
+  debt_due:          "debts",
+  debt_overdue:      "debts",
+  goal_reached:      "savings",
+  goal_behind_pace:  "savings",
+  budget_exceeded:   "budget",
+  near_limit:        "budget",
+  periodic_review:   "budget",
+  spending_spike:    "transactions",
+  large_transaction: "transactions",
+  import_reminder:   "transactions",
+  low_balance:       "settings",
+  balance_reminder:  "settings",
+};
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Toggle switch (shared)
@@ -48,10 +66,12 @@ function Toggle({ on, onToggle, locked = false, disabled = false }) {
 // Section 1 — Alert Feed
 // ─────────────────────────────────────────────────────────────────────────────
 
-function AlertItem({ alert, onDismiss, onDelete }) {
+function AlertItem({ alert, onDismiss, onDelete, alertMode, onNavigate }) {
   const sev = getSeverityConfig(alert.severity);
   const icon = getAlertIcon(alert.type);
   const isRead = Boolean(alert.read_at);
+  const navTarget = ALERT_NAV_MAP[alert.type];
+  const showViewBtn = alertMode === "interactive" && navTarget && onNavigate;
 
   return (
     <div
@@ -156,6 +176,25 @@ function AlertItem({ alert, onDismiss, onDelete }) {
           flexShrink: 0,
         }}
       >
+        {showViewBtn && (
+          <button
+            onClick={() => { onNavigate(navTarget); if (!isRead) onDismiss(alert.id); }}
+            title={`Go to ${navTarget}`}
+            style={{
+              background: "var(--color-accent, #6366F1)",
+              border: "none",
+              borderRadius: 6,
+              color: "#fff",
+              fontSize: 10,
+              fontWeight: 600,
+              padding: "3px 8px",
+              cursor: "pointer",
+              whiteSpace: "nowrap",
+            }}
+          >
+            View →
+          </button>
+        )}
         {!isRead && (
           <button
             onClick={() => onDismiss(alert.id)}
@@ -194,7 +233,7 @@ function AlertItem({ alert, onDismiss, onDelete }) {
   );
 }
 
-function AlertFeed({ alerts, unreadCount, onDismiss, onDelete, onDismissAll }) {
+function AlertFeed({ alerts, unreadCount, onDismiss, onDelete, onDismissAll, alertMode, onNavigate }) {
   const [showAll, setShowAll] = useState(false);
   const displayed = showAll ? alerts : alerts.slice(0, 10);
 
@@ -256,6 +295,8 @@ function AlertFeed({ alerts, unreadCount, onDismiss, onDelete, onDismissAll }) {
               alert={alert}
               onDismiss={onDismiss}
               onDelete={onDelete}
+              alertMode={alertMode}
+              onNavigate={onNavigate}
             />
           ))}
           {alerts.length > 10 && (
@@ -901,6 +942,7 @@ function DigestTimeRow({ value, onChange }) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export default function Alerts() {
+  const navigate = useNav();
   const {
     alerts,
     unread,
@@ -929,12 +971,14 @@ export default function Alerts() {
   async function handleSaveThresholds() {
     if (!localPrefs) return;
     await savePrefs({
-      bill_due_days: localPrefs.bill_due_days,
-      large_tx_threshold: localPrefs.large_tx_threshold,
-      low_balance_floor: localPrefs.low_balance_floor,
-      digest_enabled: localPrefs.digest_enabled,
-      digest_time: localPrefs.digest_time?.slice(0, 5),
-      immediate_enabled: localPrefs.immediate_enabled,
+      bill_due_days:        localPrefs.bill_due_days,
+      large_tx_threshold:   localPrefs.large_tx_threshold,
+      low_balance_floor:    localPrefs.low_balance_floor,
+      digest_enabled:       localPrefs.digest_enabled,
+      digest_time:          localPrefs.digest_time?.slice(0, 5),
+      immediate_enabled:    localPrefs.immediate_enabled,
+      alert_mode:           localPrefs.alert_mode,
+      periodic_review_freq: localPrefs.periodic_review_freq ?? "",
     });
     setSaved(true);
     setTimeout(() => setSaved(false), 2500);
@@ -977,6 +1021,8 @@ export default function Alerts() {
         onDismiss={dismiss}
         onDelete={remove}
         onDismissAll={dismissAll}
+        alertMode={prefs?.alert_mode ?? "informative"}
+        onNavigate={navigate}
       />
 
       {/* ── Section 2: Notification Settings ── */}
@@ -1122,6 +1168,99 @@ export default function Alerts() {
                   >
                     Send critical alerts instantly
                   </div>
+                </div>
+              </div>
+            </div>
+
+            {/* ── Alert mode + Periodic review ──────────────────────────── */}
+            <div
+              style={{
+                borderTop: "0.5px solid rgba(255,255,255,0.07)",
+                marginTop: 16,
+                paddingTop: 16,
+                display: "flex",
+                flexDirection: "column",
+                gap: 16,
+              }}
+            >
+              {/* Alert mode */}
+              <div>
+                <div style={{ fontSize: 12, color: "var(--color-text-primary)", marginBottom: 6, fontWeight: 500 }}>
+                  Alert mode
+                </div>
+                <div style={{ fontSize: 11, color: "var(--color-text-muted)", marginBottom: 10 }}>
+                  Informative — alerts tell you what happened. Interactive — each alert includes a direct link to the relevant screen.
+                </div>
+                <div style={{ display: "flex", gap: 8 }}>
+                  {["informative", "interactive"].map((mode) => (
+                    <button
+                      key={mode}
+                      onClick={() => setLocalPrefs((p) => ({ ...p, alert_mode: mode }))}
+                      style={{
+                        padding: "5px 14px",
+                        borderRadius: 7,
+                        fontSize: 12,
+                        fontWeight: 500,
+                        cursor: "pointer",
+                        border: (localPrefs.alert_mode ?? "informative") === mode
+                          ? "1.5px solid var(--color-accent, #6366F1)"
+                          : "0.5px solid rgba(255,255,255,0.15)",
+                        background: (localPrefs.alert_mode ?? "informative") === mode
+                          ? "rgba(99,102,241,0.15)"
+                          : "transparent",
+                        color: (localPrefs.alert_mode ?? "informative") === mode
+                          ? "var(--color-accent, #6366F1)"
+                          : "var(--color-text-muted)",
+                        textTransform: "capitalize",
+                      }}
+                    >
+                      {mode}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Periodic review frequency */}
+              <div>
+                <div style={{ fontSize: 12, color: "var(--color-text-primary)", marginBottom: 6, fontWeight: 500 }}>
+                  Periodic review reminders
+                </div>
+                <div style={{ fontSize: 11, color: "var(--color-text-muted)", marginBottom: 10 }}>
+                  Get a nudge to review your finances on a schedule. Monthly fires on the 1st, quarterly on Jan/Apr/Jul/Oct, semester on Jan/Jul.
+                </div>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  {[
+                    { val: "",          label: "Off" },
+                    { val: "monthly",   label: "Monthly" },
+                    { val: "quarterly", label: "Quarterly" },
+                    { val: "semester",  label: "Semester" },
+                  ].map(({ val, label }) => {
+                    const current = localPrefs.periodic_review_freq ?? "";
+                    return (
+                      <button
+                        key={val}
+                        onClick={() => setLocalPrefs((p) => ({ ...p, periodic_review_freq: val }))}
+                        style={{
+                          padding: "5px 14px",
+                          borderRadius: 7,
+                          fontSize: 12,
+                          fontWeight: 500,
+                          cursor: "pointer",
+                          border: current === val
+                            ? "1.5px solid var(--color-accent, #6366F1)"
+                            : "0.5px solid rgba(255,255,255,0.15)",
+                          background: current === val
+                            ? "rgba(99,102,241,0.15)"
+                            : "transparent",
+                          color: current === val
+                            ? "var(--color-accent, #6366F1)"
+                            : "var(--color-text-muted)",
+                        }}
+                      >
+                        {label}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
             </div>

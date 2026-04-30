@@ -253,3 +253,10 @@ class AlertPreferences(Base):
     bill_due_days         = Column(Integer,         nullable=False, default=3)
     large_tx_threshold    = Column(Numeric(12, 2),  nullable=True)   # NULL = disabled
     low_balance_floor     = Column(Numeric(12, 2),  nullable=True)   # NULL = disabled
+    # ── Alert mode ────────────────────────────────────────────────────────────
+    # informative  → alerts show what happened, user acts independently
+    # interactive  → alerts include a navigation link to the relevant screen
+    alert_mode            = Column(String(20),        nullable=False, default="informative")
+    # ── Periodic review ───────────────────────────────────────────────────────
+    # monthly | quarterly | semester | NULL (disabled)
+    periodic_review_freq  = Column(String(20),        nullable=True)

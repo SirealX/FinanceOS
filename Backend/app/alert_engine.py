@@ -74,6 +74,8 @@ _ALERT_META = {
     "import_reminder":     {"tier": 2, "severity": "info"},
     "balance_reminder":    {"tier": 2, "severity": "info"},
     "near_limit":          {"tier": 3, "severity": "info"},
+    "goal_behind_pace":    {"tier": 2, "severity": "warning"},
+    "periodic_review":     {"tier": 2, "severity": "info"},
 }
 
 
@@ -145,6 +147,10 @@ def evaluate_alerts(
     # ── Tier 1 — Savings goal reached (any source except skip list) ───────────
     new_alerts += _check_goal_reached(user_id, source, db)
 
+    # ── Tier 1 — Savings goal behind pace (scheduler) ────────────────────────
+    if source == "scheduler":
+        new_alerts += _check_goal_behind_pace(user_id, today, db)
+
     # ── Tier 2 checks ─────────────────────────────────────────────────────────
 
     # 2a. Budget category exceeded (any source)
@@ -161,6 +167,10 @@ def evaluate_alerts(
     # 2d. Balance sanity check reminder (scheduler, user-configured day of month)
     if source == "scheduler":
         new_alerts += _check_balance_reminder(user_id, today, db)
+
+    # 2e. Periodic review nudge (scheduler)
+    if source == "scheduler":
+        new_alerts += _check_periodic_review(user_id, today, db)
 
     # ── Persist all new alerts ────────────────────────────────────────────────
     if new_alerts:
@@ -632,6 +642,151 @@ def _check_balance_reminder(
         body        = body,
         source      = "scheduler",
         entity_type = "preferences",
+        entity_id   = key,
+    )]
+
+
+
+def _check_goal_behind_pace(
+    user_id: str,
+    today: date,
+    db: Session,
+) -> list[Alert]:
+    """
+    Fire once per month per goal when a savings goal with a deadline is
+    falling meaningfully behind its linear pace.
+
+    Behind-pace definition:
+      expected = target * (elapsed_days / total_days)
+      gap      = expected - current_amount
+      Fire if gap > 5% of target AND current < expected.
+
+    Deduplicated per goal per calendar month so the user gets one
+    reminder per month, not one per scheduler run.
+    """
+    month_key = today.strftime("%Y-%m")
+
+    goals = (
+        db.query(SavingsGoal)
+        .filter(
+            SavingsGoal.user_id       == user_id,
+            SavingsGoal.deadline_date != None,
+            SavingsGoal.target_amount >  0,
+            SavingsGoal.current_amount < SavingsGoal.target_amount,
+            SavingsGoal.deadline_date >= today,   # not already past deadline
+        )
+        .all()
+    )
+
+    result = []
+    for goal in goals:
+        total_days   = (goal.deadline_date - goal.created_at.date()
+                        if hasattr(goal, "created_at") and goal.created_at
+                        else (goal.deadline_date - today)).days
+        if total_days <= 0:
+            continue
+
+        elapsed_days = (today - (goal.created_at.date()
+                                 if hasattr(goal, "created_at") and goal.created_at
+                                 else today)).days
+        if elapsed_days <= 0:
+            continue
+
+        target  = float(goal.target_amount)
+        current = float(goal.current_amount)
+        expected = target * (elapsed_days / total_days)
+
+        gap = expected - current
+        if gap <= 0 or gap < target * 0.05:
+            continue   # on track or only trivially behind
+
+        key = f"behind:{goal.id}:{month_key}"
+        if _already_fired(user_id, "goal_behind_pace", key, db):
+            continue
+
+        months_left = max(1, round((goal.deadline_date - today).days / 30.4))
+        needed      = (target - current) / months_left
+        pct_done    = int((current / target) * 100)
+
+        result.append(_make_alert(
+            user_id     = user_id,
+            type_       = "goal_behind_pace",
+            title       = f"Savings Goal Behind — {goal.goal_name}",
+            body        = (
+                f"{goal.goal_name} is {pct_done}% funded but should be "
+                f"{int((expected / target) * 100)}% by now. "
+                f"Save {_fmt(needed)} / month to still hit your deadline."
+            ),
+            source      = "scheduler",
+            entity_type = "savings_goal",
+            entity_id   = key,
+        ))
+
+    return result
+
+
+def _check_periodic_review(
+    user_id: str,
+    today: date,
+    db: Session,
+) -> list[Alert]:
+    """
+    Fire a periodic financial review nudge on the schedule the user has chosen.
+
+    Frequencies:
+      monthly   — 1st of every month
+      quarterly — 1st of Jan, Apr, Jul, Oct
+      semester  — 1st of Jan, Jul
+
+    Deduplicated by year+period so it fires exactly once per review window.
+    The alert links to the budget screen for a full review.
+    """
+    prefs = db.query(AlertPreferences).filter(AlertPreferences.user_id == user_id).first()
+    freq  = getattr(prefs, "periodic_review_freq", None) if prefs else None
+
+    if not freq:
+        return []
+
+    # Decide whether today is a review day for the chosen frequency
+    is_review_day = False
+    period_label  = ""
+
+    if freq == "monthly" and today.day == 1:
+        import calendar
+        month_name   = today.strftime("%B %Y")
+        is_review_day = True
+        period_label  = month_name
+        key = f"review:monthly:{today.year}-{today.month:02d}"
+
+    elif freq == "quarterly" and today.day == 1 and today.month in (1, 4, 7, 10):
+        quarter_names = {1: "Q1", 4: "Q2", 7: "Q3", 10: "Q4"}
+        is_review_day = True
+        period_label  = f"{quarter_names[today.month]} {today.year}"
+        key = f"review:quarterly:{today.year}-{today.month:02d}"
+
+    elif freq == "semester" and today.day == 1 and today.month in (1, 7):
+        semester_names = {1: "H1", 7: "H2"}
+        is_review_day = True
+        period_label  = f"{semester_names[today.month]} {today.year}"
+        key = f"review:semester:{today.year}-{today.month:02d}"
+
+    if not is_review_day:
+        return []
+
+    if _already_fired(user_id, "periodic_review", key, db):
+        return []
+
+    freq_labels = {"monthly": "monthly", "quarterly": "quarterly", "semester": "semester"}
+    return [_make_alert(
+        user_id     = user_id,
+        type_       = "periodic_review",
+        title       = f"Time for Your {freq_labels.get(freq, '')} Review",
+        body        = (
+            f"It's the start of {period_label}. Take a few minutes to review "
+            "your budget, check savings progress, and plan your spending for the period ahead."
+        ),
+        source      = "scheduler",
+        entity_type = "budget",
         entity_id   = key,
     )]
 

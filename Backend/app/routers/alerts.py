@@ -66,6 +66,8 @@ def _ser_prefs(p: AlertPreferences) -> dict:
         "bill_due_days":         p.bill_due_days,
         "large_tx_threshold":    float(p.large_tx_threshold) if p.large_tx_threshold else None,
         "low_balance_floor":     float(p.low_balance_floor) if p.low_balance_floor else None,
+        "alert_mode":            getattr(p, "alert_mode", "informative") or "informative",
+        "periodic_review_freq":  getattr(p, "periodic_review_freq", None),
     }
 
 
@@ -84,6 +86,20 @@ class AlertPreferencesUpdate(BaseModel):
     bill_due_days:        Optional[int]     = None
     large_tx_threshold:   Optional[float]   = None   # null disables feature
     low_balance_floor:    Optional[float]   = None   # null disables feature
+    alert_mode:           Optional[str]     = None   # informative | interactive
+    periodic_review_freq: Optional[str]     = None   # monthly | quarterly | semester | "" (disable)
+
+    @validator("alert_mode")
+    def validate_alert_mode(cls, v):
+        if v is not None and v not in ("informative", "interactive", ""):
+            raise ValueError("alert_mode must be informative or interactive")
+        return v
+
+    @validator("periodic_review_freq")
+    def validate_periodic_review_freq(cls, v):
+        if v is not None and v not in ("monthly", "quarterly", "semester", ""):
+            raise ValueError("periodic_review_freq must be monthly, quarterly, semester, or empty")
+        return v
 
     @validator("bill_due_days")
     def validate_bill_due_days(cls, v):
@@ -255,6 +271,10 @@ def update_preferences(
         prefs.large_tx_threshold = Decimal(str(data.large_tx_threshold)) if data.large_tx_threshold else None
     if "low_balance_floor" in data.__fields_set__:
         prefs.low_balance_floor = Decimal(str(data.low_balance_floor)) if data.low_balance_floor else None
+    if data.alert_mode is not None:
+        prefs.alert_mode = data.alert_mode if data.alert_mode else "informative"
+    if data.periodic_review_freq is not None:
+        prefs.periodic_review_freq = data.periodic_review_freq if data.periodic_review_freq else None
 
     db.commit()
     db.refresh(prefs)
