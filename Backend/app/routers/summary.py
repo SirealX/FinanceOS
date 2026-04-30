@@ -307,14 +307,14 @@ def get_cashflow(
             week_totals = _totals_by_type(db, current_user, week_start, week_end)
             labels.append(label)
             income.append(round(week_totals.get("income", 0.0), 2))
-            outflow = week_totals.get("expense", 0.0) + week_totals.get("savings", 0.0)
+            outflow = week_totals.get("expense", 0.0)  # spec: income vs expenses only, not savings
             expenses.append(round(outflow, 2))
     else:
         # Monthly breakdown for last_3_months
         for year, month in _month_range(period):
             labels.append(_month_label(year, month))
             income.append(round(_total_for_month(db, current_user, "income", year, month), 2))
-            outflow = _total_types_for_month(db, current_user, ["expense", "savings"], year, month)
+            outflow = _total_for_month(db, current_user, "expense", year, month)  # spec: expenses only
             expenses.append(round(outflow, 2))
 
     return {"labels": labels, "income": income, "expenses": expenses}
@@ -337,7 +337,7 @@ def get_expense_breakdown(
         )
         .filter(
             Transaction.user_id == current_user,
-            Transaction.type.in_(["expense", "savings"]),
+            Transaction.type == "expense",   # spec: savings is not an expense, exclude it
             Transaction.date >= start,
             Transaction.date <= end,
         )

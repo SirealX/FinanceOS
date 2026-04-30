@@ -777,6 +777,7 @@ export default function Dashboard() {
     goToSettings,
     formatAmount, // currency-aware (from SettingsContext via useDashboard)
     formatAmountK, // currency-aware compact version
+    bankBalanceMissingAnchor,
   } = useDashboard();
 
   // Signed formatter: "+€1,234.56" / "−€1,234.56"
@@ -1123,6 +1124,56 @@ export default function Dashboard() {
               </button>
             </>
           )}
+        </div>
+      )}
+
+      {/* ══ ZONE 2c-extra: Static balance nudge ══
+          Shown when bankBalance is set but the projection anchor is missing.
+          This means new transactions won't change the displayed balance until
+          the user re-saves their bank balance to capture a fresh anchor.
+      */}
+      {bankBalanceMissingAnchor && period === "This Month" && (
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 12,
+            padding: "10px 16px",
+            borderRadius: 10,
+            background: "rgba(245,158,11,0.07)",
+            border: "0.5px solid rgba(245,158,11,0.28)",
+            marginBottom: 12,
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <span style={{ fontSize: 15, flexShrink: 0 }}>⚠️</span>
+            <span
+              style={{
+                fontSize: 13,
+                color: "var(--color-text-secondary)",
+                lineHeight: 1.45,
+              }}
+            >
+              Your balance is not updating with new transactions.{" "}
+              <strong
+                style={{
+                  fontWeight: 500,
+                  color: "var(--color-text-primary)",
+                }}
+              >
+                Re-save your bank balance in Settings
+              </strong>{" "}
+              once to enable live tracking.
+            </span>
+          </div>
+          <button
+            className="btn-ghost"
+            style={{ fontSize: 12, flexShrink: 0, whiteSpace: "nowrap" }}
+            onClick={goToSettings}
+          >
+            Fix it →
+          </button>
         </div>
       )}
 

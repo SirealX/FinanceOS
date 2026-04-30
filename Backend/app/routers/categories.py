@@ -55,7 +55,8 @@ SYSTEM_CATEGORIES = [
     { "name": "Refund",          "color": "#38BDF8", "kind": "income",  "sort_order": 11 },
     { "name": "Other Income",    "color": "#475569", "kind": "income",  "sort_order": 12 },
     { "name": "Savings",         "color": "#A78BFA", "kind": "savings", "sort_order": 13 },
-    { "name": "ATM Withdrawal",  "color": "#64748B", "kind": "expense", "sort_order": 14 },
+    { "name": "ATM Withdrawal",             "color": "#64748B", "kind": "expense", "sort_order": 14 },
+    { "name": "Transfers Between Accounts", "color": "#94A3B8", "kind": "expense", "sort_order": 15 },
 ]
 
 

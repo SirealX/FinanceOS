@@ -686,6 +686,9 @@ export function useDashboard() {
     bankBalance: projectedBankBalance, // projected forward from anchor
     bankBalanceDate: IS_DEMO ? null : (bankBalanceDate ?? null),
     initialBalance: IS_DEMO ? null : (initialBalance ?? null),
+    // True when the user has set a bank balance but the anchor is missing —
+    // balance is static and the dashboard should prompt them to re-save.
+    bankBalanceMissingAnchor: !IS_DEMO && bankBalance !== null && balanceAnchorApp === null,
     // Net worth breakdown
     netWorth,
     netWorthSavings: savingsTotal,

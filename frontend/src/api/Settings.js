@@ -170,8 +170,12 @@ export function useSettingsPage() {
       // The dashboard will then compute:
       //   projected_bank = bank_balance + (current_closing - balance_anchor_app)
       // so the displayed balance auto-updates as new transactions are logged.
-      if (draftBankBalance !== "" && settingsSummary?.closing_balance != null) {
-        patch.balanceAnchorApp = settingsSummary.closing_balance;
+      //
+      // IMPORTANT: always set this when saving bankBalance — even if summary
+      // hasn't loaded yet (default to 0). Without the anchor the dashboard
+      // can only show a static value and never reflects new transactions.
+      if (draftBankBalance !== "") {
+        patch.balanceAnchorApp = settingsSummary?.closing_balance ?? 0;
       }
 
       await settings.updatePreferences(patch);
