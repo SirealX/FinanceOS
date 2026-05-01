@@ -28,3 +28,7 @@ openpyxl==3.1.5
 
 # Date arithmetic — required by recurring.py (/log endpoint advances next_due)
 python-dateutil==2.9.0.post0
+
+# Notifications — required by notifications.py
+httpx==0.27.2
+pywebpush==2.0.0

@@ -3,16 +3,6 @@ backend/app/notifications.py
 ─────────────────────────────────────────────────────────────────────────────
 External notification dispatch — Telegram + PWA Push.
 
-STATUS: STUB — functions are defined but no-ops until Step 8 (spec §12):
-  🔑 A. Create the Telegram bot via @BotFather → add TELEGRAM_BOT_TOKEN to .env
-  🔑 B. Generate VAPID keys → add VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY / VAPID_CONTACT_EMAIL
-
-Once those env variables exist, un-stub by installing the dependencies and
-uncomment the real implementations below.
-
-Install when ready:
-  pip install python-telegram-bot pywebpush
-
 Both functions are fire-and-forget — a failed dispatch logs a warning but
 does NOT roll back the alert record already written to the database.
 ─────────────────────────────────────────────────────────────────────────────
@@ -22,6 +12,8 @@ import json
 import logging
 import os
 from typing import Optional
+
+import httpx
 
 log = logging.getLogger(__name__)
 
@@ -54,20 +46,26 @@ def send_telegram(
     The user must consent before this channel is activated (spec §6A).
     """
     if not TELEGRAM_BOT_TOKEN:
-        log.warning("[notifications] TELEGRAM_BOT_TOKEN not set — Telegram stub, skipping send")
+        log.warning("[notifications] TELEGRAM_BOT_TOKEN not set — skipping Telegram send")
         return
 
-    # ── Real implementation (un-stub after Step 8A) ───────────────────────────
-    # import httpx
-    # payload = {"chat_id": chat_id, "text": message, "parse_mode": "Markdown"}
-    # if buttons:
-    #     payload["reply_markup"] = {"inline_keyboard": buttons}
-    # url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-    # resp = httpx.post(url, json=payload, timeout=10)
-    # resp.raise_for_status()
-    # log.info("[notifications] Telegram sent to %s", chat_id)
+    payload: dict = {"chat_id": chat_id, "text": message, "parse_mode": "Markdown"}
+    if buttons:
+        payload["reply_markup"] = {"inline_keyboard": buttons}
 
-    log.debug("[notifications] STUB send_telegram(chat_id=%s, len=%d)", chat_id, len(message))
+    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+    try:
+        resp = httpx.post(url, json=payload, timeout=10)
+        resp.raise_for_status()
+        log.info("[notifications] Telegram sent to chat_id=%s", chat_id)
+    except httpx.HTTPStatusError as exc:
+        log.error(
+            "[notifications] Telegram HTTP error %s: %s",
+            exc.response.status_code,
+            exc.response.text,
+        )
+    except httpx.RequestError as exc:
+        log.error("[notifications] Telegram request failed: %s", exc)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -95,24 +93,20 @@ def send_push(
     The browser's encrypted push service relays the message directly.
     """
     if not VAPID_PRIVATE_KEY:
-        log.warning("[notifications] VAPID_PRIVATE_KEY not set — PWA push stub, skipping send")
+        log.warning("[notifications] VAPID_PRIVATE_KEY not set — skipping PWA push send")
         return
 
-    # ── Real implementation (un-stub after Step 8B) ───────────────────────────
-    # from pywebpush import webpush, WebPushException
-    # payload = json.dumps({"title": title, "body": body, "url": url or "/"})
-    # try:
-    #     webpush(
-    #         subscription_info = subscription_json,
-    #         data              = payload,
-    #         vapid_private_key = VAPID_PRIVATE_KEY,
-    #         vapid_claims      = {
-    #             "sub": f"mailto:{VAPID_CONTACT_EMAIL}",
-    #         },
-    #     )
-    #     log.info("[notifications] PWA push sent to %s", subscription_json.get("endpoint", "?"))
-    # except WebPushException as exc:
-    #     log.error("[notifications] PWA push failed: %s", exc)
-    #     raise
+    from pywebpush import webpush, WebPushException  # noqa: PLC0415
 
-    log.debug("[notifications] STUB send_push(title=%s)", title)
+    payload = json.dumps({"title": title, "body": body, "url": url or "/"})
+    try:
+        webpush(
+            subscription_info=subscription_json,
+            data=payload,
+            vapid_private_key=VAPID_PRIVATE_KEY,
+            vapid_claims={"sub": f"mailto:{VAPID_CONTACT_EMAIL}"},
+        )
+        log.info("[notifications] PWA push sent to %s", subscription_json.get("endpoint", "?"))
+    except WebPushException as exc:
+        log.error("[notifications] PWA push failed: %s", exc)
+        raise
