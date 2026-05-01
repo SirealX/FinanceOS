@@ -302,6 +302,29 @@ def connect_telegram(
     return _ser_prefs(prefs)
 
 
+@router.post("/telegram/test")
+def test_telegram(
+    current_user: str = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Send a test message to the user's connected Telegram chat.
+    Returns 400 if Telegram is not connected.
+    """
+    from app.notifications import send_telegram  # noqa: PLC0415
+
+    prefs = _get_or_create_prefs(current_user, db)
+    if not prefs.telegram_chat_id or not prefs.telegram_enabled:
+        from fastapi import HTTPException  # noqa: PLC0415
+        raise HTTPException(status_code=400, detail="Telegram is not connected.")
+
+    send_telegram(
+        prefs.telegram_chat_id,
+        "✅ *FinanceOS — Test Notification*\n\nYour Telegram alerts are working correctly. You'll receive budget warnings, bill reminders, and other alerts here.",
+    )
+    return {"ok": True}
+
+
 @router.post("/telegram/disconnect")
 def disconnect_telegram(
     current_user: str = Depends(get_current_user),

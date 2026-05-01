@@ -56,6 +56,11 @@ export async function disconnectTelegram() {
   return res.data;
 }
 
+export async function testTelegram() {
+  const res = await client.post(`${BASE}/telegram/test`);
+  return res.data;
+}
+
 export async function subscribePush(subscription) {
   const res = await client.post(`${BASE}/pwa/subscribe`, { subscription });
   return res.data;

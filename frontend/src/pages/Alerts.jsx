@@ -5,6 +5,7 @@ import {
   getSeverityConfig,
   getAlertIcon,
 } from "../api/Alert";
+import { testTelegram } from "../api/alert.axios";
 import { useNav } from "../context/NavContext";
 
 // Maps alert type → the nav tab it links to in interactive mode
@@ -570,8 +571,21 @@ function TelegramCard({ prefs, onSavePrefs, onLink, onUnlink }) {
   const [showConsent, setShowConsent] = useState(false);
   const [showSetup, setShowSetup] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [testState, setTestState] = useState("idle"); // idle | sending | sent | error
 
   const connected = Boolean(prefs?.telegram_chat_id);
+
+  async function handleTest() {
+    setTestState("sending");
+    try {
+      await testTelegram();
+      setTestState("sent");
+      setTimeout(() => setTestState("idle"), 4000);
+    } catch {
+      setTestState("error");
+      setTimeout(() => setTestState("idle"), 4000);
+    }
+  }
 
   async function handleToggle() {
     if (connected) {
@@ -717,6 +731,48 @@ function TelegramCard({ prefs, onSavePrefs, onLink, onUnlink }) {
               onToggle={toggleActiveMode}
               disabled={saving}
             />
+          </div>
+        )}
+
+        {/* Test notification button — only when connected */}
+        {connected && (
+          <div
+            style={{
+              marginTop: 10,
+              paddingTop: 10,
+              borderTop: "0.5px solid rgba(255,255,255,0.06)",
+            }}
+          >
+            <button
+              onClick={handleTest}
+              disabled={testState === "sending"}
+              style={{
+                width: "100%",
+                padding: "7px 12px",
+                borderRadius: 7,
+                border: "0.5px solid rgba(255,255,255,0.12)",
+                background:
+                  testState === "sent"
+                    ? "rgba(16,185,129,0.15)"
+                    : testState === "error"
+                    ? "rgba(239,68,68,0.15)"
+                    : "rgba(255,255,255,0.05)",
+                color:
+                  testState === "sent"
+                    ? "#10B981"
+                    : testState === "error"
+                    ? "#EF4444"
+                    : "var(--color-text-secondary)",
+                fontSize: 11,
+                cursor: testState === "sending" ? "wait" : "pointer",
+                transition: "all 0.2s",
+              }}
+            >
+              {testState === "sending" && "Sending…"}
+              {testState === "sent" && "✓ Message sent — check Telegram"}
+              {testState === "error" && "✗ Failed — check bot connection"}
+              {testState === "idle" && "Send test notification"}
+            </button>
           </div>
         )}
       </div>
