@@ -59,7 +59,7 @@ Chart.register(
 // accent: "positive" | "negative" | undefined — adds a subtle background tint
 // so the balance card is unambiguous at a glance even before reading the number.
 function KpiCard({ label, value, delta, colorClass, icon, accent, subtitle }) {
-  const isUp = delta.dir === "up";
+  const isUp = delta?.dir === "up";
 
   const accentStyle =
     accent === "positive"
@@ -106,7 +106,7 @@ function KpiCard({ label, value, delta, colorClass, icon, accent, subtitle }) {
       )}
       <div className="kpi-delta" style={{ marginTop: 8 }}>
         <span className={isUp ? "arrow-up" : "arrow-down"}>
-          {isUp ? "▲" : "▼"} {delta.pct}%
+          {isUp ? "▲" : "▼"} {delta?.pct ?? "—"}%
         </span>
         <span className="vs-label">vs last month</span>
       </div>
@@ -146,7 +146,7 @@ function BalanceCard({
   fmtSigned,
 }) {
   const monthChange = closing - opening;
-  const isUp = delta.dir === "up";
+  const isUp = delta?.dir === "up";
   const hasBankData = bankBalance !== null && bankBalance !== undefined;
   const hasSavings = savingsAmt > 0;
 
@@ -342,7 +342,7 @@ function BalanceCard({
       {/* Delta vs last month */}
       <div className="kpi-delta" style={{ marginTop: 8 }}>
         <span className={isUp ? "arrow-up" : "arrow-down"}>
-          {isUp ? "▲" : "▼"} {delta.pct}%
+          {isUp ? "▲" : "▼"} {delta?.pct ?? "—"}%
         </span>
         <span className="vs-label">vs last month's start</span>
       </div>
