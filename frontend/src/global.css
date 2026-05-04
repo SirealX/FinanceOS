@@ -166,6 +166,7 @@ textarea {
 
 button {
   cursor: pointer;
+  touch-action: manipulation; /* removes 300ms tap delay on mobile */
 }
 
 /* Calendar icon tint on dark inputs */
@@ -185,7 +186,8 @@ select option {
 
 .app-shell {
   display: flex;
-  height: 100vh;
+  height: 100vh;     /* fallback for browsers without dvh support */
+  height: 100dvh;    /* iOS Safari: dynamic viewport — excludes browser chrome */
   overflow: hidden;
 }
 
@@ -202,6 +204,7 @@ select option {
 .app-main {
   flex: 1;
   overflow-y: auto;
+  overscroll-behavior-y: contain; /* prevents bounce-scroll from bleeding through on iOS */
   background-color: var(--color-bg-base);
   padding: var(--spacing-11); /* 28px all sides — never vary */
 }
@@ -240,6 +243,7 @@ select option {
     color 0.15s,
     background 0.15s;
   user-select: none;
+  touch-action: manipulation;
 }
 
 .nav-item:hover {
@@ -603,6 +607,7 @@ select option {
   font-size: 12px;
   font-weight: 400;
   cursor: pointer;
+  touch-action: manipulation;
   transition:
     color 0.15s,
     background 0.15s;
@@ -1016,12 +1021,25 @@ select option {
     padding-bottom: calc(16px + 66px);
   }
 
+  /* Tighten card padding so content breathes better on narrow screens */
+  .card {
+    padding: 14px;
+  }
+  .card-compact {
+    padding: 14px;
+  }
+
   /* Stack page header: title on top, action buttons below */
   .page-header {
     flex-direction: column;
     align-items: flex-start;
     gap: 10px;
     margin-bottom: 16px;
+  }
+
+  /* Slightly smaller page title so it never wraps awkwardly */
+  .page-title {
+    font-size: 18px;
   }
 
   .page-header-actions {
@@ -1040,6 +1058,12 @@ select option {
     grid-template-columns: 1fr;
   }
 
+  /* KPI grid: keep 2 columns on phone (4-col → 2×2 is already at 700px;
+     on 600px collapse fully to 1-col would lose too much density) */
+  .grid-kpi {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   /* Hide non-essential transaction table columns */
   .tx-col-cat,
   .tx-col-date,
@@ -1053,14 +1077,25 @@ select option {
   .chart-wrap.debt  { height: 180px; }
   .chart-wrap.trend { height: 160px; }
 
-  /* Minimum touch targets */
+  /* Minimum touch targets for all buttons */
   .btn-primary,
-  .btn-secondary {
-    min-height: 40px;
+  .btn-secondary,
+  .btn-danger {
+    min-height: 44px; /* Apple HIG recommended minimum */
   }
 
   .pill {
     padding: 7px 12px;
+    min-height: 36px;
+  }
+
+  /* iOS Safari: inputs smaller than 16px trigger auto-zoom on focus.
+     Override here so the page never jumps when the user taps a field. */
+  .input,
+  input,
+  select,
+  textarea {
+    font-size: 16px;
   }
 }
 
@@ -1095,16 +1130,17 @@ select option {
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 4px;
-    padding: 10px 14px;
-    min-width: 60px;
+    gap: 3px;
+    padding: 8px 2px;
+    flex: 1;          /* distribute evenly — no overflow regardless of item count */
+    min-width: 0;     /* allow items to shrink below their content size */
     min-height: 56px;
-    font-size: 10px;
+    font-size: 9px;
     color: var(--color-text-hint);
-    flex-shrink: 0;
     cursor: pointer;
     position: relative;
     user-select: none;
+    touch-action: manipulation;
     transition: color 0.15s;
   }
 
@@ -1114,6 +1150,9 @@ select option {
 
   .mobile-nav-item span {
     white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
   }
 
   /* Green bar at top of active item */
