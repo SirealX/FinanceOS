@@ -370,23 +370,34 @@ def get_cashflow(
     expenses = []
 
     if period in ("this_month", "last_month"):
-        # Weekly breakdown — gives 4 data points and makes the chart readable
-        # Use _totals_by_type (1 query per week) instead of 2 separate queries.
+        # Weekly breakdown — gives 4 data points and makes the chart readable.
+        # Cash outflow = cash expenses (expense type, minus cc_charge which is not
+        # a bank debit yet) + debt_payment (real cash leaving the bank to pay debts).
+        # cc_charges are excluded here because the actual cash exit happens when the
+        # CC bill is paid, which is recorded as a debt_payment transaction.
         months = _month_range(period)
         year, month = months[0]
         for label, week_start, week_end in _week_ranges_for_month(year, month):
             week_totals = _totals_by_type(db, current_user, week_start, week_end)
+            week_cc     = _cc_charge_total(db, current_user, week_start, week_end)
             labels.append(label)
             income.append(round(week_totals.get("income", 0.0), 2))
-            outflow = week_totals.get("expense", 0.0)  # spec: income vs expenses only, not savings
-            expenses.append(round(outflow, 2))
+            cash_expenses = week_totals.get("expense", 0.0) - week_cc
+            debt_pmts     = week_totals.get("debt_payment", 0.0)
+            expenses.append(round(cash_expenses + debt_pmts, 2))
     else:
-        # Monthly breakdown for last_3_months
+        # Monthly breakdown for last_3_months — same cash-outflow logic per month.
         for year, month in _month_range(period):
+            last_day   = calendar.monthrange(year, month)[1]
+            m_start    = date(year, month, 1)
+            m_end      = date(year, month, last_day)
+            m_totals   = _totals_by_type(db, current_user, m_start, m_end)
+            m_cc       = _cc_charge_total(db, current_user, m_start, m_end)
             labels.append(_month_label(year, month))
-            income.append(round(_total_for_month(db, current_user, "income", year, month), 2))
-            outflow = _total_for_month(db, current_user, "expense", year, month)  # spec: expenses only
-            expenses.append(round(outflow, 2))
+            income.append(round(m_totals.get("income", 0.0), 2))
+            cash_expenses = m_totals.get("expense", 0.0) - m_cc
+            debt_pmts     = m_totals.get("debt_payment", 0.0)
+            expenses.append(round(cash_expenses + debt_pmts, 2))
 
     return {"labels": labels, "income": income, "expenses": expenses}
 
