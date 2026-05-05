@@ -388,7 +388,7 @@ export function useBudget() {
     }
 
     return cats.map((c) => {
-      const match = actuals.find((a) => a.category === c.name);
+      const match = actuals.find((a) => a.category === c.name && a.type === kind);
       return {
         ...c,
         actual: match ? match.spent : 0,
