@@ -279,12 +279,12 @@ def get_summary(
     liquid_opening_balance = _liquid_net_from_totals(adjusted_open) + balance_offset
     liquid_closing_balance = liquid_opening_balance + liquid_net
 
-    prev_income   = prev_totals.get("income",  0.0)
-    prev_expenses = prev_totals.get("expense", 0.0)
-    prev_savings  = prev_totals.get("savings", 0.0)
+    prev_income        = prev_totals.get("income",       0.0)
+    prev_expenses      = prev_totals.get("expense",      0.0)
+    prev_savings       = prev_totals.get("savings",      0.0)
     prev_debt_payments = prev_totals.get("debt_payment", 0.0)
     prev_cash_expenses = prev_expenses - prev_cc_charges
-    prev_net      = prev_income - prev_cash_expenses - prev_savings - prev_debt_payments
+    prev_net           = prev_income - prev_cash_expenses - prev_savings - prev_debt_payments
     prev_rate     = round((prev_savings / prev_income * 100), 1) if prev_income > 0 else 0.0
 
     adjusted_prev_open = dict(prev_open_totals)
@@ -305,12 +305,20 @@ def get_summary(
 
     current_opening_vs_prev = _delta(opening_balance, prev_opening)
 
+    # total_outflows: the true cash-out figure for the KPI card —
+    # cash expenses (no cc_charge) + debt payments.
+    # cc_charges are excluded because cash only leaves the bank when the CC
+    # bill is paid (recorded as debt_payment), not at point of purchase.
+    total_outflows      = cash_expenses + debt_payments
+    prev_total_outflows = prev_cash_expenses + prev_debt_payments
+
     return {
         "income":           round(income,          2),
-        "expenses":         round(expenses,        2),   # total incl. cc_charge (for KPI display)
+        "expenses":         round(expenses,        2),   # raw expense total (incl. cc_charge)
         "savings":          round(savings,         2),
         "debt_payments":    round(debt_payments,   2),   # cash paid toward debts this period
-        "cc_charges":       round(cur_cc_charges,  2),   # CC charges (excluded from cash balance)
+        "cc_charges":       round(cur_cc_charges,  2),   # CC charges (not cash yet)
+        "total_outflows":   round(total_outflows,  2),   # cash expenses + debt payments (for KPI card)
         "net_balance":      round(net_balance,     2),
         # liquid_net = income − cash_expenses − debt_payments (savings excluded).
         # Use this on the balance card so saving money doesn't look like spending.
@@ -325,6 +333,7 @@ def get_summary(
         "savings_rate":     savings_rate,
         "income_delta":     _delta(income,          prev_income),
         "expenses_delta":   _delta(expenses,        prev_expenses),
+        "outflows_delta":   _delta(total_outflows,  prev_total_outflows),
         "net_delta":        _delta(net_balance,     prev_net),
         "savings_delta":    _delta(savings_rate,    prev_rate),
         "closing_delta":    _delta(closing_balance, prev_closing),

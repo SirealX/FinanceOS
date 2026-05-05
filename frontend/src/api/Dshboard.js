@@ -547,12 +547,16 @@ export function useDashboard() {
         liquidClosingBalance: kpiData.liquid_closing_balance ?? kpiData.closing_balance ?? 0,
         liquidOpeningDelta:   kpiData.liquid_opening_delta   ?? kpiData.opening_delta ?? kpiData.net_delta,
         income: kpiData.income,
-        expenses: kpiData.expenses,
+        // expenses: total_outflows = cash expenses (no cc_charge) + debt payments.
+        // This is the true cash leaving the account and what the Expenses KPI card
+        // should display. Falls back to raw expenses for old API responses.
+        expenses: kpiData.total_outflows ?? kpiData.expenses,
+        debtPayments: kpiData.debt_payments ?? 0,
         savingsAmount: kpiData.savings ?? 0,
         savingsRate: kpiData.savings_rate,
         netDelta: kpiData.net_delta,
         incomeDelta: kpiData.income_delta,
-        expensesDelta: kpiData.expenses_delta,
+        expensesDelta: kpiData.outflows_delta ?? kpiData.expenses_delta,
         savingsDelta: kpiData.savings_delta,
         closingDelta: kpiData.closing_delta ?? kpiData.net_delta,
         openingDelta: kpiData.opening_delta ?? kpiData.net_delta,
