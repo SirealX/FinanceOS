@@ -347,10 +347,21 @@ export function useBudget() {
   // ── Derived rows per kind ─────────────────────────────────────────────────
   const mult = periodMultiplier(period);
 
+  // Names that have been migrated to debt_payment — built once per render
+  const migratedToDebtPayment = useMemo(
+    () => new Set(allCategories.filter((c) => c.kind === "debt_payment").map((c) => c.name)),
+    [allCategories],
+  );
+
   function buildRows(kind) {
-    // All categories of this kind, active and inactive (UI shows them all,
-    // but inactive ones are visually dimmed and excluded from totals).
-    const cats = allCategories.filter((c) => c.kind === kind);
+    // All categories of this kind.
+    // For expenses: suppress any category whose name now lives under debt_payment
+    // (migration artifact — users who had "Debt Payments" as an expense category
+    // before the restructure would otherwise see it in both sections).
+    let cats = allCategories.filter((c) => c.kind === kind);
+    if (kind === "expense") {
+      cats = cats.filter((c) => !migratedToDebtPayment.has(c.name));
+    }
 
     if (IS_DEMO) {
       if (kind === "expense") {

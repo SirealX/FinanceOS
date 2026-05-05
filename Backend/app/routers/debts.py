@@ -46,6 +46,10 @@ def sync_debt_minimums_to_budget(user_id: str, db: Session) -> None:
 
     Uses kind='debt_payment' so it groups separately from expenses in the
     budget view and does NOT inflate expense totals.
+
+    Migration safety: deletes any legacy expense-kind rows with the same name
+    so users who had "Debt Payments" as an expense category before the debt
+    restructure don't end up with duplicate rows showing in both sections.
     """
     total_min = (
         db.query(Debt)
@@ -55,14 +59,27 @@ def sync_debt_minimums_to_budget(user_id: str, db: Session) -> None:
     )
     planned = sum(float(r.min_payment or 0) for r in total_min)
 
+    # ── Migration cleanup ─────────────────────────────────────────────────────
+    # Delete any expense-kind rows named "Debt Payments" for this user.
+    # These are pre-restructure artifacts; the debt_payment-kind row below
+    # now owns this category. Doing this here ensures the fix fires for all
+    # users the first time they interact with any debt (create/edit/pay/delete).
+    db.query(Category).filter(
+        Category.user_id == user_id,
+        Category.name    == _DEBT_CATEGORY_NAME,
+        Category.kind    == "expense",
+    ).delete(synchronize_session=False)
+
+    # ── Upsert the debt_payment-kind row ──────────────────────────────────────
     cat = db.query(Category).filter(
         Category.user_id == user_id,
         Category.name    == _DEBT_CATEGORY_NAME,
+        Category.kind    == "debt_payment",
     ).first()
 
     if cat:
         cat.planned_amount = planned
-        cat.kind = "debt_payment"   # ensure kind is correct even for old rows
+        cat.is_active      = True
     else:
         cat = Category(
             id             = uuid.uuid4(),

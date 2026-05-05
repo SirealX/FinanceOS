@@ -116,6 +116,19 @@ def get_budget_categories(
 
     all_rows = user_rows + visible_system
 
+    # ── Migration deduplication ───────────────────────────────────────────────
+    # If the user has a debt_payment-kind category with a given name, suppress
+    # any expense-kind category with the same name.  This handles users who had
+    # "Debt Payments" as an expense category before the debt restructure and
+    # haven't yet triggered sync_debt_minimums_to_budget (which hard-deletes the
+    # old expense row).  Without this filter they would see the category in both
+    # the Expenses and Debt Payments sections.
+    debt_payment_names = {r.name for r in all_rows if r.kind == "debt_payment"}
+    all_rows = [
+        r for r in all_rows
+        if not (r.kind == "expense" and r.name in debt_payment_names)
+    ]
+
     if kind and kind in ALL_KINDS:
         all_rows = [r for r in all_rows if r.kind == kind]
 
