@@ -29,6 +29,8 @@ import {
   monthsToLabel,
   downsample,
   DEBT_TYPES,
+  DEBT_TYPE_OPTIONS,
+  PAYMENT_TYPE_OPTIONS,
   useDebts,
 } from "../api/Debt";
 
@@ -225,7 +227,7 @@ function PayoffChart({ avalancheHistory, snowballHistory }) {
 // DebtRow
 // ─────────────────────────────────────────────────────────────────────────────
 
-function DebtRow({ debt, onEdit, onDelete, onPay, fmt }) {
+function DebtRow({ debt, onEdit, onDelete, onPay, onAmortization, fmt }) {
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   const paidOff = Math.max(0, debt.originalBalance - debt.balance);
@@ -233,7 +235,9 @@ function DebtRow({ debt, onEdit, onDelete, onPay, fmt }) {
     debt.originalBalance > 0
       ? Math.min((paidOff / debt.originalBalance) * 100, 100)
       : 0;
-  const isZeroApr = debt.apr === 0;
+  const isZeroApr    = debt.apr === 0;
+  const canAmortize  = (debt.debtType === "loan" || debt.debtType === "bnpl") && !debt.isPaidOff;
+  const isPaidOff    = debt.isPaidOff;
 
   return (
     <div
@@ -284,7 +288,14 @@ function DebtRow({ debt, onEdit, onDelete, onPay, fmt }) {
               marginTop: 2,
             }}
           >
-            {debt.type}
+            <span style={{ marginRight: 6 }}>
+              {debt.debtType === "credit_card" ? "💳 Credit Card"
+                : debt.debtType === "bnpl" ? "📦 BNPL"
+                : "🏦 Loan"}
+            </span>
+            {isPaidOff && (
+              <span className="badge badge-income" style={{ fontSize: 10 }}>✓ Paid Off</span>
+            )}
           </div>
         </div>
 
@@ -398,36 +409,33 @@ function DebtRow({ debt, onEdit, onDelete, onPay, fmt }) {
             </div>
           ) : (
             <>
-              <button
-                className="btn-danger"
-                title="Record payment"
-                onClick={() => onPay(debt)}
-                style={{ color: "var(--color-income)" }}
-              >
-                <svg
-                  viewBox="0 0 15 15"
-                  width="13"
-                  height="13"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.6"
-                  strokeLinecap="round"
+              {!isPaidOff && (
+                <button
+                  className="btn-danger"
+                  title="Record payment"
+                  onClick={() => onPay(debt)}
+                  style={{ color: "var(--color-income)" }}
                 >
-                  <path d="M2 8h11M9 4l4 4-4 4" />
-                </svg>
-              </button>
-              <button
-                className="btn-danger"
-                title="Edit"
-                onClick={() => onEdit(debt)}
-              >
+                  <svg viewBox="0 0 15 15" width="13" height="13" fill="none"
+                       stroke="currentColor" strokeWidth="1.6" strokeLinecap="round">
+                    <path d="M2 8h11M9 4l4 4-4 4" />
+                  </svg>
+                </button>
+              )}
+              {canAmortize && (
+                <button
+                  className="btn-danger"
+                  title="View Amortization"
+                  onClick={() => onAmortization(debt)}
+                  style={{ color: "var(--color-text-muted)", fontSize: 10 }}
+                >
+                  ~
+                </button>
+              )}
+              <button className="btn-danger" title="Edit" onClick={() => onEdit(debt)}>
                 <IconEdit />
               </button>
-              <button
-                className="btn-danger"
-                title="Delete"
-                onClick={() => setConfirmDelete(true)}
-              >
+              <button className="btn-danger" title="Delete" onClick={() => setConfirmDelete(true)}>
                 <IconDelete />
               </button>
             </>
@@ -470,172 +478,272 @@ function DebtRow({ debt, onEdit, onDelete, onPay, fmt }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// DebtModal — add / edit
+// ─────────────────────────────────────────────────────────────────────────────
+// DebtModal — add / edit (supports loan, credit_card, bnpl)
 // ─────────────────────────────────────────────────────────────────────────────
 
 function DebtModal({ form, isEditing, onChange, onSave, onClose }) {
   const canSave = form.name.trim() && +form.balance > 0 && +form.minPayment > 0;
+  const f = (key, val) => onChange({ ...form, [key]: val });
+  const isCC   = form.debtType === "credit_card";
+  const isBNPL = form.debtType === "bnpl";
+  const isLoan = form.debtType === "loan";
 
   return (
     <div
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(0,0,0,0.6)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        zIndex: 50,
-      }}
+      style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)",
+               display:"flex", alignItems:"center", justifyContent:"center", zIndex:50 }}
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
-      <div
-        className="card"
-        style={{ width: 500, maxWidth: "calc(100vw - 40px)", margin: 0 }}
-      >
+      <div className="card" style={{ width:540, maxWidth:"calc(100vw - 40px)", margin:0,
+                                      maxHeight:"90vh", overflowY:"auto" }}>
         {/* Header */}
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            marginBottom: 20,
-          }}
-        >
-          <h2 className="section-header" style={{ margin: 0 }}>
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:20 }}>
+          <h2 className="section-header" style={{ margin:0 }}>
             {isEditing ? "Edit Debt" : "Add Debt"}
           </h2>
-          <button
-            className="btn-danger"
-            onClick={onClose}
-            style={{ fontSize: 18, lineHeight: 1, padding: "2px 6px" }}
-          >
-            ×
-          </button>
+          <button className="btn-danger" onClick={onClose} style={{ fontSize:18, lineHeight:1, padding:"2px 6px" }}>×</button>
         </div>
 
-        {/* Debt Name */}
-        <div className="field-wrap" style={{ marginBottom: 12 }}>
-          <label className="field-label">Debt Name</label>
-          <input
-            className="input"
-            placeholder="e.g. Rewards Card, Student Loan, Auto Loan"
-            value={form.name}
-            onChange={(e) => onChange({ ...form, name: e.target.value })}
-          />
-        </div>
-
-        {/* Type */}
-        <div className="field-wrap" style={{ marginBottom: 12 }}>
-          <label className="field-label">Type</label>
-          <select
-            className="input"
-            value={form.type}
-            onChange={(e) => onChange({ ...form, type: e.target.value })}
-          >
-            {DEBT_TYPES.map((t) => (
-              <option key={t} value={t}>
-                {t}
-              </option>
-            ))}
+        {/* Debt Type */}
+        <div className="field-wrap" style={{ marginBottom:12 }}>
+          <label className="field-label">Debt Type</label>
+          <select className="input" value={form.debtType} onChange={(e) => f("debtType", e.target.value)}>
+            {DEBT_TYPE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
           </select>
         </div>
 
+        {/* Name */}
+        <div className="field-wrap" style={{ marginBottom:12 }}>
+          <label className="field-label">Name</label>
+          <input className="input" placeholder={isCC ? "e.g. AMEX Gold" : isLoan ? "e.g. Auto Loan" : "e.g. Phone BNPL"}
+            value={form.name} onChange={(e) => f("name", e.target.value)} />
+        </div>
+
+        {/* Bank / Issuer */}
+        <div className="field-wrap" style={{ marginBottom:12 }}>
+          <label className="field-label">Bank / Issuer (optional)</label>
+          <input className="input" placeholder="e.g. Chase, Wells Fargo"
+            value={form.bankName} onChange={(e) => f("bankName", e.target.value)} />
+        </div>
+
         {/* Balance · Original Balance */}
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "1fr 1fr",
-            gap: 12,
-            marginBottom: 12,
-          }}
-        >
+        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginBottom:12 }}>
           <div className="field-wrap">
             <label className="field-label">Current Balance ($)</label>
-            <input
-              className="input"
-              type="number"
-              min="0"
-              step="0.01"
-              placeholder="0.00"
-              value={form.balance}
-              onChange={(e) => onChange({ ...form, balance: e.target.value })}
-            />
+            <input className="input" type="number" min="0" step="0.01" placeholder="0.00"
+              value={form.balance} onChange={(e) => f("balance", e.target.value)} />
           </div>
           <div className="field-wrap">
             <label className="field-label">Original Balance ($)</label>
-            <input
-              className="input"
-              type="number"
-              min="0"
-              step="0.01"
-              placeholder="Same as current"
-              value={form.originalBalance}
-              onChange={(e) =>
-                onChange({ ...form, originalBalance: e.target.value })
-              }
-            />
+            <input className="input" type="number" min="0" step="0.01" placeholder="Same as current"
+              value={form.originalBalance} onChange={(e) => f("originalBalance", e.target.value)} />
           </div>
         </div>
 
         {/* APR · Min Payment */}
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "1fr 1fr",
-            gap: 12,
-            marginBottom: 20,
-          }}
-        >
+        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginBottom:12 }}>
           <div className="field-wrap">
             <label className="field-label">APR (%)</label>
-            <input
-              className="input"
-              type="number"
-              min="0"
-              step="0.01"
-              placeholder="0.00"
-              value={form.apr}
-              onChange={(e) => onChange({ ...form, apr: e.target.value })}
-            />
+            <input className="input" type="number" min="0" step="0.01" placeholder="0.00"
+              value={form.apr} onChange={(e) => f("apr", e.target.value)} />
           </div>
           <div className="field-wrap">
             <label className="field-label">Min Monthly Payment ($)</label>
-            <input
-              className="input"
-              type="number"
-              min="0"
-              step="0.01"
-              placeholder="0.00"
-              value={form.minPayment}
-              onChange={(e) =>
-                onChange({ ...form, minPayment: e.target.value })
-              }
-            />
+            <input className="input" type="number" min="0" step="0.01" placeholder="0.00"
+              value={form.minPayment} onChange={(e) => f("minPayment", e.target.value)} />
           </div>
         </div>
 
-        {/* Due day — optional, enables timely payment alerts */}
-        <div className="field-wrap" style={{ marginBottom: 20 }}>
-          <label className="field-label">Payment Due Day (optional)</label>
-          <input
-            className="input"
-            type="number"
-            min="1"
-            max="31"
-            placeholder="e.g. 15 (day of month)"
-            value={form.dueDay}
-            onChange={(e) => onChange({ ...form, dueDay: e.target.value })}
-          />
+        {/* Due Day */}
+        <div className="field-wrap" style={{ marginBottom:12 }}>
+          <label className="field-label">Payment Due Day (optional, 1–31)</label>
+          <input className="input" type="number" min="1" max="31" placeholder="e.g. 15"
+            value={form.dueDay} onChange={(e) => f("dueDay", e.target.value)} />
+        </div>
+
+        {/* ── Credit Card specific ── */}
+        {isCC && (
+          <>
+            <div style={{ borderTop:"0.5px solid rgba(255,255,255,0.06)", margin:"12px 0 12px" }} />
+            <p style={{ fontSize:11, color:"var(--color-text-muted)", marginBottom:10 }}>Credit Card fields</p>
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginBottom:12 }}>
+              <div className="field-wrap">
+                <label className="field-label">Credit Limit ($)</label>
+                <input className="input" type="number" min="0" step="0.01" placeholder="0.00"
+                  value={form.creditLimit} onChange={(e) => f("creditLimit", e.target.value)} />
+              </div>
+              <div className="field-wrap">
+                <label className="field-label">Billing Cycle End Day (1–31)</label>
+                <input className="input" type="number" min="1" max="31" placeholder="e.g. 28"
+                  value={form.billingCycleEndDay} onChange={(e) => f("billingCycleEndDay", e.target.value)} />
+              </div>
+            </div>
+            <div className="field-wrap" style={{ marginBottom:12 }}>
+              <label className="field-label">Card Network</label>
+              <select className="input" value={form.cardNetwork} onChange={(e) => f("cardNetwork", e.target.value)}>
+                <option value="">Select…</option>
+                {["Visa","Mastercard","Amex","Other"].map((n) => <option key={n} value={n}>{n}</option>)}
+              </select>
+            </div>
+          </>
+        )}
+
+        {/* ── Loan specific ── */}
+        {isLoan && (
+          <>
+            <div style={{ borderTop:"0.5px solid rgba(255,255,255,0.06)", margin:"12px 0 12px" }} />
+            <p style={{ fontSize:11, color:"var(--color-text-muted)", marginBottom:10 }}>Loan fields</p>
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginBottom:12 }}>
+              <div className="field-wrap">
+                <label className="field-label">Term (months, optional)</label>
+                <input className="input" type="number" min="1" placeholder="e.g. 60"
+                  value={form.termMonths} onChange={(e) => f("termMonths", e.target.value)} />
+              </div>
+              <div className="field-wrap">
+                <label className="field-label">Monthly Payment ($)</label>
+                <input className="input" type="number" min="0" step="0.01" placeholder="0.00"
+                  value={form.paymentAmount} onChange={(e) => f("paymentAmount", e.target.value)} />
+              </div>
+            </div>
+            <div className="field-wrap" style={{ marginBottom:12 }}>
+              <label className="field-label">Show Amortization Schedule</label>
+              <label style={{ display:"flex", alignItems:"center", gap:8, fontSize:13, cursor:"pointer", marginTop:4 }}>
+                <input type="checkbox" checked={!!form.showAmortization}
+                  onChange={(e) => f("showAmortization", e.target.checked)} />
+                Enable amortization breakdown
+              </label>
+            </div>
+          </>
+        )}
+
+        {/* ── BNPL specific ── */}
+        {isBNPL && (
+          <>
+            <div style={{ borderTop:"0.5px solid rgba(255,255,255,0.06)", margin:"12px 0 12px" }} />
+            <p style={{ fontSize:11, color:"var(--color-text-muted)", marginBottom:10 }}>Buy Now Pay Later fields</p>
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginBottom:12 }}>
+              <div className="field-wrap">
+                <label className="field-label">Total Installments</label>
+                <input className="input" type="number" min="1" placeholder="e.g. 12"
+                  value={form.totalInstallments} onChange={(e) => f("totalInstallments", e.target.value)} />
+              </div>
+              <div className="field-wrap">
+                <label className="field-label">Installment Amount ($)</label>
+                <input className="input" type="number" min="0" step="0.01" placeholder="0.00"
+                  value={form.installmentAmount} onChange={(e) => f("installmentAmount", e.target.value)} />
+              </div>
+            </div>
+          </>
+        )}
+
+        {/* Payment type (loan + bnpl) */}
+        {!isCC && (
+          <>
+            <div style={{ borderTop:"0.5px solid rgba(255,255,255,0.06)", margin:"12px 0 12px" }} />
+            <div className="field-wrap" style={{ marginBottom:12 }}>
+              <label className="field-label">Payment Mode</label>
+              <select className="input" value={form.paymentType} onChange={(e) => f("paymentType", e.target.value)}>
+                {PAYMENT_TYPE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+            </div>
+            {form.paymentType === "auto_bank_debit" && (
+              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginBottom:12 }}>
+                <div className="field-wrap">
+                  <label className="field-label">Payment Frequency</label>
+                  <select className="input" value={form.paymentFrequency} onChange={(e) => f("paymentFrequency", e.target.value)}>
+                    <option value="">Select…</option>
+                    {["weekly","biweekly","monthly","quarterly"].map((f_) => <option key={f_} value={f_}>{f_}</option>)}
+                  </select>
+                </div>
+                <div className="field-wrap">
+                  <label className="field-label">Auto-debit Amount ($)</label>
+                  <input className="input" type="number" min="0" step="0.01" placeholder="0.00"
+                    value={form.paymentAmount} onChange={(e) => f("paymentAmount", e.target.value)} />
+                </div>
+              </div>
+            )}
+          </>
+        )}
+
+        {/* Start / End dates */}
+        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginBottom:20 }}>
+          <div className="field-wrap">
+            <label className="field-label">Start Date (optional)</label>
+            <input className="input" type="date" value={form.startDate} onChange={(e) => f("startDate", e.target.value)} />
+          </div>
+          <div className="field-wrap">
+            <label className="field-label">End / Payoff Date (optional)</label>
+            <input className="input" type="date" value={form.endDate} onChange={(e) => f("endDate", e.target.value)} />
+          </div>
         </div>
 
         <div className="form-actions">
           <button className="btn-primary" onClick={onSave} disabled={!canSave}>
             {isEditing ? "Save Changes" : "Add Debt"}
           </button>
-          <button className="btn-secondary" onClick={onClose}>
-            Cancel
-          </button>
+          <button className="btn-secondary" onClick={onClose}>Cancel</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// AmortizationModal — per-debt payment schedule table
+// ─────────────────────────────────────────────────────────────────────────────
+
+function AmortizationModal({ debtName, data, loading, onClose }) {
+  return (
+    <div
+      style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.7)",
+               display:"flex", alignItems:"center", justifyContent:"center", zIndex:60 }}
+      onClick={(e) => e.target === e.currentTarget && onClose()}
+    >
+      <div className="card" style={{ width:640, maxWidth:"calc(100vw - 32px)", margin:0,
+                                      maxHeight:"85vh", display:"flex", flexDirection:"column" }}>
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16 }}>
+          <div>
+            <h2 className="section-header" style={{ margin:0 }}>Amortization — {debtName}</h2>
+            <p style={{ fontSize:12, color:"var(--color-text-muted)", marginTop:4 }}>
+              Monthly principal vs interest breakdown
+            </p>
+          </div>
+          <button className="btn-danger" onClick={onClose} style={{ fontSize:18, lineHeight:1, padding:"2px 6px" }}>×</button>
+        </div>
+
+        <div style={{ overflowY:"auto", flex:1 }}>
+          {loading ? (
+            <div style={{ padding:"24px 0", textAlign:"center", color:"var(--color-text-muted)" }}>Loading…</div>
+          ) : !data?.schedule?.length ? (
+            <div style={{ padding:"24px 0", textAlign:"center", color:"var(--color-text-muted)" }}>
+              No schedule available. Set term_months or payment_amount on this debt.
+            </div>
+          ) : (
+            <table style={{ width:"100%", borderCollapse:"collapse", fontSize:12 }}>
+              <thead>
+                <tr style={{ borderBottom:"0.5px solid rgba(255,255,255,0.1)" }}>
+                  {["Month","Payment","Principal","Interest","Remaining"].map((h) => (
+                    <th key={h} style={{ padding:"6px 8px", textAlign:"right", color:"var(--color-text-muted)",
+                                        fontWeight:500, fontSize:11, "&:first-child": { textAlign:"left" } }}>
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {data.schedule.map((row) => (
+                  <tr key={row.month} style={{ borderBottom:"0.5px solid rgba(255,255,255,0.04)" }}>
+                    <td style={{ padding:"5px 8px", color:"var(--color-text-muted)", fontSize:11 }}>{row.month}</td>
+                    <td style={{ padding:"5px 8px", textAlign:"right" }}>${row.payment.toFixed(2)}</td>
+                    <td style={{ padding:"5px 8px", textAlign:"right", color:"#10B981" }}>${row.principal_portion.toFixed(2)}</td>
+                    <td style={{ padding:"5px 8px", textAlign:"right", color:"var(--color-danger)" }}>${row.interest_portion.toFixed(2)}</td>
+                    <td style={{ padding:"5px 8px", textAlign:"right", fontWeight:500 }}>${row.remaining_balance.toFixed(2)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
         </div>
       </div>
     </div>
@@ -745,6 +853,10 @@ function PaymentModal({ debt, onSave, onClose }) {
 // Debts — default export
 // ─────────────────────────────────────────────────────────────────────────────
 
+// Type label helper
+const DEBT_TYPE_LABELS = { credit_card:"Credit Cards", loan:"Loans", bnpl:"Buy Now Pay Later" };
+const TYPE_TABS = ["all", "credit_card", "loan", "bnpl"];
+
 export default function Debts() {
   const {
     debts,
@@ -769,13 +881,30 @@ export default function Debts() {
     payingDebt,
     setPayingDebt,
     handlePay,
-    sliderParams,  // FIX #6
-    budgetSurplus, // FIX #13
-    formatAmount,  // currency-aware (from SettingsContext via useDebts)
-    formatAmountK, // compact currency-aware
+    sliderParams,
+    budgetSurplus,
+    amortizationData,
+    amortizationLoading,
+    fetchAmortization,
+    formatAmount,
+    formatAmountK,
   } = useDebts();
 
   const { currencySymbol } = useSettings();
+
+  // ── Local UI state ─────────────────────────────────────────────────────────
+  const [typeTab, setTypeTab] = useState("all");
+  const [amortDebt, setAmortDebt] = useState(null); // debt object for amortization modal
+
+  function openAmortization(debt) {
+    setAmortDebt(debt);
+    fetchAmortization(debt.id);
+  }
+
+  // Debts visible in the active tab
+  const visibleDebts = typeTab === "all"
+    ? debts
+    : debts.filter((d) => (d.debtType ?? "loan") === typeTab);
 
   if (loading) {
     return (
@@ -862,30 +991,46 @@ export default function Debts() {
         <>
           {/* Debt list card */}
           <div className="card" style={{ marginBottom: 12 }}>
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                marginBottom: 4,
-              }}
-            >
-              <h2 className="section-header" style={{ margin: 0 }}>
-                Your Debts
-              </h2>
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12 }}>
+              <h2 className="section-header" style={{ margin: 0 }}>Your Debts</h2>
               <span className="count-badge">{debts.length}</span>
             </div>
 
-            {debts.map((debt) => (
-              <DebtRow
-                key={debt.id}
-                debt={debt}
-                onEdit={openEdit}
-                onDelete={handleDelete}
-                onPay={(debt) => setPayingDebt(debt)}
-                fmt={formatAmount}
-              />
-            ))}
+            {/* Type tabs */}
+            <div className="pill-row" style={{ marginBottom:12, flexWrap:"wrap", gap:6 }}>
+              {TYPE_TABS.map((tab) => (
+                <button
+                  key={tab}
+                  className={`pill${typeTab === tab ? " active" : ""}`}
+                  onClick={() => setTypeTab(tab)}
+                >
+                  {tab === "all" ? "All" : DEBT_TYPE_LABELS[tab]}
+                  {tab !== "all" && (
+                    <span style={{ marginLeft:5, fontSize:10, opacity:0.7 }}>
+                      ({debts.filter((d) => (d.debtType ?? "loan") === tab).length})
+                    </span>
+                  )}
+                </button>
+              ))}
+            </div>
+
+            {visibleDebts.length === 0 ? (
+              <p style={{ fontSize:13, color:"var(--color-text-muted)", padding:"12px 0" }}>
+                No {typeTab === "all" ? "" : DEBT_TYPE_LABELS[typeTab] + " "}debts found.
+              </p>
+            ) : (
+              visibleDebts.map((debt) => (
+                <DebtRow
+                  key={debt.id}
+                  debt={debt}
+                  onEdit={openEdit}
+                  onDelete={handleDelete}
+                  onPay={(debt) => setPayingDebt(debt)}
+                  onAmortization={openAmortization}
+                  fmt={formatAmount}
+                />
+              ))
+            )}
           </div>
 
           {/* Payoff Simulator card */}
@@ -1027,6 +1172,7 @@ export default function Debts() {
                           </strong>{" "}
                           available after minimums.
                         </>
+                      ) : (
                       ) : (
                         <>⚠ This month's cash flow covers minimums only — no extra capacity right now.</>
                       )}
@@ -1349,6 +1495,14 @@ export default function Debts() {
           onChange={setForm}
           onSave={handleSave}
           onClose={closeModal}
+        />
+      )}
+      {amortDebt && (
+        <AmortizationModal
+          debtName={amortDebt.name}
+          data={amortizationData}
+          loading={amortizationLoading}
+          onClose={() => setAmortDebt(null)}
         />
       )}
     </>

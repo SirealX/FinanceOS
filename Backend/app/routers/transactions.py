@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from ..database import get_db
-from ..models import Transaction, BudgetCategory
+from ..models import Transaction, BudgetCategory, Debt
 from ..services.entity_sync import transaction_to_entity, reverse_transaction
 from ..services.payment_utils import infer_payment_method
 from ..dependencies import get_current_user
@@ -100,6 +100,9 @@ def get_transactions(
 
 
 ALLOWED_MANUAL_TYPES = {"income", "expense", "transfer"}
+# 'savings'      is intentionally excluded — only creatable via /savings router
+# 'debt_payment' is intentionally excluded — only creatable via /debts router
+
 
 @router.post("/", status_code=201)
 def create_transaction(
@@ -112,12 +115,35 @@ def create_transaction(
             status_code=400,
             detail="Savings transactions can only be created from the Savings tab.",
         )
+    if data.type == "debt_payment":
+        raise HTTPException(
+            status_code=400,
+            detail="Debt payment transactions can only be created from the Debts tab.",
+        )
     if data.type not in ALLOWED_MANUAL_TYPES:
         raise HTTPException(
             status_code=400,
             detail=f"Invalid type '{data.type}'. Must be one of: {', '.join(ALLOWED_MANUAL_TYPES)}.",
         )
-    tx = Transaction(**data.dict(), source="manual", user_id=current_user)
+
+    # ── Credit card detection ─────────────────────────────────────────────────
+    # If the payment_method matches a known credit card name, record the
+    # transaction as source='cc_charge' and increase the CC balance.
+    # The transaction is still type='expense' for category/budget tracking,
+    # but the dashboard balance calc excludes cc_charge from cash outflow.
+    source = "manual"
+    if data.payment_method:
+        cc_debt = db.query(Debt).filter(
+            Debt.user_id    == current_user,
+            Debt.type       == "credit_card",
+            Debt.name       == data.payment_method,
+            Debt.is_paid_off == False,
+        ).first()
+        if cc_debt:
+            source = "cc_charge"
+            cc_debt.balance = float(cc_debt.balance or 0) + data.amount
+
+    tx = Transaction(**data.dict(), source=source, user_id=current_user)
     db.add(tx)
     db.commit()
     db.refresh(tx)

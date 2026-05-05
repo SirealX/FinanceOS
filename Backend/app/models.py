@@ -12,13 +12,16 @@ class Transaction(Base):
     date               = Column(Date, nullable=False)
     description        = Column(String(255))
     category           = Column(String(100))
-    type               = Column(Enum("income", "expense", "savings", name="transaction_type"))
+    type               = Column(Enum("income", "expense", "savings", "debt_payment",
+                                     name="transaction_type"))
     amount             = Column(Numeric(10, 2))
     planned_amt        = Column(Numeric(10, 2))
     payment_method     = Column(String(50))
     source             = Column(Enum(
                              "manual", "import", "api_sync",
                              "bill_payment", "savings_contribution", "csv_import",
+                             "cc_charge",      # expense paid via CC (no cash debit, CC balance rises)
+                             "debt_payment",   # paying off a debt balance
                              name="source_type"
                          ))
     created_at         = Column(DateTime, default=datetime.utcnow)
@@ -91,6 +94,47 @@ class Debt(Base):
     priority_rank    = Column(Integer)
     due_day          = Column(Integer, nullable=True)  # day of month payment is due (1–31)
 
+    # ── Debt type (m2 migration) ───────────────────────────────────────────────
+    # 'credit_card' | 'loan' | 'bnpl'  — existing rows default to 'loan'
+    type                    = Column(String(20), nullable=True, default="loan")
+
+    # ── Shared new fields ────────────────────────────────────────────────────
+    bank_name               = Column(String(100), nullable=True)
+    is_paid_off             = Column(Boolean, nullable=False, default=False)
+    payment_type            = Column(String(20), nullable=True)
+    # 'manual' | 'auto_bank_debit' | 'payroll_deduction'
+    payment_frequency       = Column(String(20), nullable=True)
+    # 'weekly' | 'biweekly' | 'monthly' | 'quarterly'
+    payment_amount          = Column(Numeric(10, 2), nullable=True)
+    start_date              = Column(Date, nullable=True)
+    end_date                = Column(Date, nullable=True)
+
+    # ── Loan amortization ────────────────────────────────────────────────────
+    show_amortization       = Column(Boolean, nullable=False, default=False)
+    term_months             = Column(Integer, nullable=True)
+
+    # ── Credit card ──────────────────────────────────────────────────────────
+    credit_limit            = Column(Numeric(10, 2), nullable=True)
+    billing_cycle_end_day   = Column(Integer, nullable=True)
+    card_network            = Column(String(50), nullable=True)
+
+    # ── BNPL ─────────────────────────────────────────────────────────────────
+    linked_transaction_id   = Column(
+        UUID(as_uuid=True),
+        ForeignKey("transactions.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    total_installments      = Column(Integer, nullable=True)
+    installments_paid       = Column(Integer, nullable=False, default=0)
+    installment_amount      = Column(Numeric(10, 2), nullable=True)
+
+    # ── Auto bank debit ───────────────────────────────────────────────────────
+    recurring_transaction_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("recurring_transactions.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+
 
 class SavingsGoal(Base):
     __tablename__ = "savings_goals"
@@ -124,7 +168,7 @@ class Category(Base):
     name           = Column(String(100), nullable=False)
     color          = Column(String(20), nullable=False, default="#475569")
     kind           = Column(
-        Enum("expense", "income", "savings", name="category_kind"),
+        Enum("expense", "income", "savings", "debt_payment", name="category_kind"),
         nullable=False
     )
     system         = Column(Boolean, default=False)

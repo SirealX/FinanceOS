@@ -41,6 +41,7 @@ export const BUDGET_TABS = [
   { id: "expense", label: "Expenses" },
   { id: "income", label: "Income" },
   { id: "savings", label: "Savings" },
+  { id: "debt_payment", label: "Debt Pmts" },
 ];
 
 // ── Formatters ────────────────────────────────────────────────────────────────
@@ -154,21 +155,28 @@ export function getBudgetChartConfig(rows, fmtK = formatAmountK) {
   };
 }
 
-/** Grouped bar chart for the All tab — three side-by-side bars per group */
-export function getAllTabChartConfig(expenseRows, incomeRows, savingsRows, fmtK = formatAmountK) {
-  // Show one bar group per kind with totals
-  const labels = ["Expenses", "Income", "Savings"];
+/** Grouped bar chart for the All tab — four side-by-side bars per group */
+export function getAllTabChartConfig(expenseRows, incomeRows, savingsRows, fmtK = formatAmountK, debtPaymentRows = []) {
+  // Show one bar group per kind with totals (include debt_payment only when present)
+  const hasDebt = debtPaymentRows.length > 0;
+  const labels  = hasDebt
+    ? ["Expenses", "Income", "Savings", "Debt Pmts"]
+    : ["Expenses", "Income", "Savings"];
   const planned = [
     expenseRows.reduce((s, r) => s + r.scaledPlanned, 0),
     incomeRows.reduce((s, r) => s + r.scaledPlanned, 0),
     savingsRows.reduce((s, r) => s + r.scaledPlanned, 0),
+    ...(hasDebt ? [debtPaymentRows.reduce((s, r) => s + r.scaledPlanned, 0)] : []),
   ];
   const actual = [
     expenseRows.reduce((s, r) => s + r.actual, 0),
     incomeRows.reduce((s, r) => s + r.actual, 0),
     savingsRows.reduce((s, r) => s + r.actual, 0),
+    ...(hasDebt ? [debtPaymentRows.reduce((s, r) => s + r.actual, 0)] : []),
   ];
-  const colors = ["#F97316", "#10B981", "#A78BFA"];
+  const colors = hasDebt
+    ? ["#F97316", "#10B981", "#A78BFA", "#EF4444"]
+    : ["#F97316", "#10B981", "#A78BFA"];
 
   return {
     type: "bar",
@@ -245,6 +253,11 @@ const DEMO_SAVINGS_SPENT = {
   "This Month": [300],
   "Last Month": [0],
   "Last 3 Months": [300],
+};
+const DEMO_DEBT_PAYMENT_SPENT = {
+  "This Month": [250, 120],
+  "Last Month": [250, 120],
+  "Last 3 Months": [750, 360],
 };
 
 // ── useBudget — PRIMARY HOOK ──────────────────────────────────────────────────
@@ -364,6 +377,14 @@ export function useBudget() {
           scaledPlanned: (c.planned ?? 0) * mult,
         }));
       }
+      if (kind === "debt_payment") {
+        const spentArr = DEMO_DEBT_PAYMENT_SPENT[period] ?? [];
+        return cats.map((c, i) => ({
+          ...c,
+          actual: spentArr[i] ?? 0,
+          scaledPlanned: (c.planned ?? 0) * mult,
+        }));
+      }
     }
 
     return cats.map((c) => {
@@ -386,6 +407,10 @@ export function useBudget() {
   );
   const savingsRows = useMemo(
     () => buildRows("savings"),
+    [allCategories, actuals, period, mult],
+  );
+  const debtPaymentRows = useMemo(
+    () => buildRows("debt_payment"),
     [allCategories, actuals, period, mult],
   );
 
@@ -432,6 +457,10 @@ export function useBudget() {
     () => buildStats(savingsRows, "savings"),
     [savingsRows],
   );
+  const debtPaymentStats = useMemo(
+    () => buildStats(debtPaymentRows, "debt_payment"),
+    [debtPaymentRows],
+  );
 
   // ── Active rows and stats for current tab ─────────────────────────────────
   const activeRows =
@@ -441,7 +470,9 @@ export function useBudget() {
         ? incomeRows
         : budgetTab === "savings"
           ? savingsRows
-          : [...expenseRows, ...incomeRows, ...savingsRows];
+          : budgetTab === "debt_payment"
+            ? debtPaymentRows
+            : [...expenseRows, ...incomeRows, ...savingsRows, ...debtPaymentRows];
 
   const activeStats =
     budgetTab === "expense"
@@ -450,7 +481,9 @@ export function useBudget() {
         ? incomeStats
         : budgetTab === "savings"
           ? savingsStats
-          : null; // All tab uses individual kind stats
+          : budgetTab === "debt_payment"
+            ? debtPaymentStats
+            : null; // All tab uses individual kind stats
 
   // ── Handlers ─────────────────────────────────────────────────────────────
   function openModal() {
@@ -511,9 +544,11 @@ export function useBudget() {
     expenseRows,
     incomeRows,
     savingsRows,
+    debtPaymentRows,
     expenseStats,
     incomeStats,
     savingsStats,
+    debtPaymentStats,
 
     // Active tab data
     activeRows,

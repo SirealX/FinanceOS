@@ -80,7 +80,10 @@ def _validate_period(period: str):
 
 
 def _totals_by_type(db: Session, user_id: str, start: date, end: date) -> dict:
-    """One query → {type: float} for income, expense, savings in [start, end]."""
+    """One query → {type: float} for all transaction types in [start, end].
+    Includes all types (expense, income, savings, debt_payment, transfer).
+    Callers that need to exclude cc_charge from expense should use
+    _cc_charge_total() and adjust accordingly."""
     rows = (
         db.query(Transaction.type, func.sum(Transaction.amount))
         .filter(
@@ -92,6 +95,24 @@ def _totals_by_type(db: Session, user_id: str, start: date, end: date) -> dict:
         .all()
     )
     return {t: float(v or 0) for t, v in rows}
+
+
+def _cc_charge_total(db: Session, user_id: str, start: date, end: date) -> float:
+    """Total of expense transactions that are cc_charge source in [start, end].
+    These charged to a CC balance — not cash leaving the bank — so the caller
+    can subtract them from the expense total when computing bank balance."""
+    result = (
+        db.query(func.sum(Transaction.amount))
+        .filter(
+            Transaction.user_id == user_id,
+            Transaction.type    == "expense",
+            Transaction.source  == "cc_charge",
+            Transaction.date    >= start,
+            Transaction.date    <= end,
+        )
+        .scalar()
+    )
+    return float(result or 0)
 
 
 def _opening_totals(db: Session, user_id: str, before_date: date) -> dict:
@@ -108,25 +129,48 @@ def _opening_totals(db: Session, user_id: str, before_date: date) -> dict:
     return {t: float(v or 0) for t, v in rows}
 
 
+def _opening_cc_charge_total(db: Session, user_id: str, before_date: date) -> float:
+    """Total cc_charge expenses strictly before before_date."""
+    result = (
+        db.query(func.sum(Transaction.amount))
+        .filter(
+            Transaction.user_id == user_id,
+            Transaction.type    == "expense",
+            Transaction.source  == "cc_charge",
+            Transaction.date    <  before_date,
+        )
+        .scalar()
+    )
+    return float(result or 0)
+
+
 def _net_from_totals(totals: dict) -> float:
-    """income − expense − savings from a totals dict."""
+    """income − expense − savings − debt_payment from a totals dict.
+    debt_payment is a real cash outflow (paying off a debt/CC bill).
+    cc_charge_offset: when expenses include cc_charge source items, they are
+    NOT cash outflows yet — they'll become cash when the CC bill is paid.
+    The caller is responsible for adjusting expense before passing totals.
+    """
     return (
         totals.get("income",  0.0)
         - totals.get("expense", 0.0)
         - totals.get("savings", 0.0)
+        - totals.get("debt_payment", 0.0)
     )
 
 
 def _liquid_net_from_totals(totals: dict) -> float:
     """
-    Issue #6 — income − expense only (savings NOT subtracted).
+    Issue #6 — income − expense − debt_payment (savings NOT subtracted).
     Savings are the user's own money moved to a goal bucket — not spending.
     Using this for opening/closing balances means saving never makes the
     balance card look like money was lost.
+    debt_payment IS a real cash outflow so it is included.
     """
     return (
         totals.get("income",  0.0)
         - totals.get("expense", 0.0)
+        - totals.get("debt_payment", 0.0)
     )
 
 
@@ -176,23 +220,38 @@ def get_summary(
 
     start, end = _period_bounds(period)
 
-    # ── 4 queries total (was 10) ───────────────────────────────────────────────
+    # ── Queries ────────────────────────────────────────────────────────────────
+    # 6 queries: 4 type-totals + 2 cc_charge adjustments
     span_days  = (end - start).days + 1
     prev_end   = start - timedelta(days=1)
     prev_start = prev_end - timedelta(days=span_days - 1)
 
-    cur_totals  = _totals_by_type(db, current_user, start,      end)
-    prev_totals = _totals_by_type(db, current_user, prev_start, prev_end)
-    open_totals = _opening_totals(db, current_user, start)
+    cur_totals       = _totals_by_type(db, current_user, start,      end)
+    prev_totals      = _totals_by_type(db, current_user, prev_start, prev_end)
+    open_totals      = _opening_totals(db, current_user, start)
     prev_open_totals = _opening_totals(db, current_user, prev_start)
 
-    income   = cur_totals.get("income",  0.0)
-    expenses = cur_totals.get("expense", 0.0)
-    savings  = cur_totals.get("savings", 0.0)
+    # cc_charge: charged to CC balance, NOT a cash outflow.
+    # The cash outflow only happens when the CC bill is paid (type=debt_payment).
+    # We subtract cc_charges from expenses when computing running balances so
+    # the balance card doesn't show money "spent" that is still in the bank.
+    cur_cc_charges  = _cc_charge_total(db, current_user, start, end)
+    open_cc_charges = _opening_cc_charge_total(db, current_user, start)
+    prev_cc_charges = _cc_charge_total(db, current_user, prev_start, prev_end)
+    prev_open_cc    = _opening_cc_charge_total(db, current_user, prev_start)
 
-    net_balance  = income - expenses - savings
-    # liquid_net: cash flow this period excluding savings contributions.
-    liquid_net   = income - expenses
+    income   = cur_totals.get("income",  0.0)
+    expenses = cur_totals.get("expense", 0.0)  # raw total (for KPI display)
+    savings  = cur_totals.get("savings", 0.0)
+    debt_payments = cur_totals.get("debt_payment", 0.0)
+
+    # For balance calculations: use cash expenses (exclude cc_charge; those
+    # leave the bank only when the CC bill is paid as a debt_payment).
+    cash_expenses = expenses - cur_cc_charges
+
+    net_balance  = income - cash_expenses - savings - debt_payments
+    # liquid_net: cash flow this period excluding savings contributions (Issue #6)
+    liquid_net   = income - cash_expenses - debt_payments
     # savings_rate: % of income deliberately directed to savings goals.
     savings_rate = round((savings / income * 100), 1) if income > 0 else 0.0
 
@@ -207,25 +266,35 @@ def get_summary(
     balance_offset  = initial_balance if not has_anchor else 0.0
 
     # ── Carry-over balances ────────────────────────────────────────────────────
-    opening_balance = _net_from_totals(open_totals) + balance_offset
+    # Build adjusted opening totals: remove cc_charge from expense bucket so
+    # the running balance reflects real cash movements only.
+    adjusted_open = dict(open_totals)
+    adjusted_open["expense"] = adjusted_open.get("expense", 0.0) - open_cc_charges
+
+    opening_balance = _net_from_totals(adjusted_open) + balance_offset
     closing_balance = opening_balance + net_balance
 
     # Issue #6 — liquid versions exclude savings from the running balance so
     # saving money never makes the balance card look like spending.
-    liquid_opening_balance = _liquid_net_from_totals(open_totals) + balance_offset
+    liquid_opening_balance = _liquid_net_from_totals(adjusted_open) + balance_offset
     liquid_closing_balance = liquid_opening_balance + liquid_net
 
     prev_income   = prev_totals.get("income",  0.0)
     prev_expenses = prev_totals.get("expense", 0.0)
     prev_savings  = prev_totals.get("savings", 0.0)
-    prev_net      = prev_income - prev_expenses - prev_savings
+    prev_debt_payments = prev_totals.get("debt_payment", 0.0)
+    prev_cash_expenses = prev_expenses - prev_cc_charges
+    prev_net      = prev_income - prev_cash_expenses - prev_savings - prev_debt_payments
     prev_rate     = round((prev_savings / prev_income * 100), 1) if prev_income > 0 else 0.0
 
-    prev_opening = _net_from_totals(prev_open_totals) + balance_offset
+    adjusted_prev_open = dict(prev_open_totals)
+    adjusted_prev_open["expense"] = adjusted_prev_open.get("expense", 0.0) - prev_open_cc
+
+    prev_opening = _net_from_totals(adjusted_prev_open) + balance_offset
     prev_closing = prev_opening + prev_net
 
-    prev_liquid_opening = _liquid_net_from_totals(prev_open_totals) + balance_offset
-    prev_liquid_closing = prev_liquid_opening + (prev_income - prev_expenses)
+    prev_liquid_opening = _liquid_net_from_totals(adjusted_prev_open) + balance_offset
+    prev_liquid_closing = prev_liquid_opening + (prev_income - prev_cash_expenses - prev_debt_payments)
 
 
     def _delta(current: float, previous: float) -> dict:
@@ -238,10 +307,12 @@ def get_summary(
 
     return {
         "income":           round(income,          2),
-        "expenses":         round(expenses,        2),
+        "expenses":         round(expenses,        2),   # total incl. cc_charge (for KPI display)
         "savings":          round(savings,         2),
+        "debt_payments":    round(debt_payments,   2),   # cash paid toward debts this period
+        "cc_charges":       round(cur_cc_charges,  2),   # CC charges (excluded from cash balance)
         "net_balance":      round(net_balance,     2),
-        # liquid_net = income − expenses (savings excluded).
+        # liquid_net = income − cash_expenses − debt_payments (savings excluded).
         # Use this on the balance card so saving money doesn't look like spending.
         "liquid_net":       round(liquid_net,      2),
         "opening_balance":  round(opening_balance, 2),
@@ -330,6 +401,9 @@ def get_expense_breakdown(
 
     start, end = _period_bounds(period)
 
+    # Include expense (cash only — exclude cc_charge which hits the CC balance,
+    # not the bank account), debt_payment, and savings so the donut shows the
+    # full picture of where real cash went during the period.
     rows = (
         db.query(
             Transaction.category,
@@ -337,7 +411,8 @@ def get_expense_breakdown(
         )
         .filter(
             Transaction.user_id == current_user,
-            Transaction.type == "expense",   # spec: savings is not an expense, exclude it
+            Transaction.type.in_(["expense", "debt_payment", "savings"]),
+            Transaction.source != "cc_charge",  # exclude CC charges (not cash outflow)
             Transaction.date >= start,
             Transaction.date <= end,
         )

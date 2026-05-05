@@ -183,10 +183,12 @@ export const DASHBOARD_DONUT = {
     "Transport",
     "Shopping",
     "Health",
+    "Debt Payments",
+    "Savings",
     "Other",
   ],
-  values: [1_200, 380, 210, 290, 140, 160],
-  colors: ["#6366F1", "#10B981", "#F97316", "#38BDF8", "#A78BFA", "#475569"],
+  values: [1_200, 380, 210, 290, 140, 370, 300, 160],
+  colors: ["#6366F1", "#10B981", "#F97316", "#38BDF8", "#A78BFA", "#EF4444", "#7C3AED", "#475569"],
 };
 
 /**

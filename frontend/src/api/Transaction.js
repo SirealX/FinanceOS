@@ -26,9 +26,14 @@ import {
   deleteTransaction,
 } from "./transactions";
 
+import { getCreditCards } from "./debts";
+
 // ── Re-exports ────────────────────────────────────────────────────────────────
 
 export { PERIOD_OPTIONS, CATEGORY_CONFIG, PAYMENT_METHODS };
+
+// ── Base payment methods (static) + CC names (dynamic) ───────────────────────
+export const BASE_PAYMENT_METHODS = ["Cash", "Debit Card", "Bank Transfer"];
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -188,6 +193,7 @@ export function useTransactions() {
   const [transactions, setTransactions] = useState(
     IS_DEMO ? INITIAL_TRANSACTIONS : [],
   );
+  const [creditCardNames, setCreditCardNames] = useState([]); // dynamic CC payment methods
   const [loading, setLoading] = useState(!IS_DEMO);
   const [error, setError] = useState(null);
   const [typeFilter, setTypeFilter] = useState("All");
@@ -198,6 +204,12 @@ export function useTransactions() {
   const [deletingId, setDeletingId] = useState(null);
   const [form, setForm] = useState(BLANK_FORM);
   const [searchQuery, setSearchQuery] = useState("");
+
+  // Dynamic payment methods: static options + any active credit card names
+  const paymentMethods = useMemo(
+    () => [...BASE_PAYMENT_METHODS, ...creditCardNames],
+    [creditCardNames],
+  );
 
   const categoryGroups = useMemo(
     () => buildCategoryGroups(allCategories, form.type),
@@ -223,8 +235,13 @@ export function useTransactions() {
     setLoading(true);
     setError(null);
     try {
-      const res = await getTransactions();
-      setTransactions(res.data.map(normalizeTransaction));
+      const [txRes, ccRes] = await Promise.all([
+        getTransactions(),
+        getCreditCards().catch(() => ({ data: [] })),
+      ]);
+      setTransactions(txRes.data.map(normalizeTransaction));
+      // Inject active credit card names into the payment method dropdown
+      setCreditCardNames((ccRes.data || []).map((c) => c.name));
     } catch (err) {
       setError("Could not load transactions. Is the backend running?");
       console.error(err);
@@ -417,6 +434,8 @@ export function useTransactions() {
     categoryGroups,
     filterCategories,
     getCategoryConfig,
+    paymentMethods,      // dynamic: static options + active credit card names
+    creditCardNames,     // just the CC names, for showing the "no cash" notice
     isDemo: IS_DEMO,
   };
 }

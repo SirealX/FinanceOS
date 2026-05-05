@@ -266,6 +266,7 @@ function BudgetModal({ allCategories, budgetTab, saving, onSave, onClose, fmt })
     { kind: "expense", label: "Expenses", color: "var(--color-expense)" },
     { kind: "income", label: "Income", color: "var(--color-income)" },
     { kind: "savings", label: "Savings", color: "var(--color-savings)" },
+    { kind: "debt_payment", label: "Debt Payments", color: "var(--color-danger)" },
   ].filter((g) => budgetTab === "all" || g.kind === budgetTab);
 
   return (
@@ -520,9 +521,11 @@ export default function Budget() {
     expenseRows,
     incomeRows,
     savingsRows,
+    debtPaymentRows,
     expenseStats,
     incomeStats,
     savingsStats,
+    debtPaymentStats,
     activeRows,
     activeStats,
     allCategories,
@@ -556,7 +559,7 @@ export default function Budget() {
 
   // Chart config for the All tab overview — pass currency-aware fmtK
   const allTabChartConfig = isAllTab
-    ? getAllTabChartConfig(expenseRows, incomeRows, savingsRows, formatAmountK)
+    ? getAllTabChartConfig(expenseRows, incomeRows, savingsRows, formatAmountK, debtPaymentRows)
     : null;
 
   // For single-kind tabs, show stats from the active kind
@@ -568,7 +571,9 @@ export default function Budget() {
       ? "var(--color-income)"
       : budgetTab === "savings"
         ? "var(--color-savings)"
-        : "var(--color-expense)";
+        : budgetTab === "debt_payment"
+          ? "var(--color-danger)"
+          : "var(--color-expense)";
 
   return (
     <>
@@ -627,7 +632,7 @@ export default function Budget() {
           ════════════════════════════════════════ */}
       {isAllTab && (
         <>
-          {/* 3 KPI summary cards */}
+          {/* KPI summary cards (3 core + optional debt payments) */}
           <div className="grid-stats" style={{ marginBottom: 14 }}>
             <KindSummaryCard
               label="EXPENSES"
@@ -650,6 +655,15 @@ export default function Budget() {
               icon="🎯"
               fmt={formatAmount}
             />
+            {debtPaymentRows.length > 0 && (
+              <KindSummaryCard
+                label="DEBT PAYMENTS"
+                stats={debtPaymentStats}
+                color="var(--color-danger)"
+                icon="🏦"
+                fmt={formatAmount}
+              />
+            )}
           </div>
 
           {/* Planned surplus / deficit banner */}
@@ -657,11 +671,13 @@ export default function Budget() {
             const plannedSurplus =
               incomeStats.totalPlanned -
               expenseStats.totalPlanned -
-              savingsStats.totalPlanned;
+              savingsStats.totalPlanned -
+              debtPaymentStats.totalPlanned;
             const guaranteedSurplus =
               (incomeStats.guaranteedPlanned ?? incomeStats.totalPlanned) -
               expenseStats.totalPlanned -
-              savingsStats.totalPlanned;
+              savingsStats.totalPlanned -
+              debtPaymentStats.totalPlanned;
             const hasVariableIncome = (incomeStats.variablePlanned ?? 0) > 0;
             const isPositive = plannedSurplus >= 0;
             const isGuaranteedPositive = guaranteedSurplus >= 0;
@@ -913,7 +929,7 @@ export default function Budget() {
 
           {/* Grouped rows — Savings */}
           {savingsRows.length > 0 && (
-            <div className="card" style={{ marginBottom: 0 }}>
+            <div className="card" style={{ marginBottom: debtPaymentRows.length > 0 ? 14 : 0 }}>
               <div
                 style={{
                   display: "flex",
@@ -933,6 +949,34 @@ export default function Budget() {
                   {...row}
                   actual={row.actual}
                   kind="savings"
+                  fmt={formatAmount}
+                />
+              ))}
+            </div>
+          )}
+
+          {/* Grouped rows — Debt Payments */}
+          {debtPaymentRows.length > 0 && (
+            <div className="card" style={{ marginBottom: 0 }}>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 10,
+                  marginBottom: 16,
+                }}
+              >
+                <h2 className="section-header" style={{ margin: 0 }}>
+                  Debt Payments
+                </h2>
+                <span className="count-badge">{debtPaymentRows.length}</span>
+              </div>
+              {debtPaymentRows.map((row) => (
+                <ProgressRow
+                  key={row.name}
+                  {...row}
+                  actual={row.actual}
+                  kind="expense"
                   fmt={formatAmount}
                 />
               ))}
@@ -965,7 +1009,7 @@ export default function Budget() {
             </div>
             <div className="card card-compact" style={{ marginBottom: 0 }}>
               <div className="kpi-label">
-                {budgetTab === "income" ? "Total Earned" : "Total Spent"}
+                {budgetTab === "income" ? "Total Earned" : "Total Paid"}
               </div>
               <div className="kpi-value" style={{ color: kindColor }}>
                 {formatAmount(stats.totalActual)}
@@ -998,7 +1042,7 @@ export default function Budget() {
             </div>
             <div className="card card-compact" style={{ marginBottom: 0 }}>
               <div className="kpi-label">
-                {budgetTab === "income" ? "Targets Exceeded" : "Over Budget"}
+                {budgetTab === "income" ? "Targets Exceeded" : "Over Planned"}
               </div>
               <div
                 className="kpi-value"

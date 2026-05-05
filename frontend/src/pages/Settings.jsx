@@ -2,7 +2,7 @@
  * Settings.jsx — Presentation Layer
  */
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 
 import {
   CURRENCIES,
@@ -14,6 +14,9 @@ import {
   hexToRgba,
   useSettingsPage,
 } from "../api/Settings";
+
+import { getCreditCards, createDebt, updateDebt, deleteDebt } from "../api/debts";
+import { useAuth } from "../context/Authcontexts";
 
 import ExportModal from "../components/ExportModal";
 import ImportWizard from "./ImportWizard";
@@ -401,9 +404,490 @@ function CategoryRow({ cat, onEdit, onDelete }) {
   );
 }
 
+// ── CreditCardSection ─────────────────────────────────────────────────────────
+
+const BLANK_CC_FORM = {
+  name: "",
+  creditLimit: "",
+  billingCycleEndDay: "",
+  cardNetwork: "Visa",
+  interestRate: "",
+  minPayment: "",
+};
+
+const CARD_NETWORKS = ["Visa", "Mastercard", "Amex", "Discover", "Other"];
+
+function CreditCardModal({ initial, isEditing, onSave, onClose, saving }) {
+  const [form, setForm] = useState(initial);
+  const [error, setError] = useState(null);
+  const canSave = form.name.trim().length > 0;
+
+  function handleSave() {
+    if (!canSave) return;
+    onSave(form).catch((err) => setError(err?.message ?? "Save failed."));
+  }
+
+  return (
+    <div
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "rgba(0,0,0,0.6)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        zIndex: 50,
+      }}
+      onClick={(e) => e.target === e.currentTarget && onClose()}
+    >
+      <div
+        className="card"
+        style={{ width: 420, maxWidth: "calc(100vw - 40px)", margin: 0 }}
+      >
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            marginBottom: 20,
+          }}
+        >
+          <h2 className="section-header" style={{ margin: 0 }}>
+            {isEditing ? "Edit Credit Card" : "Add Credit Card"}
+          </h2>
+          <button
+            className="btn-danger"
+            onClick={onClose}
+            style={{ fontSize: 18, lineHeight: 1, padding: "2px 6px" }}
+          >
+            ×
+          </button>
+        </div>
+
+        {error && (
+          <div className="error-banner" style={{ marginBottom: 12 }}>
+            {error}
+            <button onClick={() => setError(null)}>×</button>
+          </div>
+        )}
+
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "1fr 1fr",
+            gap: 12,
+            marginBottom: 12,
+          }}
+        >
+          <div className="field-wrap" style={{ gridColumn: "1 / -1" }}>
+            <label className="field-label">Card Name *</label>
+            <input
+              className="input"
+              placeholder="e.g. Chase Sapphire, Amex Gold"
+              value={form.name}
+              onChange={(e) => setForm({ ...form, name: e.target.value })}
+              autoFocus
+            />
+          </div>
+
+          <div className="field-wrap">
+            <label className="field-label">Network</label>
+            <select
+              className="input"
+              value={form.cardNetwork}
+              onChange={(e) => setForm({ ...form, cardNetwork: e.target.value })}
+            >
+              {CARD_NETWORKS.map((n) => (
+                <option key={n} value={n}>{n}</option>
+              ))}
+            </select>
+          </div>
+
+          <div className="field-wrap">
+            <label className="field-label">Credit Limit</label>
+            <input
+              className="input"
+              type="number"
+              min="0"
+              step="0.01"
+              placeholder="e.g. 5000"
+              value={form.creditLimit}
+              onChange={(e) => setForm({ ...form, creditLimit: e.target.value })}
+            />
+          </div>
+
+          <div className="field-wrap">
+            <label className="field-label">Interest Rate (APR %)</label>
+            <input
+              className="input"
+              type="number"
+              min="0"
+              step="0.01"
+              placeholder="e.g. 24.99"
+              value={form.interestRate}
+              onChange={(e) => setForm({ ...form, interestRate: e.target.value })}
+            />
+          </div>
+
+          <div className="field-wrap">
+            <label className="field-label">Min Monthly Payment</label>
+            <input
+              className="input"
+              type="number"
+              min="0"
+              step="0.01"
+              placeholder="e.g. 25"
+              value={form.minPayment}
+              onChange={(e) => setForm({ ...form, minPayment: e.target.value })}
+            />
+          </div>
+
+          <div className="field-wrap" style={{ gridColumn: "1 / -1" }}>
+            <label className="field-label">Statement Closing Day (1–28)</label>
+            <input
+              className="input"
+              type="number"
+              min="1"
+              max="28"
+              placeholder="e.g. 25"
+              value={form.billingCycleEndDay}
+              onChange={(e) =>
+                setForm({ ...form, billingCycleEndDay: e.target.value })
+              }
+            />
+          </div>
+        </div>
+
+        <div className="form-actions">
+          <button
+            className="btn-primary"
+            onClick={handleSave}
+            disabled={!canSave || saving}
+          >
+            {saving ? "Saving…" : isEditing ? "Save Changes" : "Add Card"}
+          </button>
+          <button className="btn-secondary" onClick={onClose} disabled={saving}>
+            Cancel
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CreditCardSection({ isDemo }) {
+  const [cards, setCards] = useState([]);
+  const [loading, setLoading] = useState(!isDemo);
+  const [error, setError] = useState(null);
+  const [modal, setModal] = useState(null); // null | { mode: "add"|"edit", card?: obj }
+  const [saving, setSaving] = useState(false);
+  const [confirmDeleteId, setConfirmDeleteId] = useState(null);
+
+  const fetchCards = useCallback(async () => {
+    if (isDemo) return;
+    setLoading(true);
+    try {
+      const res = await getCreditCards();
+      setCards(res.data ?? []);
+    } catch (err) {
+      setError("Could not load credit cards.");
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  }, [isDemo]);
+
+  useEffect(() => {
+    fetchCards();
+  }, [fetchCards]);
+
+  async function handleSave(form) {
+    setSaving(true);
+    const payload = {
+      name: form.name.trim(),
+      type: "credit_card",
+      balance: 0,
+      interest_rate: parseFloat(form.interestRate) || 0,
+      min_payment: parseFloat(form.minPayment) || 0,
+      credit_limit: parseFloat(form.creditLimit) || null,
+      billing_cycle_end_day: form.billingCycleEndDay
+        ? parseInt(form.billingCycleEndDay, 10)
+        : null,
+      card_network: form.cardNetwork || null,
+    };
+    try {
+      if (modal?.card) {
+        await updateDebt(modal.card.id, payload);
+      } else {
+        await createDebt(payload);
+      }
+      await fetchCards();
+      setModal(null);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleDelete(id) {
+    try {
+      await deleteDebt(id);
+      setCards((prev) => prev.filter((c) => c.id !== id));
+    } catch (err) {
+      setError("Could not delete card.");
+      console.error(err);
+    }
+    setConfirmDeleteId(null);
+  }
+
+  const networkEmoji = (n) =>
+    n === "Visa" ? "💳 Visa"
+    : n === "Mastercard" ? "💳 MC"
+    : n === "Amex" ? "💳 Amex"
+    : n === "Discover" ? "💳 Disc."
+    : "💳";
+
+  return (
+    <>
+      <div className="card" style={{ marginBottom: 12 }}>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            marginBottom: 16,
+          }}
+        >
+          <div>
+            <h2 className="section-header" style={{ margin: 0 }}>
+              Credit Cards
+            </h2>
+            <p
+              style={{
+                fontSize: 12,
+                color: "var(--color-text-muted)",
+                marginTop: 4,
+              }}
+            >
+              Cards added here appear as payment options in Transactions. Charges
+              update the card balance automatically.
+            </p>
+          </div>
+          {!isDemo && (
+            <button
+              className="btn-primary"
+              onClick={() =>
+                setModal({ mode: "add", card: null })
+              }
+            >
+              + Add Card
+            </button>
+          )}
+        </div>
+
+        {error && (
+          <div className="error-banner" style={{ marginBottom: 12 }}>
+            {error}
+            <button onClick={() => setError(null)}>×</button>
+          </div>
+        )}
+
+        {isDemo && (
+          <div
+            style={{
+              background: "rgba(255,255,255,0.03)",
+              border: "0.5px solid rgba(255,255,255,0.07)",
+              borderRadius: 8,
+              padding: "8px 12px",
+              fontSize: 12,
+              color: "var(--color-text-muted)",
+            }}
+          >
+            Credit card management is not available in demo mode. Log in to add
+            your cards.
+          </div>
+        )}
+
+        {!isDemo && loading && (
+          <div className="skeleton" style={{ height: 48, borderRadius: 8 }} />
+        )}
+
+        {!isDemo && !loading && cards.length === 0 && (
+          <div className="empty-state" style={{ paddingTop: 24 }}>
+            <div className="empty-icon">💳</div>
+            <div className="empty-title">No credit cards yet</div>
+            <div className="empty-body">
+              Add a card to track balances and enable CC charging in Transactions.
+            </div>
+          </div>
+        )}
+
+        {!isDemo &&
+          cards.map((card) => (
+            <div
+              key={card.id}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 12,
+                padding: "10px 0",
+                borderBottom: "0.5px solid rgba(255,255,255,0.05)",
+              }}
+            >
+              {/* Card icon */}
+              <div
+                style={{
+                  width: 36,
+                  height: 36,
+                  borderRadius: 8,
+                  background: "rgba(99,102,241,0.15)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontSize: 16,
+                  flexShrink: 0,
+                }}
+              >
+                💳
+              </div>
+
+              {/* Info */}
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div
+                  style={{
+                    fontSize: 13,
+                    fontWeight: 500,
+                    color: "var(--color-text-primary)",
+                  }}
+                >
+                  {card.name}
+                </div>
+                <div
+                  style={{
+                    fontSize: 11,
+                    color: "var(--color-text-muted)",
+                    marginTop: 2,
+                  }}
+                >
+                  {card.card_network ? networkEmoji(card.card_network) : ""}
+                  {card.credit_limit
+                    ? ` · Limit $${parseFloat(card.credit_limit).toLocaleString()}`
+                    : ""}
+                  {card.billing_cycle_end_day
+                    ? ` · Closes day ${card.billing_cycle_end_day}`
+                    : ""}
+                </div>
+              </div>
+
+              {/* Balance */}
+              <div style={{ textAlign: "right", flexShrink: 0 }}>
+                <div
+                  style={{
+                    fontSize: 13,
+                    fontWeight: 600,
+                    color:
+                      parseFloat(card.balance ?? 0) > 0
+                        ? "var(--color-expense)"
+                        : "var(--color-text-muted)",
+                  }}
+                >
+                  ${parseFloat(card.balance ?? 0).toLocaleString("en-US", {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2,
+                  })}
+                </div>
+                <div
+                  style={{
+                    fontSize: 10,
+                    color: "var(--color-text-muted)",
+                    marginTop: 1,
+                  }}
+                >
+                  balance
+                </div>
+              </div>
+
+              {/* Actions */}
+              {confirmDeleteId === card.id ? (
+                <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+                  <span style={{ fontSize: 11, color: "var(--color-text-muted)", whiteSpace: "nowrap" }}>
+                    Remove?
+                  </span>
+                  <button
+                    className="btn-danger"
+                    style={{ fontSize: 11, padding: "2px 8px", color: "var(--color-danger)" }}
+                    onClick={() => handleDelete(card.id)}
+                  >
+                    Yes
+                  </button>
+                  <button
+                    className="btn-danger"
+                    style={{ fontSize: 11, padding: "2px 8px" }}
+                    onClick={() => setConfirmDeleteId(null)}
+                  >
+                    No
+                  </button>
+                </div>
+              ) : (
+                <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
+                  <button
+                    className="btn-danger"
+                    title="Edit"
+                    onClick={() =>
+                      setModal({
+                        mode: "edit",
+                        card,
+                        initial: {
+                          name: card.name,
+                          creditLimit: card.credit_limit ?? "",
+                          billingCycleEndDay: card.billing_cycle_end_day ?? "",
+                          cardNetwork: card.card_network ?? "Visa",
+                          interestRate: card.interest_rate ?? "",
+                          minPayment: card.min_payment ?? "",
+                        },
+                      })
+                    }
+                  >
+                    <svg viewBox="0 0 15 15" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M10.5 2.5l2 2-7 7H3.5v-2l7-7z" />
+                    </svg>
+                  </button>
+                  <button
+                    className="btn-danger"
+                    title="Delete"
+                    onClick={() => setConfirmDeleteId(card.id)}
+                  >
+                    <svg viewBox="0 0 15 15" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="3,4 12,4" />
+                      <path d="M5 4V3a1 1 0 0 1 1-1h3a1 1 0 0 1 1 1v1" />
+                      <rect x="3.5" y="4" width="8" height="9" rx="1" />
+                      <line x1="6" y1="7" x2="6" y2="10.5" />
+                      <line x1="9" y1="7" x2="9" y2="10.5" />
+                    </svg>
+                  </button>
+                </div>
+              )}
+            </div>
+          ))}
+      </div>
+
+      {/* Modal */}
+      {modal && (
+        <CreditCardModal
+          initial={modal.initial ?? BLANK_CC_FORM}
+          isEditing={!!modal.card}
+          onSave={handleSave}
+          onClose={() => setModal(null)}
+          saving={saving}
+        />
+      )}
+    </>
+  );
+}
+
 // ── Settings — default export ─────────────────────────────────────────────────
 
 export default function Settings() {
+  const { isDemo } = useAuth();
   const {
     expenseCategories,
     incomeCategories,
@@ -1184,6 +1668,9 @@ export default function Settings() {
           {balanceSaved ? "✓ Saved" : "Save Bank Balance"}
         </button>
       </div>
+
+      {/* ── Credit Cards ── */}
+      <CreditCardSection isDemo={isDemo} />
 
       {/* ── Data & Export ── */}
       <div className="card" style={{ marginBottom: 12 }}>

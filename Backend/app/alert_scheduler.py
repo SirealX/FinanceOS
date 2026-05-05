@@ -103,6 +103,15 @@ def _process_user(
     # Issue #8 — roll forward paid bills whose cycle has ended
     roll_forward_bills(user_id, db)
 
+    # Silently decrement payroll-deduction debt balances on their due day
+    try:
+        from .routers.debts import decrement_payroll_debts
+        n = decrement_payroll_debts(user_id, db)
+        if n:
+            log.info("[scheduler] Decremented %d payroll-deduction debt(s) for %s", n, user_id)
+    except Exception as exc:
+        log.warning("[scheduler] Payroll deduction failed for %s: %s", user_id, exc)
+
     return evaluate_alerts(
         user_id = user_id,
         source  = "scheduler",

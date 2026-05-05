@@ -91,11 +91,13 @@ def get_budget_categories(
          for the same (name, kind) combination.
     This prevents duplicate rows and ensures planned amounts are per-user.
     """
+    ALL_KINDS = ["expense", "income", "savings", "debt_payment"]
+
     user_rows = (
         db.query(Category)
         .filter(
             Category.user_id == current_user,
-            Category.kind.in_(["expense", "income", "savings"]),
+            Category.kind.in_(ALL_KINDS),
         )
         .all()
     )
@@ -105,7 +107,7 @@ def get_budget_categories(
         db.query(Category)
         .filter(
             Category.user_id.is_(None),
-            Category.kind.in_(["expense", "income", "savings"]),
+            Category.kind.in_(ALL_KINDS),
         )
         .all()
     )
@@ -114,7 +116,7 @@ def get_budget_categories(
 
     all_rows = user_rows + visible_system
 
-    if kind and kind in ("expense", "income", "savings"):
+    if kind and kind in ALL_KINDS:
         all_rows = [r for r in all_rows if r.kind == kind]
 
     all_rows.sort(key=lambda r: (r.sort_order, r.name))
@@ -210,8 +212,9 @@ def get_budget_actuals(
 
     # Optional kind filter — map kind → transaction type(s)
     # "expense" kind → expense type, "income" kind → income type,
-    # "savings" kind → savings type
-    if kind and kind in ("expense", "income", "savings"):
+    # "savings" kind → savings type, "debt_payment" kind → debt_payment type
+    VALID_KINDS = {"expense", "income", "savings", "debt_payment"}
+    if kind and kind in VALID_KINDS:
         q = q.filter(Transaction.type == kind)
 
     rows = (

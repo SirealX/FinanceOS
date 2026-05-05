@@ -3,6 +3,7 @@ import { useMemo, useState, useEffect, useCallback } from "react";
 import {
   PERIOD_OPTIONS,
   PAYMENT_METHODS,
+  BASE_PAYMENT_METHODS,
   BLANK_FORM,
   fmt,
   formatDate,
@@ -452,9 +453,12 @@ function TxModal({
   onSave,
   onClose,
   categoryGroups,
+  paymentMethods,
+  creditCardNames,
 }) {
   // For savings transactions: only amount, date, and payment method are editable
   const isSavings = editingTx?.type === "savings";
+  const isCC = creditCardNames?.includes(form.method);
 
   const canSave =
     form.description.trim() &&
@@ -656,12 +660,17 @@ function TxModal({
                 Select payment method…
               </option>
             )}
-            {PAYMENT_METHODS.map((m) => (
+            {(paymentMethods ?? PAYMENT_METHODS).map((m) => (
               <option key={m} value={m}>
                 {m}
               </option>
             ))}
           </select>
+          {isCC && (
+            <p style={{ margin: "6px 0 0", fontSize: 12, color: "var(--color-text-muted)", lineHeight: 1.4 }}>
+              💳 This will be charged to your <strong>{form.method}</strong> balance — no cash will be deducted from your account.
+            </p>
+          )}
         </div>
 
         <div className="form-actions">
@@ -955,7 +964,9 @@ export default function Transactions() {
     setSearchQuery,
     categoryGroups,
     filterCategories,
-    getCategoryConfig, // FIX (colors): live color lookup
+    getCategoryConfig,
+    paymentMethods,
+    creditCardNames,
     isDemo,
   } = useTransactions();
 
@@ -1236,6 +1247,8 @@ export default function Transactions() {
           onSave={handleSave}
           onClose={closeModal}
           categoryGroups={categoryGroups}
+          paymentMethods={paymentMethods}
+          creditCardNames={creditCardNames}
         />
       )}
 

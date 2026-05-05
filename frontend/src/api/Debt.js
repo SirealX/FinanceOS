@@ -11,7 +11,7 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { useAuth } from "../context/Authcontexts";
 import { DEBT_TYPES, INITIAL_DEBTS } from "../data/MockData";
-import { getDebts, createDebt, updateDebt, deleteDebt, payDebt } from "./debts";
+import { getDebts, getCreditCards, createDebt, updateDebt, deleteDebt, payDebt, getAmortization } from "./debts";
 import { useSettings } from "../context/SettingsContext";
 import client from "./client";
 
@@ -23,14 +23,45 @@ export { DEBT_TYPES };
 
 export const SIM_MAX_MONTHS = 360;
 
+// Debt type options for the form dropdown
+export const DEBT_TYPE_OPTIONS = [
+  { value: "loan",        label: "Loan" },
+  { value: "credit_card", label: "Credit Card" },
+  { value: "bnpl",        label: "Buy Now Pay Later" },
+];
+
+// Payment type options
+export const PAYMENT_TYPE_OPTIONS = [
+  { value: "manual",            label: "Manual" },
+  { value: "auto_bank_debit",   label: "Auto Bank Debit" },
+  { value: "payroll_deduction", label: "Payroll Deduction" },
+];
+
 export const BLANK_FORM = {
   name: "",
-  type: "Credit Card",
+  debtType: "loan",              // 'loan' | 'credit_card' | 'bnpl'
   balance: "",
   originalBalance: "",
   apr: "",
   minPayment: "",
-  dueDay: "",   // #21 — day of month payment is due (1–31, blank = not set)
+  dueDay: "",
+  bankName: "",
+  paymentType: "manual",         // 'manual' | 'auto_bank_debit' | 'payroll_deduction'
+  paymentFrequency: "",          // 'weekly' | 'biweekly' | 'monthly' | 'quarterly'
+  paymentAmount: "",
+  startDate: "",
+  endDate: "",
+  // Credit card
+  creditLimit: "",
+  billingCycleEndDay: "",
+  cardNetwork: "",
+  // Loan
+  showAmortization: false,
+  termMonths: "",
+  // BNPL
+  linkedTransactionId: "",
+  totalInstallments: "",
+  installmentAmount: "",
 };
 
 let _id = 10;
@@ -172,15 +203,32 @@ export function simulate(debts, extraPayment) {
 
 function normalizeDebt(raw) {
   return {
-    id: String(raw.id),
-    name: raw.name,
-    type: raw.type ?? "Other",
-    balance: parseFloat(raw.balance),
-    originalBalance: parseFloat(raw.original_balance ?? raw.balance),
-    apr: parseFloat(raw.interest_rate),
-    minPayment: parseFloat(raw.min_payment),
-    priority: raw.priority_rank ?? 1,
-    dueDay:   raw.due_day ?? null,   // #21
+    id:                    String(raw.id),
+    name:                  raw.name,
+    debtType:              raw.type ?? "loan",
+    balance:               parseFloat(raw.balance),
+    originalBalance:       parseFloat(raw.original_balance ?? raw.balance),
+    apr:                   parseFloat(raw.interest_rate),
+    minPayment:            parseFloat(raw.min_payment),
+    priority:              raw.priority_rank ?? 1,
+    dueDay:                raw.due_day ?? null,
+    bankName:              raw.bank_name ?? null,
+    isPaidOff:             raw.is_paid_off ?? false,
+    paymentType:           raw.payment_type ?? "manual",
+    paymentFrequency:      raw.payment_frequency ?? null,
+    paymentAmount:         raw.payment_amount ? parseFloat(raw.payment_amount) : null,
+    startDate:             raw.start_date ?? null,
+    endDate:               raw.end_date ?? null,
+    showAmortization:      raw.show_amortization ?? false,
+    termMonths:            raw.term_months ?? null,
+    creditLimit:           raw.credit_limit ? parseFloat(raw.credit_limit) : null,
+    billingCycleEndDay:    raw.billing_cycle_end_day ?? null,
+    cardNetwork:           raw.card_network ?? null,
+    linkedTransactionId:   raw.linked_transaction_id ?? null,
+    totalInstallments:     raw.total_installments ?? null,
+    installmentsPaid:      raw.installments_paid ?? 0,
+    installmentAmount:     raw.installment_amount ? parseFloat(raw.installment_amount) : null,
+    recurringTransactionId: raw.recurring_transaction_id ?? null,
   };
 }
 
@@ -188,17 +236,42 @@ function buildPayload(form, existingDebt) {
   const bal     = parseFloat(form.balance);
   const origBal = parseFloat(form.originalBalance);
   const dueDay  = parseInt(form.dueDay, 10);
-  return {
+
+  const payload = {
     name:             form.name.trim(),
     balance:          bal,
-    // Always send original_balance so edits and new entries are stored correctly.
-    // If the user left it blank we fall back to the current balance (first-time entry).
     original_balance: !isNaN(origBal) ? Math.max(origBal, bal) : bal,
     interest_rate:    parseFloat(form.apr) || 0,
-    min_payment:      parseFloat(form.minPayment),
+    min_payment:      parseFloat(form.minPayment) || 0,
     priority_rank:    existingDebt ? existingDebt.priority : 999,
-    due_day:          !isNaN(dueDay) && dueDay >= 1 && dueDay <= 31 ? dueDay : null,  // #21
+    due_day:          !isNaN(dueDay) && dueDay >= 1 && dueDay <= 31 ? dueDay : null,
+    // New fields
+    type:             form.debtType || "loan",
+    bank_name:        form.bankName?.trim() || null,
+    payment_type:     form.paymentType || "manual",
+    payment_frequency: form.paymentFrequency || null,
+    payment_amount:   parseFloat(form.paymentAmount) || null,
+    start_date:       form.startDate || null,
+    end_date:         form.endDate || null,
+    show_amortization: form.showAmortization || false,
+    term_months:      parseInt(form.termMonths, 10) || null,
   };
+
+  // Credit card fields
+  if (form.debtType === "credit_card") {
+    payload.credit_limit          = parseFloat(form.creditLimit) || null;
+    payload.billing_cycle_end_day = parseInt(form.billingCycleEndDay, 10) || null;
+    payload.card_network          = form.cardNetwork?.trim() || null;
+  }
+
+  // BNPL fields
+  if (form.debtType === "bnpl") {
+    payload.linked_transaction_id = form.linkedTransactionId || null;
+    payload.total_installments    = parseInt(form.totalInstallments, 10) || null;
+    payload.installment_amount    = parseFloat(form.installmentAmount) || null;
+  }
+
+  return payload;
 }
 
 // ── useDebts — PRIMARY HOOK ───────────────────────────────────────────────────
@@ -218,14 +291,17 @@ export function useDebts() {
   );
 
   const [debts, setDebts] = useState(IS_DEMO ? INITIAL_DEBTS : []);
+  const [creditCards, setCreditCards] = useState([]);  // active CC debts for dropdown
   const [loading, setLoading] = useState(!IS_DEMO);
   const [error, setError] = useState(null);
   const [showModal, setShowModal] = useState(false);
   const [editingDebt, setEditingDebt] = useState(null);
   const [form, setForm] = useState(BLANK_FORM);
-  const [extraPmt, setExtraPmt] = useState(0); // start at 0; user slides up
+  const [extraPmt, setExtraPmt] = useState(0);
   const [payingDebt, setPayingDebt] = useState(null);
-  const [budgetSurplus, setBudgetSurplus] = useState(null); // available after minimums
+  const [budgetSurplus, setBudgetSurplus] = useState(null);
+  const [amortizationData, setAmortizationData] = useState(null);
+  const [amortizationLoading, setAmortizationLoading] = useState(false);
 
   // FIX #6: slider params derived from current currency setting
   const sliderParams = useMemo(() => getSliderParams(currency), [currency]);
@@ -235,16 +311,15 @@ export function useDebts() {
     setLoading(true);
     setError(null);
     try {
-      const [debtsRes, summaryRes] = await Promise.all([
+      const [debtsRes, summaryRes, ccRes] = await Promise.all([
         getDebts(),
         client.get("/summary?period=this_month").catch(() => null),
+        getCreditCards().catch(() => ({ data: [] })),
       ]);
       const loaded = debtsRes.data.map(normalizeDebt);
       setDebts(loaded);
+      setCreditCards((ccRes.data || []).map(normalizeDebt));
 
-      // Budget capacity = this month's liquid cash flow minus the minimum
-      // payments that are already committed. This is the realistic ceiling
-      // for extra debt payments without touching savings or going negative.
       if (summaryRes) {
         const liquidNet  = summaryRes.data.liquid_net ?? 0;
         const totalMin   = loaded.reduce((s, d) => s + d.minPayment, 0);
@@ -256,6 +331,20 @@ export function useDebts() {
       console.error(err);
     } finally {
       setLoading(false);
+    }
+  }, []);
+
+  const fetchAmortization = useCallback(async (debtId) => {
+    setAmortizationLoading(true);
+    setAmortizationData(null);
+    try {
+      const res = await getAmortization(debtId);
+      setAmortizationData(res.data);
+    } catch (err) {
+      setError("Could not load amortization schedule.");
+      console.error(err);
+    } finally {
+      setAmortizationLoading(false);
     }
   }, []);
 
@@ -295,13 +384,27 @@ export function useDebts() {
   function openEdit(debt) {
     setEditingDebt(debt);
     setForm({
-      name: debt.name,
-      type: debt.type,
-      balance: String(debt.balance),
-      originalBalance: String(debt.originalBalance),
-      apr: String(debt.apr),
-      minPayment: String(debt.minPayment),
-      dueDay: debt.dueDay != null ? String(debt.dueDay) : "",  // #21
+      name:               debt.name,
+      debtType:           debt.debtType ?? "loan",
+      balance:            String(debt.balance),
+      originalBalance:    String(debt.originalBalance),
+      apr:                String(debt.apr),
+      minPayment:         String(debt.minPayment),
+      dueDay:             debt.dueDay != null ? String(debt.dueDay) : "",
+      bankName:           debt.bankName ?? "",
+      paymentType:        debt.paymentType ?? "manual",
+      paymentFrequency:   debt.paymentFrequency ?? "",
+      paymentAmount:      debt.paymentAmount != null ? String(debt.paymentAmount) : "",
+      startDate:          debt.startDate ?? "",
+      endDate:            debt.endDate ?? "",
+      creditLimit:        debt.creditLimit != null ? String(debt.creditLimit) : "",
+      billingCycleEndDay: debt.billingCycleEndDay != null ? String(debt.billingCycleEndDay) : "",
+      cardNetwork:        debt.cardNetwork ?? "",
+      showAmortization:   debt.showAmortization ?? false,
+      termMonths:         debt.termMonths != null ? String(debt.termMonths) : "",
+      linkedTransactionId: debt.linkedTransactionId ?? "",
+      totalInstallments:  debt.totalInstallments != null ? String(debt.totalInstallments) : "",
+      installmentAmount:  debt.installmentAmount != null ? String(debt.installmentAmount) : "",
     });
     setShowModal(true);
   }
@@ -390,6 +493,7 @@ export function useDebts() {
 
   return {
     debts,
+    creditCards,
     loading,
     error,
     setError,
@@ -411,10 +515,14 @@ export function useDebts() {
     payingDebt,
     setPayingDebt,
     handlePay,
-    sliderParams,                          // FIX #6: expose to Debts.jsx
-    budgetSurplus,                         // FIX #13: available cash after minimums
-    formatAmount,                          // currency-aware (from SettingsContext)
-    formatAmountK: formatAmountKCurrency,  // compact currency-aware
+    sliderParams,
+    budgetSurplus,
+    amortizationData,
+    amortizationLoading,
+    fetchAmortization,
+    fetchDebts,
+    formatAmount,
+    formatAmountK: formatAmountKCurrency,
     isDemo: IS_DEMO,
   };
 }

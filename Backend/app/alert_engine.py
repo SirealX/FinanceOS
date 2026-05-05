@@ -63,19 +63,25 @@ _SESSION_BOUNDARY_HOURS = 6
 
 # ── Tier + severity mapping per alert type ────────────────────────────────────
 _ALERT_META = {
-    "bill_due":          {"tier": 1, "severity": "warning"},
-    "large_transaction": {"tier": 1, "severity": "warning"},
-    "low_balance":       {"tier": 1, "severity": "critical"},
-    "debt_due":          {"tier": 1, "severity": "warning"},   # #21 — payment due soon
-    "debt_overdue":      {"tier": 1, "severity": "critical"},
-    "goal_reached":      {"tier": 1, "severity": "info"},     # queued to digest
-    "budget_exceeded":   {"tier": 2, "severity": "warning"},
-    "spending_spike":    {"tier": 2, "severity": "warning"},
-    "import_reminder":     {"tier": 2, "severity": "info"},
-    "balance_reminder":    {"tier": 2, "severity": "info"},
-    "near_limit":          {"tier": 3, "severity": "info"},
-    "goal_behind_pace":    {"tier": 2, "severity": "warning"},
-    "periodic_review":     {"tier": 2, "severity": "info"},
+    "bill_due":              {"tier": 1, "severity": "warning"},
+    "large_transaction":     {"tier": 1, "severity": "warning"},
+    "low_balance":           {"tier": 1, "severity": "critical"},
+    "debt_due":              {"tier": 1, "severity": "warning"},
+    "debt_overdue":          {"tier": 1, "severity": "critical"},
+    "goal_reached":          {"tier": 1, "severity": "info"},
+    "budget_exceeded":       {"tier": 2, "severity": "warning"},
+    "spending_spike":        {"tier": 2, "severity": "warning"},
+    "import_reminder":       {"tier": 2, "severity": "info"},
+    "balance_reminder":      {"tier": 2, "severity": "info"},
+    "near_limit":            {"tier": 3, "severity": "info"},
+    "goal_behind_pace":      {"tier": 2, "severity": "warning"},
+    "periodic_review":       {"tier": 2, "severity": "info"},
+    # ── Debt restructure alerts ───────────────────────────────────────────────
+    "cc_payment_due":        {"tier": 1, "severity": "warning"},
+    "cc_interest_warning":   {"tier": 2, "severity": "info"},
+    "bnpl_installment_due":  {"tier": 1, "severity": "warning"},
+    "loan_paid_off":         {"tier": 1, "severity": "info"},
+    "min_payment_warning":   {"tier": 2, "severity": "warning"},
 }
 
 
@@ -171,6 +177,15 @@ def evaluate_alerts(
     # 2e. Periodic review nudge (scheduler)
     if source == "scheduler":
         new_alerts += _check_periodic_review(user_id, today, db)
+
+    # ── Tier 1 — New debt alerts (scheduler) ─────────────────────────────────
+    if source == "scheduler":
+        new_alerts += _check_cc_payment_due(user_id, today, db)
+        new_alerts += _check_bnpl_installment_due(user_id, today, db)
+        new_alerts += _check_loan_paid_off(user_id, db)
+
+    # ── Tier 2 — Debt advisory alerts (any source) ───────────────────────────
+    new_alerts += _check_min_payment_warning(user_id, source, db)
 
     # ── Persist all new alerts ────────────────────────────────────────────────
     if new_alerts:
@@ -959,6 +974,191 @@ def _dispatch_immediate(alert: Alert, prefs: AlertPreferences) -> None:
             alert.fired_immediate = True
         except Exception as exc:
             log.warning("[alert_engine] PWA push dispatch failed: %s", exc)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# New debt alert rule checkers
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _check_cc_payment_due(user_id: str, today: date, db: Session) -> list[Alert]:
+    """
+    Fire when the billing cycle closes within 7 days for any active credit card.
+    Uses billing_cycle_end_day as the trigger day.
+    """
+    alerts: list[Alert] = []
+    cc_debts = db.query(Debt).filter(
+        Debt.user_id    == user_id,
+        Debt.type       == "credit_card",
+        Debt.is_paid_off == False,
+        Debt.billing_cycle_end_day.isnot(None),
+    ).all()
+
+    for debt in cc_debts:
+        end_day = debt.billing_cycle_end_day
+        # Build the next billing cycle end date in the current or next month
+        try:
+            cycle_end = today.replace(day=end_day)
+        except ValueError:
+            import calendar
+            cycle_end = today.replace(day=calendar.monthrange(today.year, today.month)[1])
+
+        if cycle_end < today:
+            # Already passed — look at next month
+            from dateutil.relativedelta import relativedelta as _rdelta
+            cycle_end = cycle_end + _rdelta(months=1)
+
+        days_until = (cycle_end - today).days
+        if 0 <= days_until <= 7:
+            entity_id = str(debt.id)
+            if not _already_fired(user_id, "cc_payment_due", entity_id, db):
+                balance = Decimal(str(float(debt.balance or 0)))
+                alerts.append(_make_alert(
+                    user_id     = user_id,
+                    type_       = "cc_payment_due",
+                    title       = f"CC Payment Due — {debt.name}",
+                    body        = (
+                        f"Your {debt.name} billing cycle closes in {days_until} day(s). "
+                        f"Current balance: {_fmt(balance)}."
+                    ),
+                    source      = "scheduler",
+                    entity_type = "debt",
+                    entity_id   = entity_id,
+                ))
+
+    return alerts
+
+
+def _check_bnpl_installment_due(user_id: str, today: date, db: Session) -> list[Alert]:
+    """
+    Fire 3 days before the next BNPL installment, estimated from due_day.
+    """
+    alerts: list[Alert] = []
+    bnpl_debts = db.query(Debt).filter(
+        Debt.user_id    == user_id,
+        Debt.type       == "bnpl",
+        Debt.is_paid_off == False,
+        Debt.due_day.isnot(None),
+    ).all()
+
+    for debt in bnpl_debts:
+        try:
+            next_due = today.replace(day=debt.due_day)
+        except ValueError:
+            continue
+
+        if next_due < today:
+            from dateutil.relativedelta import relativedelta as _rdelta
+            next_due = next_due + _rdelta(months=1)
+
+        days_until = (next_due - today).days
+        if days_until == 3:
+            entity_id = str(debt.id)
+            if not _already_fired(user_id, "bnpl_installment_due", entity_id, db):
+                amt = Decimal(str(float(debt.installment_amount or debt.min_payment or 0)))
+                paid = debt.installments_paid or 0
+                total = debt.total_installments or "?"
+                alerts.append(_make_alert(
+                    user_id     = user_id,
+                    type_       = "bnpl_installment_due",
+                    title       = f"BNPL Payment Due — {debt.name}",
+                    body        = (
+                        f"Installment {paid + 1}/{total} of {_fmt(amt)} is due in 3 days "
+                        f"for {debt.name}."
+                    ),
+                    source      = "scheduler",
+                    entity_type = "debt",
+                    entity_id   = entity_id,
+                ))
+
+    return alerts
+
+
+def _check_loan_paid_off(user_id: str, db: Session) -> list[Alert]:
+    """
+    Fire once when a loan or BNPL is paid off (balance = 0, is_paid_off = True).
+    """
+    alerts: list[Alert] = []
+    paid_debts = db.query(Debt).filter(
+        Debt.user_id    == user_id,
+        Debt.is_paid_off == True,
+        Debt.type.in_(["loan", "bnpl"]),
+    ).all()
+
+    for debt in paid_debts:
+        entity_id = str(debt.id)
+        if not _already_fired(user_id, "loan_paid_off", entity_id, db):
+            alerts.append(_make_alert(
+                user_id     = user_id,
+                type_       = "loan_paid_off",
+                title       = f"Paid Off — {debt.name}",
+                body        = f"Congratulations! You've fully paid off {debt.name}.",
+                source      = "scheduler",
+                entity_type = "debt",
+                entity_id   = entity_id,
+            ))
+
+    return alerts
+
+
+def _check_min_payment_warning(user_id: str, source: str, db: Session) -> list[Alert]:
+    """
+    After a CC payment equal to min_payment, calculate the long-term interest
+    cost and fire an advisory alert.
+    Only fires once per billing cycle (de-duped by entity_id = debt.id).
+    """
+    alerts: list[Alert] = []
+    cc_debts = db.query(Debt).filter(
+        Debt.user_id    == user_id,
+        Debt.type       == "credit_card",
+        Debt.is_paid_off == False,
+        Debt.min_payment > 0,
+        Debt.interest_rate > 0,
+    ).all()
+
+    for debt in cc_debts:
+        balance    = float(debt.balance or 0)
+        min_pmt    = float(debt.min_payment or 0)
+        annual_apr = float(debt.interest_rate or 0)
+
+        if balance <= 0 or min_pmt <= 0:
+            continue
+
+        monthly_rate = annual_apr / 100 / 12
+        if monthly_rate <= 0:
+            continue
+
+        # Estimate months to pay off at minimum payment
+        # months ≈ -log(1 - balance*rate/min_pmt) / log(1 + rate)
+        import math
+        ratio = balance * monthly_rate / min_pmt
+        if ratio >= 1:
+            continue  # minimum payment doesn't cover interest — infinite loop
+
+        try:
+            months = -math.log(1 - ratio) / math.log(1 + monthly_rate)
+        except (ValueError, ZeroDivisionError):
+            continue
+
+        total_paid   = min_pmt * months
+        total_interest = max(0.0, total_paid - balance)
+
+        entity_id = f"min_pmt_{debt.id}"
+        if not _already_fired(user_id, "min_payment_warning", entity_id, db):
+            alerts.append(_make_alert(
+                user_id     = user_id,
+                type_       = "min_payment_warning",
+                title       = f"Minimum Payment Warning — {debt.name}",
+                body        = (
+                    f"Paying only the minimum on {debt.name} will cost "
+                    f"~{_fmt(Decimal(str(round(total_interest, 2))))} in interest "
+                    f"over {round(months)} months."
+                ),
+                source      = source,
+                entity_type = "debt",
+                entity_id   = entity_id,
+            ))
+
+    return alerts
 
 
 def _serialize(alert: Alert) -> dict:

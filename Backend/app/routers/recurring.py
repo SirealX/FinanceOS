@@ -16,7 +16,7 @@ Endpoints
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from ..database import get_db
-from ..models import RecurringTransaction, Transaction
+from ..models import RecurringTransaction, Transaction, Debt
 from ..dependencies import get_current_user
 from pydantic import BaseModel
 from typing import Optional
@@ -27,7 +27,7 @@ import uuid
 router = APIRouter(prefix="/recurring", tags=["recurring"])
 
 VALID_FREQUENCIES = {"daily", "weekly", "monthly", "yearly"}
-VALID_TYPES       = {"income", "expense", "savings", "transfer"}
+VALID_TYPES       = {"income", "expense", "savings", "transfer", "debt_payment"}
 
 
 class RecurringCreate(BaseModel):
@@ -163,7 +163,9 @@ def log_recurring(
     if not row:
         raise HTTPException(status_code=404, detail="Recurring template not found")
 
-    # Create the transaction (savings type excluded from manual tx endpoint rules here)
+    # Create the transaction.
+    # savings and debt_payment types are excluded from the manual transaction
+    # endpoint but are valid here — this router is the controlled creation path.
     tx = Transaction(
         user_id        = current_user,
         date           = row.next_due,
@@ -177,6 +179,22 @@ def log_recurring(
         reviewed       = True,
     )
     db.add(tx)
+    db.flush()
+
+    # If this is a debt_payment recurring, find the linked debt and decrement.
+    if row.type == "debt_payment":
+        debt = db.query(Debt).filter(
+            Debt.recurring_transaction_id == row.id,
+            Debt.user_id                  == current_user,
+        ).first()
+        if debt and not debt.is_paid_off:
+            debt.balance = max(0.0, float(debt.balance) - float(row.amount))
+            if float(debt.balance) == 0.0:
+                debt.is_paid_off = True
+                row.is_active    = False  # stop future recurrences
+            # Re-sync budget category planned amount
+            from .debts import sync_debt_minimums_to_budget
+            sync_debt_minimums_to_budget(current_user, db)
 
     # Advance next_due
     row.next_due = _advance_due(row.next_due, row.frequency)
