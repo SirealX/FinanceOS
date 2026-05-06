@@ -1007,6 +1007,13 @@ select option {
   }
 }
 
+/* ── 21. Mobile Bottom Navigation ────────────────────────────*/
+
+/* Hidden on tablet and desktop */
+.mobile-bottom-nav {
+  display: none;
+}
+
 /* Mobile phones: hide sidebar, show bottom nav, fix layout */
 @media (max-width: 600px) {
 
@@ -1101,6 +1108,81 @@ select option {
   select,
   textarea {
     font-size: 16px;
+  }
+
+
+  .mobile-bottom-nav {
+    display: flex;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: var(--color-bg-sidebar);
+    border-top: var(--border-sidebar);
+    z-index: 50;
+    overflow-x: auto;
+    scrollbar-width: none;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+
+  .mobile-bottom-nav::-webkit-scrollbar {
+    display: none;
+  }
+
+  .mobile-nav-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    padding: 8px 2px;
+    flex: 1;
+    min-width: 0;
+    min-height: 56px;
+    font-size: 9px;
+    color: var(--color-text-hint);
+    cursor: pointer;
+    position: relative;
+    user-select: none;
+    touch-action: manipulation;
+    transition: color 0.15s;
+  }
+
+  .mobile-nav-item.active {
+    color: var(--color-income);
+  }
+
+  .mobile-nav-item span {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
+  }
+
+  /* Green bar at top of active item */
+  .mobile-nav-item.active::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 20%;
+    right: 20%;
+    height: 2px;
+    background: var(--color-income);
+    border-radius: 0 0 2px 2px;
+  }
+
+  .mobile-nav-badge {
+    position: absolute;
+    top: 6px;
+    right: 8px;
+    background: var(--color-danger);
+    color: #fff;
+    font-size: 9px;
+    padding: 1px 4px;
+    border-radius: var(--radius-full);
+    font-weight: 600;
+    line-height: 1.4;
+    pointer-events: none;
   }
 
   /* ── Phase 1 #1: Mobile logout button ──────────────────────── */

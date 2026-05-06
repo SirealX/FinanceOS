@@ -828,7 +828,11 @@ export function useDashboard() {
   // Uses the same projected-opening logic as balanceTrendConfig so the line
   // starts from real money when the user has an anchor set.
   const runningBalanceConfig = useMemo(() => {
-    if (IS_DEMO) return null;
+    if (IS_DEMO) {
+      const data = DASHBOARD_CHART_DATA[period];
+      if (!data?.labels?.length) return null;
+      return getRunningBalanceConfig(data, 3000, formatAmountKCurrency);
+    }
     const data = chartData;
     if (!data.labels?.length) return null;
 
@@ -854,17 +858,17 @@ export function useDashboard() {
 
   // ── Carousel Chart 2: Daily Net Cash Movement (This Month / Last Month) ───
   const dailyNetCashConfig = useMemo(() => {
-    if (IS_DEMO || period === "Last 3 Months") return null;
-    const data = chartData;
-    if (!data.labels?.length) return null;
+    if (period === "Last 3 Months") return null;
+    const data = IS_DEMO ? DASHBOARD_CHART_DATA[period] : chartData;
+    if (!data?.labels?.length) return null;
     return getDailyNetCashConfig(data, formatAmountKCurrency);
   }, [IS_DEMO, period, chartData, formatAmountKCurrency]);
 
   // ── Carousel Chart 2 (Last 3 Months): Monthly Income vs Expenses ──────────
   const monthlyComparisonConfig = useMemo(() => {
-    if (IS_DEMO || period !== "Last 3 Months") return null;
-    const data = chartData;
-    if (!data.labels?.length) return null;
+    if (period !== "Last 3 Months") return null;
+    const data = IS_DEMO ? DASHBOARD_CHART_DATA[period] : chartData;
+    if (!data?.labels?.length) return null;
     return getMonthlyComparisonConfig(data, formatAmountKCurrency);
   }, [IS_DEMO, period, chartData, formatAmountKCurrency]);
 
