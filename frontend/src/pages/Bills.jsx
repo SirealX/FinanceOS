@@ -93,6 +93,7 @@ function BillRow({ bill, catCfg, onTogglePaid, onEdit, onDelete, fmt }) {
 
   return (
     <div
+      className="bill-row"
       style={{
         display: "flex",
         alignItems: "center",
@@ -113,6 +114,8 @@ function BillRow({ bill, catCfg, onTogglePaid, onEdit, onDelete, fmt }) {
         e.currentTarget.style.paddingRight = "";
       }}
     >
+      {/* ── Primary row: toggle + avatar + name ── */}
+      <div className="bill-row-primary">
       {/* Mark-paid toggle */}
       <button
         title={isPaid ? "Mark as unpaid" : "Mark as paid"}
@@ -151,6 +154,7 @@ function BillRow({ bill, catCfg, onTogglePaid, onEdit, onDelete, fmt }) {
 
       {/* Name + frequency + category */}
       <div
+        className="bill-name-col"
         style={{
           flex: "1 1 0",
           minWidth: 0,
@@ -200,7 +204,10 @@ function BillRow({ bill, catCfg, onTogglePaid, onEdit, onDelete, fmt }) {
           {bill.category}
         </div>
       </div>
+      </div>{/* end bill-row-primary */}
 
+      {/* ── Secondary row: amount + due date + status + actions ── */}
+      <div className="bill-row-secondary">
       {/* Amount */}
       <div
         style={{
@@ -312,6 +319,7 @@ function BillRow({ bill, catCfg, onTogglePaid, onEdit, onDelete, fmt }) {
           </>
         )}
       </div>
+      </div>{/* end bill-row-secondary */}
     </div>
   );
 }
@@ -377,6 +385,7 @@ function BillModal({
         </div>
 
         <div
+          className="bill-modal-grid"
           style={{
             display: "grid",
             gridTemplateColumns: "1fr 1fr",
@@ -408,6 +417,7 @@ function BillModal({
         </div>
 
         <div
+          className="bill-modal-grid"
           style={{
             display: "grid",
             gridTemplateColumns: "1fr 1fr",
@@ -598,7 +608,7 @@ export default function Bills() {
       )}
 
       {/* Zone 2 */}
-      <div className="grid-stats" style={{ marginBottom: 14 }}>
+      <div className="grid-stats" style={{ marginBottom: 12 }}>
         <div className="card card-compact" style={{ marginBottom: 0 }}>
           <div className="kpi-label">Monthly Total</div>
           <div className="kpi-value expense">
@@ -683,7 +693,7 @@ export default function Bills() {
             display: "flex",
             justifyContent: "space-between",
             alignItems: "center",
-            marginBottom: 14,
+            marginBottom: 12,
           }}
         >
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -695,7 +705,7 @@ export default function Bills() {
         </div>
 
         {/* Filter pills */}
-        <div style={{ marginBottom: 14 }}>
+        <div style={{ marginBottom: 12 }}>
           <div className="pill-group">
             {["All", "Unpaid", "Due Soon", "Paid"].map((f) => (
               <button
@@ -732,6 +742,7 @@ export default function Bills() {
 
         {/* Column headers */}
         <div
+          className="bills-col-headers"
           style={{
             display: "flex",
             alignItems: "center",

@@ -15,7 +15,7 @@
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Chart,
   LineElement,
@@ -30,11 +30,6 @@ import {
 } from "chart.js";
 
 import { useDashboard } from "../api/Dshboard";
-import {
-  getEarmarked,
-  createEarmarked,
-  deleteEarmarked,
-} from "../api/earmarked";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Chart.js registration — once at module level
@@ -58,7 +53,7 @@ Chart.register(
 
 // accent: "positive" | "negative" | undefined — adds a subtle background tint
 // so the balance card is unambiguous at a glance even before reading the number.
-function KpiCard({ label, value, delta, colorClass, icon, accent, subtitle }) {
+function KpiCard({ label, value, delta, colorClass, icon, accent, subtitle, hideDelta }) {
   const isUp = delta?.dir === "up";
 
   const accentStyle =
@@ -104,12 +99,14 @@ function KpiCard({ label, value, delta, colorClass, icon, accent, subtitle }) {
           {subtitle}
         </div>
       )}
-      <div className="kpi-delta" style={{ marginTop: 8 }}>
-        <span className={isUp ? "arrow-up" : "arrow-down"}>
-          {isUp ? "▲" : "▼"} {delta?.pct ?? "—"}%
-        </span>
-        <span className="vs-label">vs last month</span>
-      </div>
+      {!hideDelta && (
+        <div className="kpi-delta" style={{ marginTop: 8 }}>
+          <span className={isUp ? "arrow-up" : "arrow-down"}>
+            {isUp ? "▲" : "▼"} {delta?.pct ?? "—"}%
+          </span>
+          <span className="vs-label">vs last month</span>
+        </div>
+      )}
     </div>
   );
 }
@@ -570,174 +567,6 @@ function TxRow({ tx, fmt }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// EarmarkedPanel — reserved funds management (#4)
-// Self-contained: fetches and mutates via earmarked API directly.
-// ─────────────────────────────────────────────────────────────────────────────
-
-function EarmarkedPanel({ isDemo, fmt }) {
-  const [items, setItems]       = useState([]);
-  const [loading, setLoading]   = useState(!isDemo);
-  const [showForm, setShowForm] = useState(false);
-  const [saving, setSaving]     = useState(false);
-  const [form, setForm]         = useState({ name: "", amount: "", due_date: "", note: "" });
-
-  const load = useCallback(async () => {
-    if (isDemo) return;
-    try {
-      const res = await getEarmarked();
-      setItems(res.data ?? []);
-    } catch (_) { /* silently ignore */ }
-    finally { setLoading(false); }
-  }, [isDemo]);
-
-  useEffect(() => { load(); }, [load]);
-
-  async function handleAdd() {
-    if (!form.name.trim() || !form.amount) return;
-    setSaving(true);
-    try {
-      await createEarmarked({
-        name:     form.name.trim(),
-        amount:   parseFloat(form.amount),
-        due_date: form.due_date || null,
-        note:     form.note.trim() || null,
-      });
-      setForm({ name: "", amount: "", due_date: "", note: "" });
-      setShowForm(false);
-      await load();
-    } catch (_) { /* ignore */ }
-    finally { setSaving(false); }
-  }
-
-  async function handleDelete(id) {
-    try {
-      await deleteEarmarked(id);
-      setItems((prev) => prev.filter((x) => x.id !== id));
-    } catch (_) { /* ignore */ }
-  }
-
-  const total = items.reduce((s, x) => s + parseFloat(x.amount ?? 0), 0);
-
-  if (isDemo) return null; // earmarked is live-only
-
-  return (
-    <div className="card" style={{ marginBottom: 12 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <h2 className="section-header" style={{ margin: 0 }}>Reserved Funds</h2>
-          {items.length > 0 && <span className="count-badge">{items.length}</span>}
-        </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          {total > 0 && (
-            <span style={{ fontSize: 13, fontWeight: 600, color: "var(--color-expense)" }}>
-              {fmt(total)} reserved
-            </span>
-          )}
-          <button className="btn-primary" style={{ fontSize: 12, padding: "5px 12px" }} onClick={() => setShowForm((v) => !v)}>
-            {showForm ? "Cancel" : "+ Add"}
-          </button>
-        </div>
-      </div>
-
-      {/* Inline add form */}
-      {showForm && (
-        <div
-          style={{
-            background: "var(--color-bg-input)",
-            border: "0.5px solid rgba(255,255,255,0.08)",
-            borderRadius: 8,
-            padding: "12px 14px",
-            marginBottom: 12,
-            display: "grid",
-            gridTemplateColumns: "1fr 1fr",
-            gap: 8,
-          }}
-        >
-          <div className="field-wrap" style={{ marginBottom: 0 }}>
-            <label className="field-label">Name</label>
-            <input className="input" placeholder="e.g. Emergency buffer" value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} />
-          </div>
-          <div className="field-wrap" style={{ marginBottom: 0 }}>
-            <label className="field-label">Amount</label>
-            <input className="input" type="number" min="0" step="1" placeholder="0" value={form.amount} onChange={(e) => setForm((f) => ({ ...f, amount: e.target.value }))} />
-          </div>
-          <div className="field-wrap" style={{ marginBottom: 0 }}>
-            <label className="field-label">Due Date (optional)</label>
-            <input className="input" type="date" value={form.due_date} onChange={(e) => setForm((f) => ({ ...f, due_date: e.target.value }))} />
-          </div>
-          <div className="field-wrap" style={{ marginBottom: 0 }}>
-            <label className="field-label">Note (optional)</label>
-            <input className="input" placeholder="e.g. Car repair fund" value={form.note} onChange={(e) => setForm((f) => ({ ...f, note: e.target.value }))} />
-          </div>
-          <div style={{ gridColumn: "1 / -1", display: "flex", justifyContent: "flex-end" }}>
-            <button className="btn-primary" style={{ fontSize: 12 }} onClick={handleAdd} disabled={saving || !form.name.trim() || !form.amount}>
-              {saving ? "Saving…" : "Save"}
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Items list */}
-      {loading ? (
-        <div className="skeleton" style={{ height: 40, borderRadius: 8 }} />
-      ) : items.length === 0 ? (
-        <p style={{ fontSize: 12, color: "var(--color-text-muted)", margin: 0, textAlign: "center", padding: "12px 0" }}>
-          No reserved funds. Add one to track money earmarked for a specific purpose.
-        </p>
-      ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          {items.map((item) => (
-            <div
-              key={item.id}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                padding: "8px 10px",
-                background: "var(--color-bg-input)",
-                borderRadius: 8,
-                border: "0.5px solid rgba(255,255,255,0.06)",
-              }}
-            >
-              <div>
-                <div style={{ fontSize: 13, fontWeight: 500, color: "var(--color-text-primary)" }}>{item.name}</div>
-                {(item.due_date || item.note) && (
-                  <div style={{ fontSize: 11, color: "var(--color-text-muted)", marginTop: 2 }}>
-                    {item.due_date ? `Due ${item.due_date}` : ""}
-                    {item.due_date && item.note ? " · " : ""}
-                    {item.note ?? ""}
-                  </div>
-                )}
-              </div>
-              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                <span style={{ fontSize: 14, fontWeight: 600, color: "var(--color-expense)" }}>
-                  {fmt(parseFloat(item.amount))}
-                </span>
-                <button
-                  onClick={() => handleDelete(item.id)}
-                  style={{
-                    background: "none",
-                    border: "none",
-                    cursor: "pointer",
-                    color: "var(--color-text-muted)",
-                    fontSize: 15,
-                    lineHeight: 1,
-                    padding: "2px 4px",
-                  }}
-                  title="Remove"
-                >
-                  ×
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
 // Dashboard — default export
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -754,24 +583,20 @@ export default function Dashboard() {
     recentTransactions,
     overviewChartConfig,
     donutChartConfig,
-    balanceTrendConfig,
+    runningBalanceConfig,
+    dailyNetCashConfig,
+    monthlyComparisonConfig,
     loading,
     slowLoad,
     error,
-    showBalanceGap,
     bankBalance,
     bankBalanceDate,
     initialBalance,
-    netWorth,
-    netWorthSavings,
-    netWorthDebts,
-    upcomingBills,
     plannedIncome,
-    freeToSpend,
-    earmarkedTotal,
-    debtMinTotal,
-    savingsGoals,
-    isDemo,
+    savingsCurrentTotal,
+    savingsTargetTotal,
+    debtCurrentTotal,
+    debtOriginalTotal,
     goToBudget,
     goToTransactions,
     goToSettings,
@@ -782,6 +607,9 @@ export default function Dashboard() {
 
   // Signed formatter: "+€1,234.56" / "−€1,234.56"
   const fmtSigned = (n) => (n >= 0 ? "+" : "−") + formatAmount(Math.abs(n));
+
+  // Chart carousel index: 0 = Running Balance, 1 = Daily Net Cash Movement
+  const [carouselIdx, setCarouselIdx] = useState(0);
 
   // Loading skeleton while API fetches complete
   if (loading) {
@@ -906,6 +734,7 @@ export default function Dashboard() {
         )}
         <KpiCard
           label="INCOME"
+          hideDelta={period === "Last Month"}
           value={formatAmount(kpi.income)}
           delta={kpi.incomeDelta}
           colorClass="income"
@@ -920,6 +749,7 @@ export default function Dashboard() {
         />
         <KpiCard
           label="EXPENSES"
+          hideDelta={period === "Last Month"}
           value={formatAmount(kpi.expenses)}
           delta={kpi.expensesDelta}
           colorClass="expense"
@@ -937,6 +767,7 @@ export default function Dashboard() {
         />
         <KpiCard
           label="SAVINGS RATE"
+          hideDelta={period === "Last Month"}
           value={`${kpi.savingsRate.toFixed(1)}%`}
           delta={kpi.savingsDelta}
           colorClass="savings"
@@ -952,84 +783,6 @@ export default function Dashboard() {
           })()}
         />
       </div>
-
-      {/* ══ ZONE 2b: Net Worth summary row ══ */}
-      {netWorth !== null && (
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            gap: 12,
-            padding: "10px 16px",
-            borderRadius: 10,
-            background:
-              netWorth >= 0 ? "rgba(16,185,129,0.05)" : "rgba(239,68,68,0.05)",
-            border:
-              netWorth >= 0
-                ? "0.5px solid rgba(16,185,129,0.14)"
-                : "0.5px solid rgba(239,68,68,0.14)",
-            marginBottom: 12,
-          }}
-        >
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 16,
-              flexWrap: "wrap",
-              fontSize: 12,
-              color: "var(--color-text-secondary)",
-            }}
-          >
-            <span style={{ fontSize: 14, flexShrink: 0 }}>💼</span>
-            <span>
-              <span style={{ color: "var(--color-text-muted)" }}>balance </span>
-              <span
-                style={{ fontWeight: 500, color: "var(--color-text-primary)" }}
-              >
-                {bankBalance !== null ? fmtSigned(bankBalance) : "—"}
-              </span>
-            </span>
-            <span style={{ color: "rgba(255,255,255,0.15)" }}>+</span>
-            <span>
-              <span style={{ color: "var(--color-text-muted)" }}>savings </span>
-              <span style={{ fontWeight: 500, color: "var(--color-savings)" }}>
-                +{formatAmount(netWorthSavings)}
-              </span>
-            </span>
-            <span style={{ color: "rgba(255,255,255,0.15)" }}>−</span>
-            <span>
-              <span style={{ color: "var(--color-text-muted)" }}>debts </span>
-              <span style={{ fontWeight: 500, color: "var(--color-expense)" }}>
-                {formatAmount(netWorthDebts)}
-              </span>
-            </span>
-          </div>
-          <div style={{ textAlign: "right", flexShrink: 0 }}>
-            <div
-              style={{
-                fontSize: 16,
-                fontWeight: 700,
-                letterSpacing: "-0.4px",
-                color:
-                  netWorth >= 0 ? "var(--color-income)" : "var(--color-danger)",
-              }}
-            >
-              {fmtSigned(netWorth)}
-            </div>
-            <div
-              style={{
-                fontSize: 10,
-                color: "var(--color-text-muted)",
-                marginTop: 2,
-              }}
-            >
-              net worth
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* ══ ZONE 2c: Balance nudge ══
           Two variants depending on how much setup the user has done:
@@ -1177,188 +930,13 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* ══ ZONE 2d: Upcoming bills — committed outgoing ══ */}
-      {upcomingBills.length > 0 && (
-        <div
-          className="card"
-          style={{ marginBottom: 12, padding: "12px 16px" }}
-        >
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              marginBottom: 10,
-            }}
-          >
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <span style={{ fontSize: 14 }}>📅</span>
-              <h2
-                className="section-header"
-                style={{ margin: 0, fontSize: 13 }}
-              >
-                Committed this month
-              </h2>
-              <span className="count-badge">{upcomingBills.length}</span>
-            </div>
-            <span
-              style={{
-                fontSize: 13,
-                fontWeight: 600,
-                color: "var(--color-expense)",
-              }}
-            >
-              −
-              {formatAmount(
-                upcomingBills.reduce((s, b) => s + parseFloat(b.amount), 0),
-              )}
-            </span>
-          </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-            {upcomingBills.map((bill) => {
-              const daysUntil = Math.ceil(
-                (new Date(bill.due_date + "T00:00:00") - new Date()) /
-                  86_400_000,
-              );
-              const urgentColor =
-                daysUntil <= 3
-                  ? "var(--color-danger)"
-                  : daysUntil <= 7
-                    ? "var(--color-expense)"
-                    : "var(--color-text-muted)";
-              return (
-                <div
-                  key={bill.id}
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "center",
-                    fontSize: 12,
-                  }}
-                >
-                  <span style={{ color: "var(--color-text-secondary)" }}>
-                    {bill.name}
-                  </span>
-                  <div
-                    style={{ display: "flex", alignItems: "center", gap: 12 }}
-                  >
-                    <span style={{ color: urgentColor, fontSize: 11 }}>
-                      {daysUntil === 0
-                        ? "due today"
-                        : daysUntil === 1
-                          ? "due tomorrow"
-                          : `due in ${daysUntil}d`}
-                    </span>
-                    <span
-                      style={{
-                        fontWeight: 600,
-                        color: "var(--color-text-primary)",
-                      }}
-                    >
-                      {formatAmount(parseFloat(bill.amount))}
-                    </span>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
 
-      {/* ══ ZONE 2e: Free to Spend (#5) + Debt summary (#24) ══ */}
-      {(freeToSpend !== null || debtMinTotal !== null) && (
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: freeToSpend !== null && debtMinTotal !== null ? "1fr 1fr" : "1fr",
-            gap: 12,
-            marginBottom: 12,
-          }}
-        >
-          {/* Free to Spend */}
-          {freeToSpend !== null && (
-            <div
-              className="card card-compact"
-              style={{
-                marginBottom: 0,
-                background: freeToSpend > 0 ? "rgba(16,185,129,0.05)" : "rgba(239,68,68,0.05)",
-                border: freeToSpend > 0 ? "0.5px solid rgba(16,185,129,0.18)" : "0.5px solid rgba(239,68,68,0.18)",
-              }}
-            >
-              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
-                <span style={{ fontSize: 15 }}>💵</span>
-                <span className="kpi-label" style={{ margin: 0 }}>FREE TO SPEND</span>
-              </div>
-              <div
-                style={{
-                  fontSize: 22,
-                  fontWeight: 700,
-                  letterSpacing: "-0.5px",
-                  color: freeToSpend > 0 ? "var(--color-income)" : "var(--color-danger)",
-                }}
-              >
-                {formatAmount(freeToSpend)}
-              </div>
-              <div style={{ fontSize: 11, color: "var(--color-text-muted)", marginTop: 6, lineHeight: 1.5 }}>
-                balance
-                {upcomingBills.length > 0 && ` − ${formatAmount(upcomingBills.reduce((s, b) => s + parseFloat(b.amount), 0))} bills`}
-                {earmarkedTotal > 0 && ` − ${formatAmount(earmarkedTotal)} reserved`}
-              </div>
-            </div>
-          )}
-
-          {/* Debt summary */}
-          {debtMinTotal !== null && debtMinTotal > 0 && netWorthDebts > 0 && (
-            <div className="card card-compact" style={{ marginBottom: 0 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
-                <span style={{ fontSize: 15 }}>💳</span>
-                <span className="kpi-label" style={{ margin: 0 }}>DEBT SUMMARY</span>
-              </div>
-              <div
-                style={{
-                  fontSize: 22,
-                  fontWeight: 700,
-                  letterSpacing: "-0.5px",
-                  color: "var(--color-expense)",
-                }}
-              >
-                {formatAmount(netWorthDebts)}
-              </div>
-              <div style={{ fontSize: 11, color: "var(--color-text-muted)", marginTop: 6, lineHeight: 1.5 }}>
-                {formatAmount(debtMinTotal)}/mo in minimums
-              </div>
-              {/* Cross-connect: show whether budget covers minimums (#24) */}
-              {(() => {
-                const debtBudgetRow = budgetRows.find(
-                  (r) => r.category === "Debt Payments",
-                );
-                if (!debtBudgetRow) return null;
-                const covered = debtBudgetRow.planned >= debtMinTotal;
-                return (
-                  <div
-                    style={{
-                      fontSize: 11,
-                      marginTop: 4,
-                      color: covered ? "var(--color-income)" : "var(--color-danger)",
-                    }}
-                  >
-                    {covered
-                      ? `✓ ${formatAmount(debtBudgetRow.planned)} budgeted`
-                      : `⚠ only ${formatAmount(debtBudgetRow.planned)} budgeted`}
-                  </div>
-                );
-              })()}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* ══ ZONE 2f: Reserved Funds (Earmarked) ══ */}
-      <EarmarkedPanel isDemo={isDemo} fmt={formatAmount} />
-
-      {/* ══ ZONE 3a: Cash Flow + Expense Donut ══ */}
+      {/* ══ ZONE 3a: Chart Carousel + Expense Donut ══ */}
       <div className="grid-chart-secondary" style={{ marginBottom: 12 }}>
+
+        {/* ── Carousel slot: Running Balance | Daily Net Cash ── */}
         <div className="card" style={{ marginBottom: 0 }}>
+          {/* Header */}
           <div
             style={{
               display: "flex",
@@ -1367,27 +945,71 @@ export default function Dashboard() {
               marginBottom: 16,
             }}
           >
-            <h2 className="section-header" style={{ margin: 0 }}>
-              Cash Flow
-            </h2>
+            <div>
+              <h2 className="section-header" style={{ margin: 0 }}>
+                {carouselIdx === 0
+                  ? "Running Balance"
+                  : period === "Last 3 Months" ? "Monthly Income vs Expenses" : "Daily Net Cash"}
+              </h2>
+              <p style={{ fontSize: 11, color: "var(--color-text-muted)", marginTop: 3 }}>
+                {carouselIdx === 0
+                  ? "How your balance moves through the period"
+                  : period === "Last 3 Months"
+                    ? "Income and expenses trend — month by month"
+                    : "Net money in or out per period — above zero = income day"}
+              </p>
+            </div>
+            {/* Legend */}
             <div className="chart-legend">
-              <div className="chart-legend-item">
-                <span className="cat-dot" style={{ background: "#10B981" }} />
-                Income
-              </div>
-              <div className="chart-legend-item">
-                <span className="cat-dot" style={{ background: "#F97316" }} />
-                Expenses
-              </div>
+              {carouselIdx === 0 ? (
+                <div className="chart-legend-item">
+                  <span className="cat-dot" style={{ background: "#6366F1" }} />
+                  Balance
+                </div>
+              ) : (
+                <>
+                  <div className="chart-legend-item">
+                    <span className="cat-dot" style={{ background: "#10B981" }} />
+                    Income
+                  </div>
+                  <div className="chart-legend-item">
+                    <span className="cat-dot" style={{ background: "#F97316" }} />
+                    {period === "Last 3 Months" ? "Expenses" : "Spending"}
+                  </div>
+                </>
+              )}
             </div>
           </div>
+
+          {/* Chart canvas */}
           <div className="chart-wrap line">
-            <OverviewChart config={overviewChartConfig} />
+            {carouselIdx === 0
+              ? <OverviewChart config={runningBalanceConfig ?? overviewChartConfig} />
+              : <OverviewChart config={
+                  period === "Last 3 Months"
+                    ? (monthlyComparisonConfig ?? overviewChartConfig)
+                    : (dailyNetCashConfig ?? overviewChartConfig)
+                } />}
+          </div>
+
+          {/* Dot navigation */}
+          <div className="chart-carousel-dots">
+            <button
+              className={`chart-carousel-dot${carouselIdx === 0 ? " active" : ""}`}
+              onClick={() => setCarouselIdx(0)}
+              title="Running Balance"
+            />
+            <button
+              className={`chart-carousel-dot${carouselIdx === 1 ? " active" : ""}`}
+              onClick={() => setCarouselIdx(1)}
+              title="Daily Net Cash"
+            />
           </div>
         </div>
 
+        {/* ── Donut: Where Money Went ── */}
         <div className="card" style={{ marginBottom: 0 }}>
-          <h2 className="section-header">Expense Breakdown</h2>
+          <h2 className="section-header">Where Money Went</h2>
           <div className="chart-wrap donut" style={{ marginBottom: 16 }}>
             <ExpenseDonut config={donutChartConfig} />
           </div>
@@ -1436,198 +1058,6 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* ══ ZONE 3b: Balance Over Time (single-month only) ══ */}
-      {balanceTrendConfig && (
-        <div className="card" style={{ marginBottom: 12 }}>
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              marginBottom: 16,
-            }}
-          >
-            <div>
-              <h2 className="section-header" style={{ margin: 0 }}>
-                Balance Over Time
-              </h2>
-              <p
-                style={{
-                  fontSize: 11,
-                  color: "var(--color-text-muted)",
-                  marginTop: 3,
-                }}
-              >
-                How your balance moves as spending accumulates week by week
-              </p>
-            </div>
-            <div className="chart-legend">
-              <div className="chart-legend-item">
-                <span className="cat-dot" style={{ background: "#6366F1" }} />
-                Balance
-              </div>
-              <div className="chart-legend-item">
-                <span className="cat-dot" style={{ background: "#F97316" }} />
-                Spent so far
-              </div>
-            </div>
-          </div>
-          <div className="chart-wrap line">
-            <BalanceTrendChart config={balanceTrendConfig} />
-          </div>
-        </div>
-      )}
-
-      {/* ══ ZONE 3b-2: Savings Goals progress (#24) ══
-          Cross-connects the Savings section into the dashboard — users no longer
-          need to navigate away to check where they stand on their goals.
-      */}
-      {savingsGoals.length > 0 && (
-        <div className="card" style={{ marginBottom: 12 }}>
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              marginBottom: 14,
-            }}
-          >
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <h2 className="section-header" style={{ margin: 0 }}>
-                Savings Goals
-              </h2>
-              <span className="count-badge">{savingsGoals.length}</span>
-            </div>
-            {netWorthSavings > 0 && (
-              <span
-                style={{
-                  fontSize: 13,
-                  fontWeight: 600,
-                  color: "var(--color-savings)",
-                }}
-              >
-                {formatAmount(netWorthSavings)} saved
-              </span>
-            )}
-          </div>
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))",
-              gap: 12,
-            }}
-          >
-            {savingsGoals.map((goal) => {
-              const current = parseFloat(goal.current_amount ?? 0);
-              const target  = parseFloat(goal.target_amount  ?? 0);
-              const pct     = target > 0 ? Math.min((current / target) * 100, 100) : 0;
-              const done    = pct >= 100;
-              const deadlineLabel = goal.deadline_date
-                ? (() => {
-                    const d = new Date(goal.deadline_date + "T00:00:00");
-                    const diff = Math.ceil((d - new Date()) / 86_400_000);
-                    if (diff < 0)  return "overdue";
-                    if (diff === 0) return "due today";
-                    if (diff <= 30) return `${diff}d left`;
-                    return d.toLocaleString("en-US", { month: "short", year: "numeric" });
-                  })()
-                : null;
-              return (
-                <div
-                  key={goal.id}
-                  style={{
-                    background: done
-                      ? "rgba(16,185,129,0.06)"
-                      : "var(--color-bg-input)",
-                    border: done
-                      ? "0.5px solid rgba(16,185,129,0.2)"
-                      : "0.5px solid rgba(255,255,255,0.06)",
-                    borderRadius: 10,
-                    padding: "12px 14px",
-                  }}
-                >
-                  <div
-                    style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "center",
-                      marginBottom: 8,
-                    }}
-                  >
-                    <span
-                      style={{
-                        fontSize: 13,
-                        fontWeight: 500,
-                        color: "var(--color-text-primary)",
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        whiteSpace: "nowrap",
-                        maxWidth: "75%",
-                      }}
-                    >
-                      {goal.goal_name}
-                    </span>
-                    <span
-                      style={{
-                        fontSize: 11,
-                        fontWeight: 600,
-                        color: done ? "var(--color-income)" : "var(--color-text-muted)",
-                      }}
-                    >
-                      {done ? "✓ Done" : `${pct.toFixed(0)}%`}
-                    </span>
-                  </div>
-                  <div
-                    className="progress-track budget"
-                    style={{ marginBottom: 8 }}
-                  >
-                    <div
-                      className="progress-fill"
-                      style={{
-                        width: `${pct}%`,
-                        background: done
-                          ? "var(--color-income)"
-                          : "var(--color-savings)",
-                        transition: "width 0.35s ease",
-                      }}
-                    />
-                  </div>
-                  <div
-                    style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "center",
-                      fontSize: 11,
-                      color: "var(--color-text-muted)",
-                    }}
-                  >
-                    <span>
-                      {formatAmount(current)}{" "}
-                      <span style={{ color: "rgba(255,255,255,0.2)" }}>/</span>{" "}
-                      {formatAmount(target)}
-                    </span>
-                    {deadlineLabel && (
-                      <span
-                        style={{
-                          color:
-                            deadlineLabel === "overdue"
-                              ? "var(--color-danger)"
-                              : deadlineLabel.includes("d left")
-                                ? "var(--color-expense)"
-                                : "var(--color-text-muted)",
-                        }}
-                      >
-                        {deadlineLabel}
-                      </span>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
       {/* ══ ZONE 3c: Budget Progress + Recent Transactions ══ */}
       <div className="grid-two-col" style={{ marginBottom: 0 }}>
         <div className="card" style={{ marginBottom: 0 }}>
@@ -1667,57 +1097,146 @@ export default function Dashboard() {
           )}
         </div>
 
-        <div className="card" style={{ marginBottom: 0 }}>
+        {period === "This Month" ? (
+          /* ── This Month: show inline recent transactions ── */
+          <div className="card" style={{ marginBottom: 0 }}>
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                marginBottom: 8,
+              }}
+            >
+              <h2 className="section-header" style={{ margin: 0 }}>
+                Recent Transactions
+              </h2>
+              <button className="btn-ghost" onClick={goToTransactions}>
+                View all →
+              </button>
+            </div>
+
+            <div
+              className="tx-row tx-header-row"
+              style={{ paddingTop: 0, marginBottom: 2 }}
+            >
+              <div className="tx-col-avatar" />
+              <div className="tx-col-desc  col-header">Description</div>
+              <div className="tx-col-cat   col-header">Category</div>
+              <div className="tx-col-date  col-header">Date</div>
+              <div
+                className="tx-col-amount col-header"
+                style={{ textAlign: "right" }}
+              >
+                Amount
+              </div>
+            </div>
+
+            {recentTransactions.length > 0 ? (
+              recentTransactions.map((tx) => (
+                <TxRow key={tx.id} tx={tx} fmt={formatAmount} />
+              ))
+            ) : (
+              <div
+                style={{
+                  fontSize: 13,
+                  color: "var(--color-text-muted)",
+                  padding: "24px 0",
+                  textAlign: "center",
+                }}
+              >
+                No transactions yet this period.
+              </div>
+            )}
+          </div>
+        ) : (
+          /* ── Past periods: prompt to visit Transactions page ── */
           <div
+            className="card"
             style={{
+              marginBottom: 0,
               display: "flex",
-              justifyContent: "space-between",
+              flexDirection: "column",
+              justifyContent: "center",
               alignItems: "center",
-              marginBottom: 8,
+              gap: 10,
+              padding: "32px 16px",
             }}
           >
-            <h2 className="section-header" style={{ margin: 0 }}>
-              Recent Transactions
-            </h2>
-            <button className="btn-ghost" onClick={goToTransactions}>
-              View all →
-            </button>
-          </div>
-
-          <div
-            className="tx-row tx-header-row"
-            style={{ paddingTop: 0, marginBottom: 2 }}
-          >
-            <div className="tx-col-avatar" />
-            <div className="tx-col-desc  col-header">Description</div>
-            <div className="tx-col-cat   col-header">Category</div>
-            <div className="tx-col-date  col-header">Date</div>
-            <div
-              className="tx-col-amount col-header"
-              style={{ textAlign: "right" }}
-            >
-              Amount
-            </div>
-          </div>
-
-          {recentTransactions.length > 0 ? (
-            recentTransactions.map((tx) => (
-              <TxRow key={tx.id} tx={tx} fmt={formatAmount} />
-            ))
-          ) : (
-            <div
+            <p
               style={{
                 fontSize: 13,
                 color: "var(--color-text-muted)",
-                padding: "24px 0",
                 textAlign: "center",
+                margin: 0,
               }}
             >
-              No transactions yet this period.
+              Full transaction history for this period is on the Transactions page.
+            </p>
+            <button className="btn-ghost" onClick={goToTransactions}>
+              Go to Transactions →
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* ══ ZONE 3d: Aggregate Progress Bars (This Month + Last 3 Months) ══ */}
+      {period !== "Last Month" &&
+        savingsTargetTotal > 0 &&
+        debtOriginalTotal > 0 && (
+        <div
+          className="card card-compact"
+          style={{ marginTop: 12 }}
+        >
+          <h2 className="section-header" style={{ marginBottom: 14 }}>
+            Overall Progress
+          </h2>
+
+          {/* Savings bar */}
+          {savingsTargetTotal > 0 && (
+            <div style={{ marginBottom: 14 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                <span style={{ fontSize: 12, color: "var(--color-text-secondary)" }}>Savings</span>
+                <span style={{ fontSize: 12, color: "var(--color-text-muted)" }}>
+                  {`${Math.min(100, Math.round((savingsCurrentTotal / savingsTargetTotal) * 100))}% of total goal`}
+                </span>
+              </div>
+              <div className="progress-track budget">
+                <div
+                  className="progress-fill"
+                  style={{
+                    width: `${Math.min(100, (savingsCurrentTotal / savingsTargetTotal) * 100)}%`,
+                    background: "var(--color-savings)",
+                    transition: "width 0.4s ease",
+                  }}
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Debt payoff bar */}
+          {debtOriginalTotal > 0 && (
+            <div>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                <span style={{ fontSize: 12, color: "var(--color-text-secondary)" }}>Debt Paid</span>
+                <span style={{ fontSize: 12, color: "var(--color-text-muted)" }}>
+                  {`${Math.min(100, Math.round(((debtOriginalTotal - debtCurrentTotal) / debtOriginalTotal) * 100))}% paid off`}
+                </span>
+              </div>
+              <div className="progress-track budget">
+                <div
+                  className="progress-fill"
+                  style={{
+                    width: `${Math.min(100, ((debtOriginalTotal - debtCurrentTotal) / debtOriginalTotal) * 100)}%`,
+                    background: "var(--color-income)",
+                    transition: "width 0.4s ease",
+                  }}
+                />
+              </div>
             </div>
           )}
         </div>
-      </div>
+      )}
     </>
   );
 }

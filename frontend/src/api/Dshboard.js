@@ -287,6 +287,195 @@ export function getDonutChartConfig(donutData) {
   };
 }
 
+// ── Running Balance chart config (Carousel Chart 1) ──────────────────────────
+//
+// Single indigo line: starting balance + cumulative (income − expenses) per
+// label. Rises when income arrives, dips when spending hits. No point dots.
+
+export function getRunningBalanceConfig(chartData, projectedOpening, fmtK = formatAmountK) {
+  if (!chartData?.labels?.length) return null;
+
+  const labels = ["Start", ...chartData.labels];
+  const balLine = [Math.max(0, projectedOpening)];
+  let running = projectedOpening;
+
+  for (let i = 0; i < chartData.income.length; i++) {
+    running += chartData.income[i] - chartData.expenses[i];
+    balLine.push(Math.max(0, running));
+  }
+
+  return {
+    type: "line",
+    data: {
+      labels,
+      datasets: [
+        {
+          label: "Balance",
+          data: balLine,
+          borderColor: "#6366F1",
+          backgroundColor: "rgba(99,102,241,0.12)",
+          fill: true,
+          tension: 0.3,
+          borderWidth: 2,
+          pointRadius: 0,
+          pointHoverRadius: 5,
+          pointBackgroundColor: "#6366F1",
+        },
+      ],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          ...TOOLTIP_STYLE,
+          callbacks: { label: (ctx) => ` Balance: ${fmtK(ctx.parsed.y)}` },
+        },
+      },
+      scales: {
+        x: { ...AXIS_STYLE.x },
+        y: {
+          ...AXIS_STYLE.y,
+          ticks: { ...AXIS_STYLE.y.ticks, callback: (v) => fmtK(v) },
+        },
+      },
+    },
+  };
+}
+
+// ── Daily Net Cash Movement chart config (Carousel Chart 2) ──────────────────
+//
+// Single line per label: income[i] − expenses[i]. Positive = net income day,
+// negative = net spending day. Zero baseline always visible. No point dots.
+// Line color follows sign via segment option (green above, orange below).
+
+export function getDailyNetCashConfig(chartData, fmtK = formatAmountK) {
+  if (!chartData?.labels?.length) return null;
+
+  const netData = chartData.income.map((inc, i) => inc - chartData.expenses[i]);
+
+  return {
+    type: "line",
+    data: {
+      labels: chartData.labels,
+      datasets: [
+        {
+          label: "Net",
+          data: netData,
+          borderColor: "#10B981",
+          backgroundColor: "rgba(16,185,129,0.06)",
+          fill: {
+            target: { value: 0 },
+            above: "rgba(16,185,129,0.07)",
+            below: "rgba(249,115,22,0.07)",
+          },
+          tension: 0.2,
+          borderWidth: 2,
+          pointRadius: 0,
+          pointHoverRadius: 5,
+          pointBackgroundColor: "#10B981",
+          segment: {
+            borderColor: (ctx) =>
+              ctx.p1.parsed.y < 0 ? "#F97316" : "#10B981",
+          },
+        },
+      ],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          ...TOOLTIP_STYLE,
+          callbacks: {
+            label: (ctx) => {
+              const val = ctx.parsed.y;
+              return ` Net: ${val >= 0 ? "+" : ""}${fmtK(val)}`;
+            },
+          },
+        },
+      },
+      scales: {
+        x: { ...AXIS_STYLE.x },
+        y: {
+          ...AXIS_STYLE.y,
+          ticks: { ...AXIS_STYLE.y.ticks, callback: (v) => fmtK(v) },
+          // Ensure the zero baseline is always visible
+          beginAtZero: false,
+        },
+      },
+    },
+  };
+}
+
+// ── Monthly Comparison chart config (Last 3 Months Carousel Chart 2) ─────────
+//
+// Income vs Expenses as two separate lines with one data point per month.
+// Labels are the period labels already in chartData (e.g. ["Mar","Apr","May"]).
+
+export function getMonthlyComparisonConfig(chartData, fmtK = formatAmountK) {
+  if (!chartData?.labels?.length) return null;
+
+  return {
+    type: "line",
+    data: {
+      labels: chartData.labels,
+      datasets: [
+        {
+          label: "Income",
+          data: chartData.income,
+          borderColor: "#10B981",
+          backgroundColor: "rgba(16,185,129,0.08)",
+          fill: false,
+          tension: 0.3,
+          borderWidth: 2,
+          pointRadius: 4,
+          pointHoverRadius: 6,
+          pointBackgroundColor: "#10B981",
+          pointBorderColor: "#1E2435",
+          pointBorderWidth: 1.5,
+        },
+        {
+          label: "Expenses",
+          data: chartData.expenses,
+          borderColor: "#F97316",
+          backgroundColor: "rgba(249,115,22,0.08)",
+          fill: false,
+          tension: 0.3,
+          borderWidth: 2,
+          pointRadius: 4,
+          pointHoverRadius: 6,
+          pointBackgroundColor: "#F97316",
+          pointBorderColor: "#1E2435",
+          pointBorderWidth: 1.5,
+        },
+      ],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          ...TOOLTIP_STYLE,
+          callbacks: {
+            label: (ctx) => ` ${ctx.dataset.label}: ${fmtK(ctx.parsed.y)}`,
+          },
+        },
+      },
+      scales: {
+        x: { ...AXIS_STYLE.x },
+        y: {
+          ...AXIS_STYLE.y,
+          ticks: { ...AXIS_STYLE.y.ticks, callback: (v) => fmtK(v) },
+        },
+      },
+    },
+  };
+}
+
 // ── Donut legend builder ──────────────────────────────────────────────────────
 
 export function buildDonutLegend(donutData) {
@@ -381,7 +570,9 @@ export function useDashboard() {
   const [recentTxRaw, setRecentTxRaw] = useState([]);
   const [savingsTotal, setSavingsTotal] = useState(null); // sum of goal current_amounts
   const [savingsGoals, setSavingsGoals] = useState([]);   // individual goal objects (#24)
+  const [savingsTargetTotal, setSavingsTargetTotal] = useState(null); // sum of goal target_amounts
   const [debtTotal, setDebtTotal] = useState(null); // sum of debt balances
+  const [debtOriginalTotal, setDebtOriginalTotal] = useState(null); // sum of original_balance
   const [debtMinTotal, setDebtMinTotal] = useState(null); // sum of min payments
   const [upcomingBills, setUpcomingBills] = useState([]); // unpaid bills due ≤ 30 days
   const [plannedIncome, setPlannedIncome] = useState(null); // sum of income budget planned
@@ -458,13 +649,21 @@ export function useDashboard() {
         .slice(0, 6);
       setRecentTxRaw(sorted);
 
-      // Net worth components
+      // Net worth components + aggregate progress totals
       const sTotal = savingsRes.data.reduce(
         (acc, g) => acc + parseFloat(g.current_amount ?? 0),
         0,
       );
+      const sTotalTarget = savingsRes.data.reduce(
+        (acc, g) => acc + parseFloat(g.target_amount ?? 0),
+        0,
+      );
       const dTotal = debtsRes.data.reduce(
         (acc, d) => acc + parseFloat(d.balance ?? 0),
+        0,
+      );
+      const dOrigTotal = debtsRes.data.reduce(
+        (acc, d) => acc + parseFloat(d.original_balance ?? d.balance ?? 0),
         0,
       );
       const dMinTotal = debtsRes.data.reduce(
@@ -472,8 +671,10 @@ export function useDashboard() {
         0,
       );
       setSavingsTotal(sTotal);
-      setSavingsGoals(savingsRes.data ?? []); // #24 — individual goals for dashboard panel
+      setSavingsTargetTotal(sTotalTarget);
+      setSavingsGoals(savingsRes.data ?? []);
       setDebtTotal(dTotal);
+      setDebtOriginalTotal(dOrigTotal);
       setDebtMinTotal(dMinTotal);
 
       // #4 — earmarked reserved funds total
@@ -600,7 +801,6 @@ export function useDashboard() {
     } else if (bankBalance !== null && balanceAnchorApp !== null) {
       // Last Month (projectedBankBalance is null for past periods): the historical
       // gap between the app's tracking and the real bank is a constant offset —
-      // it was exactly the same last month as it is today, so we can apply it
       // retroactively to get a realistic opening for the chart.
       //   offset = bankBalance − balanceAnchorApp
       //   projectedLastMonthOpening = rawOpening + offset
@@ -624,6 +824,50 @@ export function useDashboard() {
     formatAmountKCurrency,
   ]);
 
+  // ── Carousel Chart 1: Running Balance ─────────────────────────────────────
+  // Uses the same projected-opening logic as balanceTrendConfig so the line
+  // starts from real money when the user has an anchor set.
+  const runningBalanceConfig = useMemo(() => {
+    if (IS_DEMO) return null;
+    const data = chartData;
+    if (!data.labels?.length) return null;
+
+    const rawOpening = kpiData.opening_balance ?? 0;
+    const rawClosing = kpiData.closing_balance ?? 0;
+    const monthNet = rawClosing - rawOpening;
+
+    let chartOpening;
+    if (period !== "Last 3 Months" && projectedBankBalance !== null) {
+      chartOpening = projectedBankBalance - monthNet;
+    } else if (period !== "Last 3 Months" && bankBalance !== null && balanceAnchorApp !== null) {
+      chartOpening = rawOpening + (bankBalance - balanceAnchorApp);
+    } else {
+      chartOpening = Math.max(0, rawOpening);
+    }
+
+    return getRunningBalanceConfig(data, chartOpening, formatAmountKCurrency);
+  }, [
+    IS_DEMO, period, chartData, kpiData,
+    projectedBankBalance, bankBalance, balanceAnchorApp,
+    formatAmountKCurrency,
+  ]);
+
+  // ── Carousel Chart 2: Daily Net Cash Movement (This Month / Last Month) ───
+  const dailyNetCashConfig = useMemo(() => {
+    if (IS_DEMO || period === "Last 3 Months") return null;
+    const data = chartData;
+    if (!data.labels?.length) return null;
+    return getDailyNetCashConfig(data, formatAmountKCurrency);
+  }, [IS_DEMO, period, chartData, formatAmountKCurrency]);
+
+  // ── Carousel Chart 2 (Last 3 Months): Monthly Income vs Expenses ──────────
+  const monthlyComparisonConfig = useMemo(() => {
+    if (IS_DEMO || period !== "Last 3 Months") return null;
+    const data = chartData;
+    if (!data.labels?.length) return null;
+    return getMonthlyComparisonConfig(data, formatAmountKCurrency);
+  }, [IS_DEMO, period, chartData, formatAmountKCurrency]);
+
   const donutLegend = useMemo(() => {
     return buildDonutLegend(IS_DEMO ? DASHBOARD_DONUT : donutData);
   }, [donutData]);
@@ -639,17 +883,15 @@ export function useDashboard() {
     return getDonutChartConfig(IS_DEMO ? DASHBOARD_DONUT : donutData);
   }, [donutData]);
 
-  // ── Net worth ─────────────────────────────────────────────────────────────
-  const netWorth = (() => {
+  // ── Net worth (internal — used for freeToSpend only, not exposed) ──────────
+  const _netWorthBase = (() => {
     if (IS_DEMO) return null;
     if (savingsTotal === null || debtTotal === null) return null;
     const liquidBase = projectedBankBalance ?? kpi.closingBalance ?? 0;
     return liquidBase + savingsTotal - debtTotal;
   })();
 
-  // ── Free to Spend (#5) ────────────────────────────────────────────────────
-  // Projected bank balance minus upcoming unpaid bills minus earmarked funds.
-  // Only shown for "This Month" when we have a bank anchor (Mode A).
+  // ── Free to Spend (internal) ───────────────────────────────────────────────
   const freeToSpend = (() => {
     if (IS_DEMO) return null;
     const base = projectedBankBalance ?? kpi.closingBalance;
@@ -667,7 +909,6 @@ export function useDashboard() {
     user: IS_DEMO
       ? DEMO_USER
       : {
-          // Prefer the stored display name; fall back to the part before @ in email
           name:
             displayName ??
             (authUser?.email ? authUser.email.split("@")[0] : "User"),
@@ -680,38 +921,30 @@ export function useDashboard() {
     overviewChartConfig,
     donutChartConfig,
     balanceTrendConfig,
+    runningBalanceConfig,
+    dailyNetCashConfig,
+    monthlyComparisonConfig,
     loading,
     slowLoad,
     error,
     formatAmount,
     formatAmountK: formatAmountKCurrency,
-    // Bank balance reconciliation — only relevant for BalanceCard
+    // Bank balance reconciliation
     showBalanceGap: IS_DEMO ? false : (showBalanceGap ?? false),
-    bankBalance: projectedBankBalance, // projected forward from anchor
+    bankBalance: projectedBankBalance,
     bankBalanceDate: IS_DEMO ? null : (bankBalanceDate ?? null),
     initialBalance: IS_DEMO ? null : (initialBalance ?? null),
-    // True when the user has set a bank balance but the anchor is missing —
-    // balance is static and the dashboard should prompt them to re-save.
     bankBalanceMissingAnchor: !IS_DEMO && bankBalance !== null && balanceAnchorApp === null,
-    // Net worth breakdown
-    netWorth,
-    netWorthSavings: savingsTotal,
-    netWorthDebts: debtTotal,
-    // #24 — individual savings goals for dashboard progress panel
-    savingsGoals: IS_DEMO ? [] : savingsGoals,
-    // Upcoming bills
-    upcomingBills: IS_DEMO ? [] : upcomingBills,
-    // Planned income (for mid-month context on INCOME card)
+    // Planned income (for INCOME card subtitle)
     plannedIncome: IS_DEMO ? null : plannedIncome,
-    // #5 — Free to Spend
-    freeToSpend: IS_DEMO ? null : freeToSpend,
-    earmarkedTotal: IS_DEMO ? null : earmarkedTotal,
-    // #24 — holistic debt summary on dashboard
-    debtMinTotal: IS_DEMO ? null : debtMinTotal,
-    isDemo: IS_DEMO,
-    goToBudget: () => navigate("budget"),
+    // Aggregate progress bars (Phase 5)
+    savingsCurrentTotal: IS_DEMO ? null : savingsTotal,
+    savingsTargetTotal:  IS_DEMO ? null : savingsTargetTotal,
+    debtCurrentTotal:    IS_DEMO ? null : debtTotal,
+    debtOriginalTotal:   IS_DEMO ? null : debtOriginalTotal,
+    goToBudget:       () => navigate("budget"),
     goToTransactions: () => navigate("transactions"),
-    goToSettings: () => navigate("settings"),
+    goToSettings:     () => navigate("settings"),
   };
 }
 
@@ -745,10 +978,8 @@ function _periodEnd(period) {
   const today = new Date();
   if (period === "This Month") return today.toISOString().slice(0, 10);
   if (period === "Last Month") {
-    // Last day of last month = day 0 of this month
     const d = new Date(today.getFullYear(), today.getMonth(), 0);
     return d.toISOString().slice(0, 10);
   }
-  // Last 3 Months — ends today
   return today.toISOString().slice(0, 10);
 }

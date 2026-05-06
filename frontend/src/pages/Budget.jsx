@@ -24,6 +24,7 @@ import {
   getAllTabChartConfig,
   useBudget,
 } from "../api/Budget";
+import { useSettings } from "../context/SettingsContext";
 
 Chart.register(BarElement, BarController, CategoryScale, LinearScale, Tooltip);
 
@@ -217,6 +218,7 @@ function KindSummaryCard({ label, stats, color, icon, fmt }) {
 // ── Set Budget Modal ──────────────────────────────────────────────────────────
 
 function BudgetModal({ allCategories, budgetTab, saving, onSave, onClose, fmt }) {
+  const { currencySymbol } = useSettings();
   // Only edit the categories relevant to the current tab
   // On the All tab, edit all three kinds
   const toEdit = allCategories
@@ -370,6 +372,7 @@ function BudgetModal({ allCategories, budgetTab, saving, onSave, onClose, fmt })
                 {label}
               </div>
               <div
+                className="budget-input-grid"
                 style={{
                   display: "grid",
                   gridTemplateColumns: "1fr 1fr",
@@ -475,7 +478,7 @@ function BudgetModal({ allCategories, budgetTab, saving, onSave, onClose, fmt })
                             pointerEvents: "none",
                           }}
                         >
-                          $
+                          {currencySymbol}
                         </span>
                         <input
                           className="input"
@@ -614,7 +617,7 @@ export default function Budget() {
       {/* ── Budget tab switcher ── */}
       <div
         className="pill-group"
-        style={{ marginBottom: 14, width: "fit-content" }}
+        style={{ marginBottom: 12, width: "fit-content" }}
       >
         {BUDGET_TABS.map((tab) => (
           <button
@@ -633,7 +636,7 @@ export default function Budget() {
       {isAllTab && (
         <>
           {/* KPI summary cards (3 core + optional debt payments) */}
-          <div className="grid-stats" style={{ marginBottom: 14 }}>
+          <div className="grid-stats" style={{ marginBottom: 12 }}>
             <KindSummaryCard
               label="EXPENSES"
               stats={expenseStats}
@@ -693,7 +696,7 @@ export default function Budget() {
                   border: `0.5px solid ${isPositive ? "rgba(16,185,129,0.18)" : "rgba(239,68,68,0.18)"}`,
                   borderRadius: 10,
                   padding: "10px 16px",
-                  marginBottom: 14,
+                  marginBottom: 12,
                 }}
               >
                 <div
@@ -706,7 +709,8 @@ export default function Budget() {
                   }}
                 >
                   <span>{isPositive ? "✅" : "⚠️"}</span>
-                  <span>
+                  {/* surplus-banner-formula hidden on mobile — too wide */}
+                  <span className="surplus-banner-formula">
                     Planned budget:{" "}
                     <span style={{ color: "var(--color-income)" }}>
                       {formatAmount(incomeStats.totalPlanned)}
@@ -787,7 +791,7 @@ export default function Budget() {
           })()}
 
           {/* Overview bar chart */}
-          <div className="card" style={{ marginBottom: 14 }}>
+          <div className="card" style={{ marginBottom: 12 }}>
             <div
               style={{
                 display: "flex",
@@ -827,7 +831,7 @@ export default function Budget() {
 
           {/* Grouped rows — Expenses */}
           {expenseRows.length > 0 && (
-            <div className="card" style={{ marginBottom: 14 }}>
+            <div className="card" style={{ marginBottom: 12 }}>
               <div
                 style={{
                   display: "flex",
@@ -855,7 +859,7 @@ export default function Budget() {
 
           {/* Grouped rows — Income */}
           {incomeRows.length > 0 && (
-            <div className="card" style={{ marginBottom: 14 }}>
+            <div className="card" style={{ marginBottom: 12 }}>
               <div
                 style={{
                   display: "flex",
@@ -991,7 +995,7 @@ export default function Budget() {
       {!isAllTab && stats && (
         <>
           {/* Stats row */}
-          <div className="grid-stats" style={{ marginBottom: 14 }}>
+          <div className="grid-stats" style={{ marginBottom: 12 }}>
             <div className="card card-compact" style={{ marginBottom: 0 }}>
               <div className="kpi-label">Total Planned</div>
               <div className="kpi-value">

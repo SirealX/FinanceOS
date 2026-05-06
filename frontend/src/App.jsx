@@ -523,6 +523,7 @@ function AppShell() {
 
         {/* ── Mobile bottom navigation (phones ≤600px only) ── */}
         <nav className="mobile-bottom-nav" aria-label="Main navigation">
+          <div className="mobile-nav-items">
           {NAV_ITEMS_CONFIG.map((item) => {
             const badge = item.showDraftBadge
               ? draftCount > 0
@@ -554,6 +555,17 @@ function AppShell() {
               </div>
             );
           })}
+          </div>
+          <button
+            className="mobile-nav-logout"
+            title="Sign out"
+            onClick={signOut}
+          >
+            <svg width="18" height="18" viewBox="0 0 15 15" fill="none" xmlns="http://www.w3.org/2000/svg" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M5.5 7.5H13M10 4.5l3 3-3 3" />
+              <path d="M8 2H3a1 1 0 0 0-1 1v9a1 1 0 0 0 1 1h5" />
+            </svg>
+          </button>
         </nav>
       </div>
     </NavProvider>

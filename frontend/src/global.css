@@ -1065,10 +1065,13 @@ select option {
   }
 
   /* Hide non-essential transaction table columns */
+  /* Phase 1 #4: !important overrides the inline display:flex on tx-col-cat in Transactions.jsx */
   .tx-col-cat,
   .tx-col-date,
   .tx-col-type {
-    display: none;
+    display: none !important;
+    width: 0 !important;
+    overflow: hidden !important;
   }
 
   /* Reduce chart heights on small screens */
@@ -1076,6 +1079,8 @@ select option {
   .chart-wrap.bar   { height: 150px; }
   .chart-wrap.debt  { height: 180px; }
   .chart-wrap.trend { height: 160px; }
+  /* Phase 1 #8 — donut needs an explicit override too */
+  .chart-wrap.donut { height: 160px; }
 
   /* Minimum touch targets for all buttons */
   .btn-primary,
@@ -1097,87 +1102,145 @@ select option {
   textarea {
     font-size: 16px;
   }
-}
 
-/* ── 21. Mobile Bottom Navigation ────────────────────────────*/
-
-/* Hidden on tablet and desktop */
-.mobile-bottom-nav {
-  display: none;
-}
-
-@media (max-width: 600px) {
-  .mobile-bottom-nav {
+  /* ── Phase 1 #1: Mobile logout button ──────────────────────── */
+  .mobile-nav-items {
     display: flex;
-    position: fixed;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    background: var(--color-bg-sidebar);
-    border-top: var(--border-sidebar);
-    z-index: 50;
+    flex: 1;
     overflow-x: auto;
     scrollbar-width: none;
-    padding-bottom: env(safe-area-inset-bottom, 0px);
   }
+  .mobile-nav-items::-webkit-scrollbar { display: none; }
 
-  .mobile-bottom-nav::-webkit-scrollbar {
-    display: none;
-  }
-
-  .mobile-nav-item {
+  .mobile-nav-logout {
+    flex-shrink: 0;
     display: flex;
-    flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 3px;
-    padding: 8px 2px;
-    flex: 1;          /* distribute evenly — no overflow regardless of item count */
-    min-width: 0;     /* allow items to shrink below their content size */
+    min-width: 44px;
     min-height: 56px;
-    font-size: 9px;
+    padding: 0;
+    background: none;
+    border: none;
+    border-left: var(--border-sidebar);
     color: var(--color-text-hint);
     cursor: pointer;
-    position: relative;
-    user-select: none;
     touch-action: manipulation;
     transition: color 0.15s;
   }
+  .mobile-nav-logout:hover,
+  .mobile-nav-logout:active { color: #CBD5E1; }
 
-  .mobile-nav-item.active {
-    color: var(--color-income);
+  /* ── Phase 1 #2: Bills table → card layout ──────────────────── */
+  .bills-col-headers { display: none; }
+
+  .bill-row {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 6px !important;
   }
 
-  .mobile-nav-item span {
-    white-space: nowrap;
+  /* Line 1 and Line 2 become real flex rows on mobile.
+     On desktop they use display:contents (transparent). */
+  .bill-row-primary {
+    display: flex !important;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+  }
+  .bill-row-secondary {
+    display: flex !important;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    width: 100%;
+    padding-left: calc(22px + 36px + 16px);
+  }
+  /* Reset all fixed flex widths inside bill-row on mobile */
+  .bill-row-primary > *,
+  .bill-row-secondary > * {
+    flex: none !important;
+  }
+
+  /* Name column: grow to fill */
+  .bill-row-primary .bill-name-col {
+    flex: 1 1 0 !important;
+    min-width: 0;
     overflow: hidden;
-    text-overflow: ellipsis;
-    max-width: 100%;
   }
 
-  /* Green bar at top of active item */
-  .mobile-nav-item.active::before {
-    content: "";
-    position: absolute;
-    top: 0;
-    left: 20%;
-    right: 20%;
-    height: 2px;
-    background: var(--color-income);
-    border-radius: 0 0 2px 2px;
-  }
+  /* ── Phase 1 #2: Bill modal grid → single column ──── */
+  .bill-modal-grid { grid-template-columns: 1fr !important; }
 
-  .mobile-nav-badge {
-    position: absolute;
-    top: 6px;
-    right: 8px;
-    background: var(--color-danger);
-    color: #fff;
-    font-size: 9px;
-    padding: 1px 4px;
-    border-radius: var(--radius-full);
-    font-weight: 600;
-    line-height: 1.4;
-    pointer-events: none;
+  /* ── Phase 1 #3: Transactions header ──────────────── */
+  .tx-card-header { flex-wrap: wrap !important; gap: 8px !important; }
+  .tx-search-wrap { width: 100% !important; order: 3; }
+  .tx-header-summary { display: none !important; }
+
+  /* ── Phase 1 #5: Debt simulator grid ──────────────── */
+  .simulator-strategy-grid { grid-template-columns: 1fr !important; }
+
+  /* ── Phase 1 #6: Debt row mobile layout ───────────── */
+  .debt-row-top {
+    flex-wrap: wrap !important;
+    gap: 4px 8px !important;
   }
+  .debt-row-avatar  { order: 1; }
+  .debt-row-name    { order: 2; flex: 1 1 0 !important; min-width: 0; }
+  .debt-row-balance { order: 3; flex: 0 0 auto !important; text-align: right !important; }
+  .debt-row-meta {
+    order: 4;
+    flex: 0 0 100% !important;
+    display: flex !important;
+    align-items: center;
+    gap: 10px;
+    padding-left: calc(36px + 8px);
+    justify-content: space-between;
+  }
+  .debt-modal-grid { grid-template-columns: 1fr !important; }
+
+  /* ── Phase 1 #7: Budget modal grid → single column ── */
+  .budget-input-grid { grid-template-columns: 1fr !important; }
+
+  /* ── Phase 2 #3: Recurring modal grid ─────────────── */
+  .recurring-modal-grid { grid-template-columns: 1fr !important; }
+
+  /* ── Phase 2 #4: Surplus banner formula ────────────── */
+  .surplus-banner-formula { display: none !important; }
+
+  /* ── Pill group row collapse on mobile ─────────────── */
+  .pill-group-row { flex-direction: column; align-items: stretch; }
+
+} /* end @media (max-width: 600px) */
+
+/* ═══════════════════════════════════════════════════════════════════════
+   Section 22 — Desktop display:contents wrappers
+   These divs are transparent flex children on desktop (grid widths apply
+   normally) but become real flex rows on mobile (overridden above).
+   ═══════════════════════════════════════════════════════════════════════ */
+.bill-row-primary  { display: contents; }
+.bill-row-secondary { display: contents; }
+.debt-row-meta      { display: contents; }
+
+/* ── Phase 4: Chart carousel dot navigation ───────────────────────── */
+.chart-carousel-dots {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 12px;
+}
+.chart-carousel-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  background: rgba(255,255,255,0.15);
+  transition: background 0.2s, transform 0.2s;
+}
+.chart-carousel-dot:hover { background: rgba(255,255,255,0.35); }
+.chart-carousel-dot.active {
+  background: #6366F1;
+  transform: scale(1.25);
 }

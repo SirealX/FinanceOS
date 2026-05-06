@@ -550,7 +550,7 @@ function TxModal({
           }}
         >
           <div className="field-wrap">
-            <label className="field-label">Amount ($)</label>
+            <label className="field-label">Amount</label>
             <input
               className="input"
               type="number"
@@ -882,7 +882,7 @@ function RecurringPanel({ isDemo }) {
                 <label className="field-label">Description</label>
                 <input className="input" placeholder="e.g. Netflix subscription" value={form.description} onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))} />
               </div>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              <div className="recurring-modal-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
                 <div className="field-wrap" style={{ marginBottom: 0 }}>
                   <label className="field-label">Amount</label>
                   <input className="input" type="number" min="0" step="0.01" placeholder="0.00" value={form.amount} onChange={(e) => setForm((f) => ({ ...f, amount: e.target.value }))} />
@@ -1046,6 +1046,7 @@ export default function Transactions() {
       {/* ── Zone 3: Table ── */}
       <div className="card" style={{ marginBottom: 0 }}>
         <div
+          className="tx-card-header"
           style={{
             display: "flex",
             justifyContent: "space-between",
@@ -1061,7 +1062,7 @@ export default function Transactions() {
           </div>
 
           {/* Search input */}
-          <div style={{ position: "relative", flexShrink: 0 }}>
+          <div className="tx-search-wrap" style={{ position: "relative", flexShrink: 0 }}>
             <span
               style={{
                 position: "absolute",
@@ -1112,7 +1113,8 @@ export default function Transactions() {
             )}
           </div>
 
-          <div style={{ display: "flex", gap: 20, alignItems: "center" }}>
+          {/* In/Out/Savings/Net summary — hidden on mobile (tx-header-summary) */}
+          <div className="tx-header-summary" style={{ display: "flex", gap: 20, alignItems: "center" }}>
             <div
               style={{
                 display: "flex",

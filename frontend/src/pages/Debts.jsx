@@ -247,8 +247,9 @@ function DebtRow({ debt, onEdit, onDelete, onPay, onAmortization, fmt }) {
         borderBottom: "0.5px solid rgba(255,255,255,0.05)",
       }}
     >
-      {/* Top line */}
+      {/* Top line — uses mobile CSS classes for 2-line reflow */}
       <div
+        className="debt-row-top"
         style={{
           display: "flex",
           alignItems: "center",
@@ -258,7 +259,7 @@ function DebtRow({ debt, onEdit, onDelete, onPay, onAmortization, fmt }) {
       >
         {/* Avatar */}
         <div
-          className="avatar"
+          className="debt-row-avatar avatar"
           style={{
             background: "rgba(239,68,68,0.12)",
             color: "var(--color-danger)",
@@ -269,7 +270,7 @@ function DebtRow({ debt, onEdit, onDelete, onPay, onAmortization, fmt }) {
         </div>
 
         {/* Name + type */}
-        <div style={{ flex: "1 1 0", minWidth: 0 }}>
+        <div className="debt-row-name" style={{ flex: "1 1 0", minWidth: 0 }}>
           <div
             style={{
               fontSize: 13,
@@ -304,60 +305,8 @@ function DebtRow({ debt, onEdit, onDelete, onPay, onAmortization, fmt }) {
           </div>
         </div>
 
-        {/* APR */}
-        <div style={{ flex: "0 0 80px", textAlign: "center" }}>
-          <div
-            style={{
-              fontSize: 11,
-              color: "var(--color-text-muted)",
-              marginBottom: 3,
-            }}
-          >
-            APR
-          </div>
-          <span
-            className={`badge ${isZeroApr ? "badge-neutral" : "badge-expense"}`}
-          >
-            {isZeroApr ? "0% — interest free" : `${debt.apr}%`}
-          </span>
-        </div>
-
-        {/* Min payment */}
-        <div style={{ flex: "0 0 100px", textAlign: "center" }}>
-          <div
-            style={{
-              fontSize: 11,
-              color: "var(--color-text-muted)",
-              marginBottom: 3,
-            }}
-          >
-            Min / mo
-          </div>
-          <div
-            style={{
-              fontSize: 13,
-              fontWeight: 500,
-              color: "var(--color-text-primary)",
-            }}
-          >
-            {fmt(debt.minPayment)}
-          </div>
-          {/* #21 — due day */}
-          {debt.dueDay && (
-            <div
-              style={{
-                fontSize: 10,
-                color: "var(--color-text-muted)",
-                marginTop: 2,
-              }}
-            >
-              due day {debt.dueDay}
-            </div>
-          )}
-        </div>
-
-        {/* Balance */}
-        <div style={{ flex: "0 0 110px", textAlign: "right" }}>
+        {/* Balance — shown on line 1 on mobile */}
+        <div className="debt-row-balance" style={{ flex: "0 0 110px", textAlign: "right" }}>
           <div
             style={{
               fontSize: 11,
@@ -379,95 +328,151 @@ function DebtRow({ debt, onEdit, onDelete, onPay, onAmortization, fmt }) {
           </div>
         </div>
 
-        {/* Actions */}
-        <div
-          style={{
-            flex: "0 0 90px",
-            display: "flex",
-            justifyContent: "flex-end",
-            gap: 4,
-          }}
-        >
-          {confirmDelete ? (
-            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-              <span
-                style={{
-                  fontSize: 11,
-                  color: "var(--color-text-muted)",
-                  whiteSpace: "nowrap",
-                }}
-              >
-                Remove?
-              </span>
-              <button
-                className="btn-danger"
-                style={{
-                  color: "var(--color-danger)",
-                  fontSize: 11,
-                  padding: "2px 6px",
-                }}
-                onClick={() => onDelete(debt.id)}
-              >
-                Yes
-              </button>
-              <button
-                className="btn-danger"
-                style={{ fontSize: 11, padding: "2px 6px" }}
-                onClick={() => setConfirmDelete(false)}
-              >
-                No
-              </button>
+        {/* APR + Min + Actions — group goes to line 2 on mobile via .debt-row-meta */}
+        <div className="debt-row-meta">
+          {/* APR */}
+          <div style={{ flex: "0 0 80px", textAlign: "center" }}>
+            <div
+              style={{
+                fontSize: 11,
+                color: "var(--color-text-muted)",
+                marginBottom: 3,
+              }}
+            >
+              APR
             </div>
-          ) : (
-            <>
-              {!isPaidOff && (
+            <span
+              className={`badge ${isZeroApr ? "badge-neutral" : "badge-expense"}`}
+            >
+              {isZeroApr ? "0%" : `${debt.apr}%`}
+            </span>
+          </div>
+
+          {/* Min payment */}
+          <div style={{ flex: "0 0 100px", textAlign: "center" }}>
+            <div
+              style={{
+                fontSize: 11,
+                color: "var(--color-text-muted)",
+                marginBottom: 3,
+              }}
+            >
+              Min / mo
+            </div>
+            <div
+              style={{
+                fontSize: 13,
+                fontWeight: 500,
+                color: "var(--color-text-primary)",
+              }}
+            >
+              {fmt(debt.minPayment)}
+            </div>
+            {/* #21 — due day */}
+            {debt.dueDay && (
+              <div
+                style={{
+                  fontSize: 10,
+                  color: "var(--color-text-muted)",
+                  marginTop: 2,
+                }}
+              >
+                due day {debt.dueDay}
+              </div>
+            )}
+          </div>
+
+          {/* Actions — inside debt-row-meta so they go to line 2 on mobile */}
+          <div
+            style={{
+              flex: "0 0 90px",
+              display: "flex",
+              justifyContent: "flex-end",
+              gap: 4,
+              marginLeft: "auto",
+            }}
+          >
+            {confirmDelete ? (
+              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <span
+                  style={{
+                    fontSize: 11,
+                    color: "var(--color-text-muted)",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  Remove?
+                </span>
                 <button
                   className="btn-danger"
-                  title="Record payment"
-                  onClick={() => onPay(debt)}
-                  style={{ color: "var(--color-income)" }}
+                  style={{
+                    color: "var(--color-danger)",
+                    fontSize: 11,
+                    padding: "2px 6px",
+                  }}
+                  onClick={() => onDelete(debt.id)}
                 >
-                  <svg
-                    viewBox="0 0 15 15"
-                    width="13"
-                    height="13"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="1.6"
-                    strokeLinecap="round"
+                  Yes
+                </button>
+                <button
+                  className="btn-danger"
+                  style={{ fontSize: 11, padding: "2px 6px" }}
+                  onClick={() => setConfirmDelete(false)}
+                >
+                  No
+                </button>
+              </div>
+            ) : (
+              <>
+                {!isPaidOff && (
+                  <button
+                    className="btn-danger"
+                    title="Record payment"
+                    onClick={() => onPay(debt)}
+                    style={{ color: "var(--color-income)" }}
                   >
-                    <path d="M2 8h11M9 4l4 4-4 4" />
-                  </svg>
-                </button>
-              )}
-              {canAmortize && (
+                    <svg
+                      viewBox="0 0 15 15"
+                      width="13"
+                      height="13"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.6"
+                      strokeLinecap="round"
+                    >
+                      <path d="M2 8h11M9 4l4 4-4 4" />
+                    </svg>
+                  </button>
+                )}
+                {canAmortize && (
+                  <button
+                    className="btn-danger"
+                    title="View Amortization"
+                    onClick={() => onAmortization(debt)}
+                    style={{ color: "var(--color-text-muted)", fontSize: 10 }}
+                  >
+                    ~
+                  </button>
+                )}
                 <button
                   className="btn-danger"
-                  title="View Amortization"
-                  onClick={() => onAmortization(debt)}
-                  style={{ color: "var(--color-text-muted)", fontSize: 10 }}
+                  title="Edit"
+                  onClick={() => onEdit(debt)}
                 >
-                  ~
+                  <IconEdit />
                 </button>
-              )}
-              <button
-                className="btn-danger"
-                title="Edit"
-                onClick={() => onEdit(debt)}
-              >
-                <IconEdit />
-              </button>
-              <button
-                className="btn-danger"
-                title="Delete"
-                onClick={() => setConfirmDelete(true)}
-              >
-                <IconDelete />
-              </button>
-            </>
-          )}
-        </div>
-      </div>
+                <button
+                  className="btn-danger"
+                  title="Delete"
+                  onClick={() => setConfirmDelete(true)}
+                >
+                  <IconDelete />
+                </button>
+              </>
+            )}
+          </div>
+        </div>{/* end debt-row-meta */}
+      </div>{/* end debt-row-top */}
 
       {/* Progress bar — paid vs original */}
       <div style={{ paddingLeft: 48 }}>
@@ -999,6 +1004,7 @@ function DebtModal({ form, isEditing, onChange, onSave, onClose }) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 function AmortizationModal({ debtName, data, loading, onClose }) {
+  const { formatAmount } = useSettings();
   return (
     <div
       style={{
@@ -1129,7 +1135,7 @@ function AmortizationModal({ debtName, data, loading, onClose }) {
                       {row.month}
                     </td>
                     <td style={{ padding: "5px 8px", textAlign: "right" }}>
-                      ${row.payment.toFixed(2)}
+                      {formatAmount(row.payment)}
                     </td>
                     <td
                       style={{
@@ -1138,7 +1144,7 @@ function AmortizationModal({ debtName, data, loading, onClose }) {
                         color: "#10B981",
                       }}
                     >
-                      ${row.principal_portion.toFixed(2)}
+                      {formatAmount(row.principal_portion)}
                     </td>
                     <td
                       style={{
@@ -1147,7 +1153,7 @@ function AmortizationModal({ debtName, data, loading, onClose }) {
                         color: "var(--color-danger)",
                       }}
                     >
-                      ${row.interest_portion.toFixed(2)}
+                      {formatAmount(row.interest_portion)}
                     </td>
                     <td
                       style={{
@@ -1156,7 +1162,7 @@ function AmortizationModal({ debtName, data, loading, onClose }) {
                         fontWeight: 500,
                       }}
                     >
-                      ${row.remaining_balance.toFixed(2)}
+                      {formatAmount(row.remaining_balance)}
                     </td>
                   </tr>
                 ))}
@@ -1431,7 +1437,7 @@ export default function Debts() {
 
             {/* Type tabs */}
             <div
-              className="pill-row"
+              className="pill-group"
               style={{ marginBottom: 12, flexWrap: "wrap", gap: 6 }}
             >
               {TYPE_TABS.map((tab) => (
@@ -1654,8 +1660,9 @@ export default function Debts() {
                 )}
               </div>
 
-              {/* Strategy comparison cards */}
+              {/* Strategy comparison cards — stacks on mobile via .simulator-strategy-grid */}
               <div
+                className="simulator-strategy-grid"
                 style={{
                   display: "grid",
                   gridTemplateColumns: "1fr 1fr",
