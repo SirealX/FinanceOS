@@ -492,7 +492,10 @@ def record_debt_payment(
 
     debt.balance = max(0.0, float(debt.balance) - data.amount)
 
-    if float(debt.balance) == 0.0:
+    # Credit cards are revolving — a zero balance simply means the statement
+    # is cleared for this cycle; the card remains active for future purchases.
+    # Only loans and BNPL debts are finite and should be marked paid-off.
+    if float(debt.balance) == 0.0 and debt.type != "credit_card":
         debt.is_paid_off = True
         if debt.recurring_transaction_id:
             recurring = db.query(RecurringTransaction).filter(

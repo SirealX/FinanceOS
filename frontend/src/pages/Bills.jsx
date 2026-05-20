@@ -476,7 +476,7 @@ function BillModal({
 
 // ── Payment Method Modal ──────────────────────────────────────────────────────
 
-function PaymentMethodModal({ onConfirm, onClose }) {
+function PaymentMethodModal({ paymentMethods, creditCardNames, onConfirm, onClose }) {
   return (
     <div
       style={{
@@ -521,9 +521,14 @@ function PaymentMethodModal({ onConfirm, onClose }) {
           }}
         >
           Select the payment method to record this bill as paid.
+          {creditCardNames.length > 0 && (
+            <span style={{ display: "block", marginTop: 4 }}>
+              Paying with a card will charge your credit card balance instead of cash.
+            </span>
+          )}
         </p>
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          {PAYMENT_METHODS.map(({ value, label }) => (
+          {paymentMethods.map(({ value, label }) => (
             <button
               key={value}
               className="btn-secondary"
@@ -571,9 +576,11 @@ export default function Bills() {
     payModal,
     handleConfirmPayment,
     closePayModal,
-    billCategoryNames, // FIX #1
-    catCfg,            // FIX #2
-    formatAmount,      // currency-aware (from SettingsContext via useBills)
+    billCategoryNames,    // FIX #1
+    catCfg,               // FIX #2
+    formatAmount,         // currency-aware (from SettingsContext via useBills)
+    billPaymentMethods,   // FIX CC: static methods + active credit card names
+    creditCardNames,      // FIX CC: used to show hint in payment modal
   } = useBills();
 
   if (loading) {
@@ -818,6 +825,8 @@ export default function Bills() {
 
       {payModal && (
         <PaymentMethodModal
+          paymentMethods={billPaymentMethods}
+          creditCardNames={creditCardNames}
           onConfirm={handleConfirmPayment}
           onClose={closePayModal}
         />

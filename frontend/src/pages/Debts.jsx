@@ -397,11 +397,18 @@ function DebtRow({ debt, onEdit, onDelete, onPay, onAmortization, fmt }) {
                 <span
                   style={{
                     fontSize: 11,
-                    color: "var(--color-text-muted)",
+                    color: debt.debtType === "credit_card"
+                      ? "var(--color-danger)"
+                      : "var(--color-text-muted)",
                     whiteSpace: "nowrap",
                   }}
+                  title={
+                    debt.debtType === "credit_card"
+                      ? "This permanently removes the card from all payment methods and Settings."
+                      : undefined
+                  }
                 >
-                  Remove?
+                  {debt.debtType === "credit_card" ? "Removes card!" : "Remove?"}
                 </span>
                 <button
                   className="btn-danger"
@@ -514,7 +521,15 @@ function DebtRow({ debt, onEdit, onDelete, onPay, onAmortization, fmt }) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 function DebtModal({ form, isEditing, onChange, onSave, onClose }) {
-  const canSave = form.name.trim() && +form.balance > 0 && +form.minPayment > 0;
+  // Credit cards may legitimately have a $0 balance (fully paid for this cycle)
+  // and still need to be editable. Allow balance = 0 for all debt types so
+  // users aren't blocked from updating other fields on a cleared card.
+  const canSave =
+    form.name.trim() &&
+    form.balance !== "" &&
+    +form.balance >= 0 &&
+    form.minPayment !== "" &&
+    +form.minPayment >= 0;
   const f = (key, val) => onChange({ ...form, [key]: val });
   const isCC = form.debtType === "credit_card";
   const isBNPL = form.debtType === "bnpl";

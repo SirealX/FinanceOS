@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from ..database import get_db
-from ..models import Bill, BudgetCategory, Category, Transaction
+from ..models import Bill, BudgetCategory, Category, Debt, Transaction
 from ..services.entity_sync import entity_to_transaction
 from ..dependencies import get_current_user
 from pydantic import BaseModel
@@ -282,6 +282,26 @@ def update_bill(
     ):
         # payment_method is provided directly by the user when they click
         # "Mark as paid" — no draft needed, create confirmed immediately.
+        payment_method = update_data.get("payment_method")
+
+        # ── Credit card detection ─────────────────────────────────────────────
+        # If the user selected one of their named credit cards as the payment
+        # method (e.g. "AMEX Gold"), treat this the same way as a cc_charge:
+        #   • source = "cc_charge"  → excluded from cash balance calculations
+        #   • CC debt balance increases by the bill amount
+        # This mirrors the same detection in transactions.py.
+        tx_source = "bill_payment"
+        if payment_method:
+            cc_debt = db.query(Debt).filter(
+                Debt.user_id     == current_user,
+                Debt.type        == "credit_card",
+                Debt.name        == payment_method,
+                Debt.is_paid_off == False,
+            ).first()
+            if cc_debt:
+                tx_source = "cc_charge"
+                cc_debt.balance = float(cc_debt.balance or 0) + float(bill.amount)
+
         tx = Transaction(
             user_id=current_user,
             date=DateType.today(),
@@ -289,8 +309,8 @@ def update_bill(
             category=bill.category or "Other",
             type="expense",
             amount=bill.amount,
-            payment_method=update_data.get("payment_method"),
-            source="bill_payment",
+            payment_method=payment_method,
+            source=tx_source,
             is_draft=False,
             reviewed=True,
             budget_category_id=hub.id if hub else None,
@@ -301,7 +321,7 @@ def update_bill(
         bill.transaction_id = tx.id
         if hub:
             hub.transaction_id             = tx.id
-            hub.transaction_payment_method = update_data.get("payment_method")
+            hub.transaction_payment_method = payment_method
             hub.date                       = DateType.today()
 
     # ── Apply other field updates ─────────────────────────────────────────────

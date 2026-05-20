@@ -12,6 +12,7 @@ import { useAuth } from "../context/Authcontexts";
 
 import { DEMO_TODAY, BILL_FREQUENCIES, INITIAL_BILLS } from "../data/MockData";
 import { getBills, createBill, updateBill, deleteBill } from "./bills";
+import { getCreditCards } from "./debts";
 import { useSettings } from "../context/SettingsContext";
 
 // ── Re-exports ────────────────────────────────────────────────────────────────
@@ -163,6 +164,8 @@ export function useBills() {
   const [form, setForm] = useState(BLANK_FORM);
   // payModal: null | { billId: string } — shown when marking a bill as paid
   const [payModal, setPayModal] = useState(null);
+  // Active credit card names fetched from the backend
+  const [creditCardNames, setCreditCardNames] = useState([]);
 
   // ── FIX #1: expense category names from live SettingsContext ───────────────
   const billCategoryNames = useMemo(
@@ -181,8 +184,13 @@ export function useBills() {
     setLoading(true);
     setError(null);
     try {
-      const res = await getBills();
-      setBills(res.data.map(normalizeBill));
+      const [billsRes, ccRes] = await Promise.all([
+        getBills(),
+        getCreditCards().catch(() => ({ data: [] })),
+      ]);
+      setBills(billsRes.data.map(normalizeBill));
+      // Inject active credit card names so they appear in the payment modal
+      setCreditCardNames((ccRes.data || []).map((c) => c.name));
     } catch (err) {
       setError("Could not load bills. Is the backend running?");
       console.error(err);
@@ -392,6 +400,15 @@ export function useBills() {
     }
   }
 
+  // Combined payment method list: generic options + specific CC names.
+  // CC names are injected so the user can select their actual card and the
+  // backend can detect it, increase the CC balance, and mark the transaction
+  // as source="cc_charge" (no double-counting in cash flow).
+  const billPaymentMethods = useMemo(() => {
+    const ccOptions = creditCardNames.map((name) => ({ value: name, label: `💳 ${name}` }));
+    return [...PAYMENT_METHODS, ...ccOptions];
+  }, [creditCardNames]);
+
   return {
     bills,
     filtered,
@@ -421,6 +438,9 @@ export function useBills() {
     // FIX #2: live color lookup for avatars
     catCfg,
     formatAmount, // currency-aware (from SettingsContext)
+    // FIX CC: combined static + credit card payment methods for the pay modal
+    billPaymentMethods,
+    creditCardNames,
     isDemo: IS_DEMO,
   };
 }
