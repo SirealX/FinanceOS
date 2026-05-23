@@ -325,8 +325,12 @@ def update_bill(
             hub.date                       = DateType.today()
 
     # ── Apply other field updates ─────────────────────────────────────────────
+    # payment_method is consumed above (written to the linked transaction) and is
+    # NOT a mapped column on Bill — skip it here to avoid a transient attribute.
+    _BILL_WRITE_FIELDS = {"name", "amount", "due_date", "frequency", "category", "status"}
     for key, value in update_data.items():
-        setattr(bill, key, value)
+        if key in _BILL_WRITE_FIELDS:
+            setattr(bill, key, value)
 
     # ── Sync non-status changes to backbone row ───────────────────────────────
     if hub:

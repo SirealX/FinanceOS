@@ -21,8 +21,7 @@ import {
   unsubscribePush,
 } from "./alert.axios";
 import { DEMO_ALERT_FEED, DEMO_ALERT_PREFERENCES } from "../data/MockData";
-
-const DEMO = import.meta.env.VITE_DEMO_MODE === "true";
+import { useAuth } from "../context/Authcontexts";
 
 // ── Relative timestamp formatter ──────────────────────────────────────────────
 
@@ -91,6 +90,7 @@ export function getAlertIcon(type) {
 // ── Main hook ─────────────────────────────────────────────────────────────────
 
 export function useAlerts() {
+  const { isDemo: IS_DEMO } = useAuth();
   const [alerts, setAlerts] = useState([]);
   const [prefs, setPrefs] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -101,7 +101,7 @@ export function useAlerts() {
 
   const load = useCallback(async () => {
     try {
-      if (DEMO) {
+      if (IS_DEMO) {
         setAlerts(DEMO_ALERT_FEED);
         setPrefs(DEMO_ALERT_PREFERENCES);
         setUnread(
@@ -124,7 +124,7 @@ export function useAlerts() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [IS_DEMO]);
 
   useEffect(() => {
     load();
@@ -133,7 +133,7 @@ export function useAlerts() {
   // ── Actions ───────────────────────────────────────────────────────────────
 
   async function dismiss(id) {
-    if (DEMO) {
+    if (IS_DEMO) {
       setAlerts((prev) =>
         prev.map((a) =>
           a.id === id ? { ...a, read_at: new Date().toISOString() } : a,
@@ -148,7 +148,7 @@ export function useAlerts() {
   }
 
   async function dismissAll() {
-    if (DEMO) {
+    if (IS_DEMO) {
       const now = new Date().toISOString();
       setAlerts((prev) =>
         prev.map((a) => ({ ...a, read_at: a.read_at || now })),
@@ -163,7 +163,7 @@ export function useAlerts() {
   }
 
   async function remove(id) {
-    if (DEMO) {
+    if (IS_DEMO) {
       setAlerts((prev) => prev.filter((a) => a.id !== id));
       return;
     }
@@ -178,7 +178,7 @@ export function useAlerts() {
   }
 
   async function savePrefs(updates) {
-    if (DEMO) {
+    if (IS_DEMO) {
       setPrefs((prev) => ({ ...prev, ...updates }));
       return { ...prefs, ...updates };
     }
@@ -237,9 +237,10 @@ export function useAlerts() {
 }
 
 // ── Standalone unread count fetch (used by App.jsx sidebar badge) ─────────────
+// Accepts isDemo at the call site because this is not a hook and cannot call useAuth().
 
-export async function fetchUnreadCount() {
-  if (DEMO) {
+export async function fetchUnreadCount(isDemo = false) {
+  if (isDemo) {
     return DEMO_ALERT_FEED.filter((a) => !a.read_at && a.tier <= 2).length;
   }
   const data = await getUnreadCount();

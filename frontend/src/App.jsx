@@ -341,7 +341,7 @@ function AppShell() {
 
   async function fetchAlertCount() {
     try {
-      const count = await fetchUnreadCount();
+      const count = await fetchUnreadCount(isDemo);
       setAlertCount(count);
     } catch {
       // Non-critical — badge just stays at previous value

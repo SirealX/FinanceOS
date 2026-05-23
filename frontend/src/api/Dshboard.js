@@ -874,7 +874,7 @@ export function useDashboard() {
 
   const donutLegend = useMemo(() => {
     return buildDonutLegend(IS_DEMO ? DASHBOARD_DONUT : donutData);
-  }, [donutData]);
+  }, [IS_DEMO, donutData]);
 
   const overviewChartConfig = useMemo(() => {
     return getOverviewChartConfig(

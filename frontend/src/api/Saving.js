@@ -60,8 +60,8 @@ export { SAVINGS_EMOJI_PRESETS };
 // 2. CONSTANTS
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** Canonical "today" for deadline calculations — always real current date. */
-const TODAY = new Date();
+/** Returns today's date — called fresh each time so deadlines stay accurate across midnight. */
+const _today = () => new Date();
 
 export const BLANK_GOAL_FORM = {
   emoji: "🎯",
@@ -97,10 +97,10 @@ export function pct(current, target) {
   return Math.min((current / target) * 100, 100);
 }
 
-/** Days remaining from TODAY until the deadline (negative = overdue). */
+/** Days remaining from today until the deadline (negative = overdue). */
 export function daysLeft(deadlineStr) {
   const d = new Date(deadlineStr + "T00:00:00");
-  return Math.ceil((d - TODAY) / (1000 * 60 * 60 * 24));
+  return Math.ceil((d - _today()) / (1000 * 60 * 60 * 24));
 }
 
 /**
@@ -236,6 +236,7 @@ function buildGoalPayload(form) {
     target_amount: parseFloat(form.target),
     current_amount: parseFloat(form.current) || 0,
     deadline_date: form.deadline,
+    emoji: form.emoji ?? "🎯",
   };
 }
 
@@ -370,6 +371,9 @@ export function useSavings() {
     try {
       await deleteSavingsGoal(id);
       setGoals((prev) => prev.filter((g) => g.id !== id));
+      // Keep SettingsContext category list in sync — backend removes the
+      // savings category when the last goal tied to it is deleted.
+      await fetchCategories();
     } catch (err) {
       setError("Delete failed. Please try again.");
       console.error(err);

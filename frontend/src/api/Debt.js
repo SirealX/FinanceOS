@@ -422,7 +422,7 @@ export function useDebts() {
       const entry = {
         id: editingDebt ? editingDebt.id : uid(),
         name: form.name.trim(),
-        type: form.type,
+        debtType: form.debtType || "loan",
         balance: bal,
         originalBalance: Math.max(origBal, bal),
         apr: parseFloat(form.apr) || 0,

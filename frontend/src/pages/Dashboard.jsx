@@ -472,8 +472,8 @@ function ExpenseDonut({ config }) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 function BudgetRow({ category, color, spent, planned, fmt }) {
-  const pct = Math.min((spent / planned) * 100, 100);
-  const over = spent > planned;
+  const pct = planned > 0 ? Math.min((spent / planned) * 100, 100) : 0;
+  const over = planned > 0 && spent > planned;
 
   return (
     <div style={{ marginBottom: 14 }}>
@@ -1090,7 +1090,7 @@ export default function Dashboard() {
               }}
             >
               No budget set yet —{" "}
-              <button className="btn-ghost" onClick={() => {}}>
+              <button className="btn-ghost" onClick={goToBudget}>
                 Set one up
               </button>
             </div>
