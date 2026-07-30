@@ -6,6 +6,36 @@
 
 ---
 
+## 📋 Current Priorities (as of 2026-07-29)
+
+After a few months of small-group testing (3–4 users), three real problems surfaced: manual
+entry felt like a chore with no automatic sync, Supabase kept "closing" (pausing), and Telegram
+alerts stopped after one initial test message. Root causes were diagnosed and a sequenced plan
+was agreed. **Work one item at a time, in order — each step's findings shape the next one, so
+don't skip ahead.**
+
+> 🚨 **Before item #1 — leaked DB password on the public GitHub repo.** This supersedes everything
+> else below. See the full checklist under "Environment Variables." Rotate the Supabase password
+> first thing next session, before touching anything else.
+
+| # | Item | Status | Details |
+|---|------|--------|---------|
+| 1 | **Reliability fix** — replace broken cron, stop Supabase pausing | 🔄 In progress | See "Reliability & Ops" below |
+| 2 | **Supabase Security Advisor review** — check Database → Advisors for actual RLS/security warnings | ⬜ Not started | Nothing has been reviewed yet — don't assume specific issues, go look |
+| 3 | **Codebase orphan/dead-code audit** — find unused fields, dead functions, stale logic (e.g. the `is_draft`/`reviewed` confusion, see "Known Gotchas") | ⬜ Not started | Needs a real file-by-file pass, not a skim |
+| 4 | **Docs overhaul** — bring every `.md` file in line with actual repo state | ⬜ Not started | Do this *after* the audit (#3), not before, so it isn't stale again immediately |
+| 5 | **Database normalization + scalability** | ⬜ Not started | Tied to Cesar's coursework — do this collaboratively, explain reasoning, don't just hand over a schema diff |
+| 6 | **Email ingestion pipeline (bank-transaction automation)** | ⬜ Design agreed, not built | See "Email Ingestion Pipeline" below — build after the schema settles |
+
+**Why this order:** reliability first because nothing else can be tested reliably while Supabase
+keeps pausing mid-session. Security Advisor before normalization because it's five minutes of
+looking at real data instead of guessing. Codebase audit before docs because docs written against
+an un-audited codebase go stale again immediately. Normalization/scalability before the email
+pipeline because the pipeline writes into that schema — better to build it against the settled
+shape.
+
+---
+
 ## 🚀 Deployment Checklist (Render + Vercel)
 
 ### Step 1 — Push to GitHub
@@ -24,8 +54,37 @@ Commit all changes and push to your GitHub repo. Both Render and Vercel deploy f
 
 | Variable              | Value                                                        |
 | --------------------- | ------------------------------------------------------------ |
-| `DATABASE_URL`        | `postgresql://postgres:pKnStzZS7GdKci5F@db.nbbxpozqrzbxyealvpxs.supabase.co:5432/postgres` |
+| `DATABASE_URL`        | *(copy from Render dashboard — **do not paste real credentials into this file**; see note below)* |
 | `SUPABASE_URL`        | `https://nbbxpozqrzbxyealvpxs.supabase.co`                  |
+
+> ⚠️ **Security incident (2026-07-29) — leaked DB password. Do this FIRST next session, before
+> anything else on the priorities list. Checklist:**
+>
+> This row previously contained the real Supabase database password in plaintext. **The GitHub repo
+> is PUBLIC** (corrected 2026-07-29 — initially thought private). Public repos are actively scanned
+> by bots hunting for exposed credentials, often within minutes of a push — this is independent of
+> the repo's own view count, so "nobody's looked at it" doesn't reduce the risk here. Public repos
+> do get GitHub's free secret-scanning automatically, so check Settings → Security → Secret scanning
+> alerts on the repo — it may have already flagged this connection string.
+>
+> - [ ] **Rotate now** — Supabase dashboard → Settings → Database → Reset database password. This is
+>       the step that actually matters; everything below is cleanup/prevention.
+> - [ ] **Update `DATABASE_URL` on Render** to the new password immediately after, so the backend
+>       doesn't drop its connection.
+> - [x] **Checked GitHub's Secret Scanning alerts (2026-07-29)** — zero open, zero closed; code
+>       scanning also not enabled. A generic Postgres connection string isn't one of GitHub's
+>       recognized partner secret patterns (those are mostly vendor-specific, e.g. AWS/Stripe keys),
+>       so it was never auto-flagged. **This does not reduce urgency** — it just means nothing was
+>       ever going to catch this automatically. Rotation is still the only real fix.
+> - [ ] *(Optional, hygiene only — the old password is dead once rotated)* Scrub git history with
+>       `git filter-repo` (current recommended tool; the older `filter-branch`/BFG approach is
+>       discouraged now). Back up the repo first — it rewrites history and requires a force-push.
+> - [ ] **Prevent recurrence:** install `gitleaks` (free, open-source, runs locally) as a quick
+>       pre-push scan or git pre-commit hook — it would have caught this exact pattern before the
+>       commit happened. Do this during, or before, the codebase audit (item #3 above) — also worth
+>       a second look through the repo for any other pasted credentials while auditing.
+>
+> This should also feed into the Security Advisor review (item #2 above) once that's done.
 | `SUPABASE_JWT_SECRET` | *(copy from Backend/.env)*                                   |
 | `ALLOWED_ORIGINS`     | *(leave blank for now — add Vercel URL in Step 4)*           |
 | `CRON_SECRET`         | *(any random string, e.g. generate one at random.org)*       |
@@ -82,13 +141,87 @@ The Supabase DB is shared between local and production so this only needs runnin
 | `VITE_API_URL`           | Vercel only (not in .env file)              | ⬜ Set to your Render URL after backend is deployed           |
 | `VITE_SUPABASE_URL`      | frontend `.env` + Vercel                    | ✅ Set                                                        |
 | `VITE_SUPABASE_ANON_KEY` | frontend `.env` + Vercel                    | ✅ Set                                                        |
-| `CRON_SECRET`            | Backend `.env` + Render                     | ⬜ Generate a random string and set on both                   |
-| `PLAID_CLIENT_ID`        | Backend `.env` + Render                     | ⬜ Phase 6 — Banking API                                      |
-| `PLAID_SECRET`           | Backend `.env` + Render                     | ⬜ Phase 6 — Banking API                                      |
-| `TELEGRAM_BOT_TOKEN`     | Backend `.env` + Render                     | ⬜ After creating bot via @BotFather (ALERTS_SPEC §12A)       |
-| `VAPID_PUBLIC_KEY`       | Backend `.env` + Render + frontend + Vercel | ⬜ After `npx web-push generate-vapid-keys` (ALERTS_SPEC §12B)|
+| `CRON_SECRET`            | Backend `.env` + Render                     | ✅ Set on Render (confirmed 2026-07-29)                       |
+| `BACKEND_URL`            | Render cron service only                    | ❌ **Missing** — cron's `startCommand` falls back to `http://localhost:8000`, which resolves to nothing inside the cron container. Likely cause of "zero notifications since the one test." |
+| `PLAID_CLIENT_ID`        | Backend `.env` + Render                     | ⬜ On hold — bank sync path blocked, see "Banking API Sync"   |
+| `PLAID_SECRET`           | Backend `.env` + Render                     | ⬜ On hold — same as above                                    |
+| `TELEGRAM_BOT_TOKEN`     | Backend `.env` + Render                     | ✅ Set on Render (confirmed 2026-07-29) — value not yet verified as working end-to-end |
+| `VAPID_PUBLIC_KEY`       | Backend `.env` + Render + frontend + Vercel | ⬜ Not yet generated                                          |
 | `VAPID_PRIVATE_KEY`      | Backend `.env` + Render only                | ⬜ Never expose to frontend                                   |
 | `VAPID_CONTACT_EMAIL`    | Backend `.env` + Render only                | ⬜ After VAPID key generation                                 |
+
+> Note: `ALERTS_SPEC.md` and `INTERCONNECTION_ADR.md` are referenced throughout this file (and in
+> code comments) but do not currently exist in the repo. Either they were never committed or were
+> lost at some point — flag this during the codebase audit (#3 above) and either recreate them or
+> stop referencing them.
+
+---
+
+## 🛠️ Reliability & Ops (new — 2026-07-29)
+
+**Problem 1 — Telegram notifications never fire automatically.** `render.yaml` defines
+`financeos-daily-scheduler` as a Render Cron Job on `plan: free` — but Render does not offer a
+free tier for Cron Jobs (they start at $1/mo). The job likely never deployed at all. Even if it
+had, its `startCommand` posts to `BACKEND_URL`, which was never set on Render, so it would have
+defaulted to `http://localhost:8000` and failed silently inside its own empty container. The one
+Telegram message ever received was from the manual `POST /alerts/telegram/test` endpoint, which
+doesn't depend on the cron at all.
+
+**Problem 2 — Supabase keeps "closing."** Confirmed: Supabase free-tier projects pause after 7
+days of zero API activity — this is a project-wide pause, not just a dropped connection, and nothing
+works again until it's manually restored. The existing UptimeRobot ping only hits Render's `/ping`
+to keep the *web service* warm; it never touches Supabase, so the 7-day timer runs independently
+and unaffected.
+
+**Fix (staying on the free tier, per decision on 2026-07-29):** replace the Render Cron Job with a
+free GitHub Actions scheduled workflow that POSTs to `/scheduler/run` daily (with retries — Render
+free-tier cold starts take ~30–50s). This one job solves both problems at once: it wakes the
+sleeping Render service, it exercises the DB via `run_daily_checks()` (resetting Supabase's 7-day
+pause timer), and it's the same code path that dispatches Telegram/digest alerts — so fixing the
+trigger also fixes the notification silence.
+
+**To implement (not yet done):**
+1. Add `.github/workflows/daily-scheduler.yml` — scheduled `curl --retry` POST to
+   `${{ secrets.BACKEND_URL }}/scheduler/run` with header `x-cron-secret: ${{ secrets.CRON_SECRET }}`.
+2. Set `BACKEND_URL` and `CRON_SECRET` as GitHub repo secrets (same values as Render).
+3. Remove or disable the `cron:` block in `render.yaml` — it can't deploy on the free plan.
+4. Add the missing `BACKEND_URL` env var on Render itself regardless (harmless to have, useful if the paid cron is ever revisited).
+
+---
+
+## 📥 Email Ingestion Pipeline (planned — replaces live bank sync for now)
+
+**Why not Plaid / GoCardless / TrueLayer:** evaluated during the original Phase 6 attempt (see
+corrected "Banking API Sync" history below). Direct bank API access was refused outright. The
+aggregators either didn't support the specific banks in use, or required an OAuth flow to an
+unfamiliar third party that testers (friends/family, not just Cesar) weren't comfortable
+authorizing. Decision: don't keep chasing aggregator coverage — build a bridge instead.
+
+**Design:**
+- One dedicated Gmail inbox, using Gmail's `+alias` addressing so every user gets a unique
+  ingestion address (`financeos.ingest+<token>@gmail.com`) without needing separate mailboxes or
+  per-user credentials. Each user sets a one-time forward rule from their bank's transaction email
+  to their own alias.
+- New backend module `email_ingest.py`, split into two deliberately separate pieces:
+  1. `parse_bank_email(sender, subject, body) -> dict | None` — pure function, no network calls,
+     unit-testable against saved fixture emails (capture one real example per bank once, reuse
+     forever — no need to trigger real transactions to test the parser).
+  2. A poller (rides the same GitHub Actions cron, tighter interval e.g. every 15–30 min) that
+     authenticates to the Gmail inbox via the Gmail API, resolves the `+alias` to a `user_id`,
+     hands the body to the parser, and creates the transaction.
+- **Field semantics (see "Known Gotchas" below):** email-imported transactions are created as
+  *real, complete* transactions immediately — `is_draft=False` (the money already left the
+  account; the email is the bank's own confirmation) — with `source='email_import'` (needs adding
+  to the `source` enum in `models.py`) and `reviewed=False`. This reuses the existing
+  `import_reminder` alert machinery already built for CSV imports — no new mechanism needed.
+- Payment-method variance (e.g. QR payments include merchant name, masked-card payments don't) is
+  handled by the parser writing a less-confident description when detail is missing (e.g. "Card
+  purchase — •••1234", no category guess) — still `reviewed=False` either way, just less filled in.
+- **Known limitation:** banks that only send monthly statements (not per-transaction emails) fall
+  through this pipeline entirely — those users stay on manual entry, or the SMS-forwarding
+  alternative (iOS Shortcuts automation, or MacroDroid/Tasker on Android) discussed but not chosen
+  as the primary path.
+- Not yet built — will be scoped as its own session after the schema work.
 
 ---
 
@@ -328,45 +461,57 @@ More powerful but more complex to build.
 | `frontend/src/App.jsx`                | ✅ Done | Sidebar badge wired to live unread count (polls every 30s)                                   |
 | `frontend/src/data/MockData.js`       | ✅ Done | DEMO_ALERT_FEED + DEMO_ALERT_PREFERENCES added                                               |
 
-**Pending — requires manual owner action (see ALERTS_SPEC.md §12):**
+**Status as of 2026-07-29** (corrected — `notifications.py` and channel routing are actually
+already implemented in code; what's missing is the *trigger*, not the dispatch logic):
 
 | Step | What | Status |
 | ---- | ---- | ------ |
-| 8A | Create Telegram bot via @BotFather → add TELEGRAM_BOT_TOKEN | ⬜ Manual |
-| 8B | Run `npx web-push generate-vapid-keys` → add VAPID keys | ⬜ Manual |
-| 9  | Un-stub `notifications.py` (Telegram + PWA push) | ⬜ After step 8 |
-| 10 | Wire notifications into alert_engine.py channel routing | ⬜ After step 9 |
-| 11 | Telegram channel card already built — test end-to-end | ⬜ After step 9 |
-| 12 | PWA Push service worker (`frontend/public/sw.js`) | ⬜ After step 9 |
-| 13 | Telegram categorization assistant | ⬜ After bank API is live |
+| 8A | Create Telegram bot via @BotFather → add TELEGRAM_BOT_TOKEN | ✅ Done — confirmed set on Render 2026-07-29 |
+| 8B | Run `npx web-push generate-vapid-keys` → add VAPID keys | ⬜ Not done — PWA push untested |
+| 9  | `notifications.py` (Telegram + PWA push) | ✅ Already implemented — not a stub |
+| 10 | Notifications wired into `alert_engine.py` channel routing (`_dispatch_immediate`) | ✅ Already implemented |
+| 11 | Telegram end-to-end test | ⚠️ Manual `/telegram/test` works; automatic daily dispatch never fired — see "Reliability & Ops" (cron never actually ran) |
+| 12 | PWA Push service worker (`frontend/public/sw.js`) | ⬜ Not done |
+| 13 | Telegram categorization assistant | ⬜ On hold — depends on the email ingestion pipeline instead of "bank API" now |
 
 **Run migrations before testing:**
 ```
 alembic upgrade head
 ```
 
-### Banking API Sync
+### Banking API Sync — attempted, blocked, pivoted (corrected 2026-07-29)
 
-| File                            | Status     | Notes                                                       |
-| ------------------------------- | ---------- | ----------------------------------------------------------- |
-| `backend/app/routers/sync.py`   | ⬜ Missing | POST /sync/connect, POST /sync/trigger, GET /sync/status    |
-| `backend/app/categorization.py` | ⬜ Missing | Rules engine: standardize merchant names, assign categories |
-| Cron job on Render              | ⬜ Missing | Daily trigger for sync                                      |
-| Banking API decision            | ⬜ Pending | Plaid vs GoCardless vs TrueLayer — depends on country/bank  |
+**This was not simply "not started."** It was attempted during Phase 6 and hit real walls:
+1. Direct bank API access was requested and refused outright by the bank(s) in question.
+2. Plaid / GoCardless / TrueLayer were evaluated as aggregator alternatives. Result: some didn't
+   support the specific banks in use (coverage gap), and where they did, testers (friends/family,
+   not just Cesar) weren't comfortable authorizing an unfamiliar third party via OAuth with real
+   bank credentials.
+
+**Decision:** don't keep chasing aggregator coverage for now. Building the email-ingestion
+pipeline instead (see section above) as a lower-trust-barrier, zero-cost bridge. Live bank sync
+stays on the table as a future revisit, not abandoned, just not the near-term path.
+
+| File                             | Status              | Notes                                                       |
+| --------------------------------- | -------------------- | ----------------------------------------------------------- |
+| `backend/app/routers/sync.py`    | ⬜ On hold           | Superseded near-term by the email ingestion pipeline         |
+| `backend/app/categorization.py`  | ⬜ On hold           | Rules engine — relevant to the email ingestion parser too    |
+| Cron job on Render                | ❌ Replacing         | Render Cron has no free tier — moving to GitHub Actions (see Reliability & Ops) |
+| Banking API decision              | ✅ Decided (paused)  | Plaid/GoCardless/TrueLayer ruled out for now — see history above |
 
 ### Export + Notifications
 
 | File                            | Status     | Notes                                                                      |
 | ------------------------------- | ---------- | -------------------------------------------------------------------------- |
-| `backend/app/routers/export.py` | ⬜ Missing | GET /transactions/export?format=csv\|xlsx, GET /reports/monthly?format=pdf |
-| `backend/app/notifications.py`  | ⬜ Missing | Twilio WhatsApp + SMS dispatch                                             |
+| `backend/app/routers/export.py` | ✅ Done    | Exists in repo (`export.py`) — GET /transactions/export, GET /reports/monthly |
+| `backend/app/notifications.py`  | ✅ Done    | Telegram + PWA push implemented. Twilio WhatsApp/SMS still not built        |
 
 ### CSV / Excel Import
 
-| File                            | Status     | Notes                                                                 |
-| ------------------------------- | ---------- | --------------------------------------------------------------------- |
-| `backend/app/routers/import.py` | ⬜ Missing | POST /transactions/import — parse CSV/Excel, map columns, bulk insert |
-| Frontend import modal           | ⬜ Missing | Column mapper UI, preview before confirm                              |
+| File                                   | Status     | Notes                                                                 |
+| ---------------------------------------- | ---------- | --------------------------------------------------------------------- |
+| `backend/app/routers/import_router.py` | ✅ Done    | Exists in repo — actual filename is `import_router.py`, not `import.py` |
+| Frontend import modal                    | ✅ Done    | Per Phase 5 status summary — reverify during codebase audit           |
 
 ---
 
@@ -386,23 +531,50 @@ Auth is fully implemented. No further work needed for multi-user testing.
 
 ---
 
+## ⚠️ Known Gotchas / Field Semantics
+
+**`is_draft` vs. `reviewed` on `Transaction` (models.py) — do not conflate these.** They look
+similar but solve unrelated problems:
+
+- **`is_draft`** — scoped to the bill/debt/savings entity-linking flow in `entity_sync.py`. A bill
+  marked "paid" creates a linked transaction that stays a draft until the payment method is
+  confirmed; clearing it drives balance/debt/goal updates on the linked entity. Default `False`.
+- **`reviewed`** — for transactions whose *data* needs a second look, not their existence. Default
+  `True` for manual entries; set `False` for `csv_import` (and should be set `False` for the
+  planned `email_import` source too). The existing `import_reminder` alert already watches for
+  `reviewed == False`.
+
+Early confusion between these two is likely what's remembered as "we removed drafts because they
+caused sync issues" — they weren't removed, they were split apart, and the split is correct. Any
+new automated-ingestion source (email, future bank sync) should set `is_draft=False` /
+`reviewed=False`, never touch `is_draft=True` unless it's actually creating a bill/debt/savings
+linked payment. Flag any code still confusing the two during the codebase audit (#3 above).
+
+---
+
 ## Quick Status Summary
 
-| Phase                                | Status                                                   |
-| ------------------------------------ | -------------------------------------------------------- |
-| 1 · DB Foundation                    | ✅ Done                                                  |
-| 2 · Transactions                     | ✅ Done                                                  |
-| 3 · Bills / Budget / Debts / Savings | ✅ Done                                                  |
-| 4 · Settings + Dashboard             | ✅ Done                                                  |
-| Auth (Supabase JWT)                  | ✅ Done                                                  |
-| Single-user testing                  | ✅ Done                                                  |
-| 5 · Alerts (Steps 1–7)               | ✅ Done — Steps 8–13 pending (Telegram + VAPID setup)    |
-| 5 · Export (CSV + XML)               | ✅ Done                                                  |
-| 5 · CSV/XLSX Import wizard           | ✅ Done                                                  |
-| Deployment prep (blockers fixed)     | ✅ Done — ready for Render + Vercel                      |
-| Multi-user live testing              | ⬜ Next — follow deployment checklist above              |
-| 6 · Banking API Sync                 | ⬜ After multi-user testing                              |
-| 5 · Notifications (Telegram + PWA)   | ⬜ Steps 8–13 — after deployment                        |
+| Item                                          | Status                                                          |
+| ---------------------------------------------- | ----------------------------------------------------------------- |
+| 1 · DB Foundation                              | ✅ Done                                                           |
+| 2 · Transactions                               | ✅ Done                                                           |
+| 3 · Bills / Budget / Debts / Savings           | ✅ Done                                                           |
+| 4 · Settings + Dashboard                       | ✅ Done                                                           |
+| Auth (Supabase JWT)                            | ✅ Done                                                           |
+| Single-user testing                            | ✅ Done                                                           |
+| 5 · Alerts (Steps 1–7)                         | ✅ Done                                                           |
+| 5 · Export (CSV + XML)                         | ✅ Done                                                           |
+| 5 · CSV/XLSX Import wizard                     | ✅ Done                                                           |
+| Deployment (Render + Vercel)                   | ✅ Live — small-group testing ran for ~1 month                    |
+| Multi-user live testing                        | 🔄 Ran, surfaced the reliability + friction issues tracked above  |
+| 6 · Banking API Sync (Plaid/GoCardless/TrueLayer) | ❌ Attempted, blocked — see "Banking API Sync" — pivoted to email ingestion |
+| Notifications (Telegram + PWA)                 | 🔄 Built, but never fired automatically — see "Reliability & Ops" |
+| Reliability fix (cron → GitHub Actions)         | 🔄 Diagnosed, designed, not yet implemented                       |
+| Supabase Security Advisor review                | ⬜ Not started                                                    |
+| Codebase orphan/dead-code audit                 | ⬜ Not started                                                    |
+| Docs overhaul                                    | 🔄 This pass (2026-07-29) — ongoing                               |
+| Database normalization + scalability            | ⬜ Not started — own session, tied to coursework                  |
+| Email ingestion pipeline                        | 🔄 Designed, not built                                            |
 
 ---
 
@@ -410,12 +582,19 @@ Auth is fully implemented. No further work needed for multi-user testing.
 
 Start with:
 
-> "Here is my project tracker — [paste file]. I want to work on Phase 5.
-> Phases 1–4 are complete and single-user tested. The pending Alembic migration
-> has been run. `VITE_DEMO_MODE=false` is confirmed working against live Supabase."
+> "Here is my project tracker — [paste file]. Phases 1–4, Auth, and Alerts (Steps 1–7) are done
+> and single-user tested. We're past the initial build and into fixing what multi-user testing
+> surfaced — see 'Current Priorities' at the top for the agreed order. I want to work on item
+> #N: [name it]."
 
-Then name the specific feature, e.g.:
+Then name the specific item from "Current Priorities," e.g.:
 
-- "Let's build the Smart Alerts backend — alert_engine.py and the alerts router"
-- "Let's wire up the CSV import flow"
-- "Let's start the Banking API integration decision and sync router"
+- "Let's implement the reliability fix — the GitHub Actions workflow and render.yaml cleanup"
+- "Let's go through Supabase's Security Advisor findings"
+- "Let's do the codebase orphan/dead-code audit"
+- "Let's work on database normalization — I want to actually understand the reasoning, not just get a diff"
+- "Let's build the email ingestion pipeline"
+
+**Keep each conversation scoped to one item.** Don't let a session drift into a second workstream
+— update this file with what changed/was decided before ending, so the next conversation starts
+from accurate ground instead of re-deriving context.
