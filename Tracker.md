@@ -14,9 +14,9 @@ alerts stopped after one initial test message. Root causes were diagnosed and a 
 was agreed. **Work one item at a time, in order — each step's findings shape the next one, so
 don't skip ahead.**
 
-> 🚨 **Before item #1 — leaked DB password on the public GitHub repo.** This supersedes everything
-> else below. See the full checklist under "Environment Variables." Rotate the Supabase password
-> first thing next session, before touching anything else.
+> ✅ **Resolved (2026-07-29) — leaked DB password on the public GitHub repo.** Password rotated,
+> Render's `DATABASE_URL` updated, `Tracker.md` redacted and pushed, gitleaks pre-commit hook
+> installed. Full checklist under "Environment Variables." Next up: item #1 below.
 
 | # | Item | Status | Details |
 |---|------|--------|---------|
@@ -67,24 +67,29 @@ Commit all changes and push to your GitHub repo. Both Render and Vercel deploy f
 > do get GitHub's free secret-scanning automatically, so check Settings → Security → Secret scanning
 > alerts on the repo — it may have already flagged this connection string.
 >
-> - [ ] **Rotate now** — Supabase dashboard → Settings → Database → Reset database password. This is
->       the step that actually matters; everything below is cleanup/prevention.
-> - [ ] **Update `DATABASE_URL` on Render** to the new password immediately after, so the backend
->       doesn't drop its connection.
+> - [x] **Rotate now (2026-07-29)** — done via Supabase dashboard → Settings → Database → Reset
+>       database password. This was the step that actually mattered; everything below is cleanup/prevention.
+> - [x] **Update `DATABASE_URL` on Render (2026-07-29)** — done, backend reconnected with the new password.
 > - [x] **Checked GitHub's Secret Scanning alerts (2026-07-29)** — zero open, zero closed; code
 >       scanning also not enabled. A generic Postgres connection string isn't one of GitHub's
 >       recognized partner secret patterns (those are mostly vendor-specific, e.g. AWS/Stripe keys),
 >       so it was never auto-flagged. **This does not reduce urgency** — it just means nothing was
 >       ever going to catch this automatically. Rotation is still the only real fix.
-> - [ ] *(Optional, hygiene only — the old password is dead once rotated)* Scrub git history with
->       `git filter-repo` (current recommended tool; the older `filter-branch`/BFG approach is
->       discouraged now). Back up the repo first — it rewrites history and requires a force-push.
-> - [ ] **Prevent recurrence:** install `gitleaks` (free, open-source, runs locally) as a quick
->       pre-push scan or git pre-commit hook — it would have caught this exact pattern before the
->       commit happened. Do this during, or before, the codebase audit (item #3 above) — also worth
->       a second look through the repo for any other pasted credentials while auditing.
+> - [x] **Redacted `Tracker.md` and pushed (2026-07-29)** — commit `4c2ff0f "updated tracker leak"`.
+>       Current HEAD on GitHub no longer contains the plaintext password.
+> - [ ] *(Skipped, by decision 2026-07-29)* Scrub git history with `git filter-repo` — old password is
+>       dead once rotated, and a force-push would break other local clones. Not worth it. The password
+>       stays visible in old commits but is inert.
+> - [x] **Prevent recurrence (2026-07-29)** — `gitleaks` pre-commit hook installed at
+>       `.git/hooks/pre-commit`. Blocks commits containing likely secrets once `gitleaks` itself is
+>       installed locally (`winget install gitleaks` / `scoop install gitleaks`) — until then it warns
+>       but doesn't block. Still worth a manual second look through the repo for other pasted
+>       credentials during the codebase audit (item #3).
 >
 > This should also feed into the Security Advisor review (item #2 above) once that's done.
+>
+> **✅ Security incident closed (2026-07-29).** Password rotated, Render updated, leak removed from
+> HEAD, prevention hook in place. Ready to move to item #1 (Reliability fix) next.
 | `SUPABASE_JWT_SECRET` | *(copy from Backend/.env)*                                   |
 | `ALLOWED_ORIGINS`     | *(leave blank for now — add Vercel URL in Step 4)*           |
 | `CRON_SECRET`         | *(any random string, e.g. generate one at random.org)*       |
@@ -180,12 +185,21 @@ sleeping Render service, it exercises the DB via `run_daily_checks()` (resetting
 pause timer), and it's the same code path that dispatches Telegram/digest alerts — so fixing the
 trigger also fixes the notification silence.
 
-**To implement (not yet done):**
-1. Add `.github/workflows/daily-scheduler.yml` — scheduled `curl --retry` POST to
-   `${{ secrets.BACKEND_URL }}/scheduler/run` with header `x-cron-secret: ${{ secrets.CRON_SECRET }}`.
-2. Set `BACKEND_URL` and `CRON_SECRET` as GitHub repo secrets (same values as Render).
-3. Remove or disable the `cron:` block in `render.yaml` — it can't deploy on the free plan.
-4. Add the missing `BACKEND_URL` env var on Render itself regardless (harmless to have, useful if the paid cron is ever revisited).
+**Implementation status (2026-07-30):**
+1. [x] Added `.github/workflows/daily-scheduler.yml` — scheduled (08:00 UTC daily) + manually
+   triggerable (`workflow_dispatch`, for testing) `curl` POST to `${{ secrets.BACKEND_URL }}/scheduler/run`
+   with header `x-cron-secret: ${{ secrets.CRON_SECRET }}`. Retries 6x with 15s delay on any error
+   (`--retry-all-errors`) to ride out Render's free-tier cold start.
+2. [ ] **Cesar to do:** set `BACKEND_URL` and `CRON_SECRET` as GitHub repo secrets — Settings →
+   Secrets and variables → Actions → New repository secret. Same values as Render.
+3. [x] Removed the `cron:` block from `Backend/render.yaml` (replaced with a comment pointing to
+   the GitHub Actions workflow) — it never deployed anyway since Render Cron has no free tier.
+4. [x] Added `BACKEND_URL` to the web service's `envVars` list in `render.yaml` as a reference —
+   **Cesar to do:** still needs setting to the actual value in the Render dashboard (Environment tab).
+5. [ ] **Cesar to do, once 2 & 4 are set:** manually trigger the GitHub Actions workflow once
+   (Actions tab → Daily Scheduler → Run workflow) to confirm end-to-end before trusting the daily
+   schedule — this is also the real test of whether Telegram alerts fire automatically (see Step 11
+   below).
 
 ---
 

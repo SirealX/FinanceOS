@@ -1,0 +1,31 @@
+name: Daily Scheduler
+
+# Replaces the Render Cron Job (no free tier for cron on Render).
+# This single job does three things at once:
+#   1. Wakes the sleeping Render free-tier web service.
+#   2. Exercises the DB via run_daily_checks(), resetting Supabase's 7-day pause timer.
+#   3. Triggers the same code path that dispatches Telegram/digest alerts.
+#
+# Render free-tier cold starts take ~30-50s, so retries are generous.
+
+on:
+  schedule:
+    - cron: "0 8 * * *"   # 08:00 UTC daily — adjust to your timezone if needed
+  workflow_dispatch: {}    # lets you trigger it manually from the Actions tab, for testing
+
+jobs:
+  trigger-scheduler:
+    runs-on: ubuntu-latest
+    steps:
+      - name: POST /scheduler/run
+        run: |
+          curl --fail-with-body \
+            --retry 6 \
+            --retry-delay 15 \
+            --retry-all-errors \
+            --max-time 60 \
+            -X POST "${BACKEND_URL}/scheduler/run" \
+            -H "x-cron-secret: ${CRON_SECRET}"
+        env:
+          BACKEND_URL: ${{ secrets.BACKEND_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}

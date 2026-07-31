@@ -36,6 +36,9 @@ services:
         sync: false           # set to your Vercel URL after frontend is deployed
       - key: CRON_SECRET
         sync: false           # any random string — protect POST /scheduler/run
+      - key: BACKEND_URL
+        sync: false           # this service's own public URL — harmless to set even though
+                               # nothing on Render calls it anymore (see GitHub Actions cron below)
       - key: TELEGRAM_BOT_TOKEN
         sync: false           # add after creating bot via @BotFather
       - key: VAPID_PUBLIC_KEY
@@ -45,27 +48,9 @@ services:
       - key: VAPID_CONTACT_EMAIL
         sync: false
 
-  # ── Cron job — daily alert scheduler ──────────────────────────────────────────
-  # Triggers POST /scheduler/run every day at 08:00 UTC
-  - type: cron
-    name: financeos-daily-scheduler
-    runtime: python
-    pythonVersion: "3.12"
-    region: oregon
-    plan: free
-    rootDir: .
-    buildCommand: pip install -r requirements.txt
-    schedule: "0 8 * * *"    # 08:00 UTC daily — adjust to your timezone
-    startCommand: >
-      python -c "
-      import requests, os;
-      secret = os.getenv('CRON_SECRET', '');
-      url = os.getenv('BACKEND_URL', 'http://localhost:8000') + '/scheduler/run';
-      r = requests.post(url, headers={'x-cron-secret': secret});
-      print(r.status_code, r.text)
-      "
-    envVars:
-      - key: BACKEND_URL
-        sync: false           # set to your Render web service URL
-      - key: CRON_SECRET
-        sync: false
+  # ── Cron job — REMOVED 2026-07-30 ────────────────────────────────────────────
+  # Render Cron Jobs have no free tier (start at $1/mo) — this block never actually
+  # deployed, which is why Telegram alerts never fired automatically. Replaced with
+  # a free GitHub Actions scheduled workflow: see .github/workflows/daily-scheduler.yml
+  # at the repo root. That workflow POSTs to /scheduler/run using the same
+  # BACKEND_URL + CRON_SECRET values (set as GitHub repo secrets, not here).
