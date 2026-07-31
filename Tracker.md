@@ -21,10 +21,10 @@ don't skip ahead.**
 | # | Item | Status | Details |
 |---|------|--------|---------|
 | 1 | **Reliability fix** — replace broken cron, stop Supabase pausing | ✅ Done (2026-07-30) | Confirmed end-to-end via manual Actions trigger — see "Reliability & Ops" below |
-| 2 | **Supabase Security Advisor review** — check Database → Advisors for actual RLS/security warnings | ⬜ Not started | Nothing has been reviewed yet — don't assume specific issues, go look |
-| 3 | **Codebase orphan/dead-code audit** — find unused fields, dead functions, stale logic (e.g. the `is_draft`/`reviewed` confusion, see "Known Gotchas") | ⬜ Not started | Needs a real file-by-file pass, not a skim. **Also check:** the "digest" naming in code/UI against the 3-type notification model — see "Notification Model — 3 Types" note under Phase 5 |
+| 2 | **Supabase Security Advisor review** — check Database → Advisors for actual RLS/security warnings | ✅ Done (2026-07-30) | RLS enabled on all 12 public tables, no policies (not needed — see "Supabase Security Advisor Review" below) |
+| 3 | **Codebase orphan/dead-code audit** — find unused fields, dead functions, stale logic (e.g. the `is_draft`/`reviewed` confusion, see "Known Gotchas") | ⬜ Not started | Needs a real file-by-file pass, not a skim. **Also check:** the "digest" naming in code/UI against the 3-type notification model — see "Notification Model — 3 Types" note under Phase 5. **Also check:** `earmarked_funds` table — not referenced anywhere in this schema, likely orphaned (found during Security Advisor review, 2026-07-30). **Also check:** Alerts "Dismiss" button doesn't actually remove the alert (found 2026-07-30) — see "Known Bugs" below |
 | 4 | **Docs overhaul** — bring every `.md` file in line with actual repo state | ⬜ Not started | Do this *after* the audit (#3), not before, so it isn't stale again immediately |
-| 5 | **Database normalization + scalability** | ⬜ Not started | Tied to Cesar's coursework — do this collaboratively, explain reasoning, don't just hand over a schema diff |
+| 5 | **Database normalization + scalability** | ⬜ Not started | Tied to Cesar's coursework — do this collaboratively, explain reasoning, don't just hand over a schema diff. **Also fold in:** unindexed FK / unused index cleanup from Security Advisor (2026-07-30) — see below |
 | 6 | **Email ingestion pipeline (bank-transaction automation)** | ⬜ Design agreed, not built | See "Email Ingestion Pipeline" below — build after the schema settles |
 
 **Why this order:** reliability first because nothing else can be tested reliably while Supabase
@@ -202,6 +202,60 @@ trigger also fixes the notification silence.
 
 **🟢 Reliability fix confirmed working (2026-07-30).** Daily automatic run (08:00 UTC) is now live via
 GitHub Actions. Moving to item #2 (Supabase Security Advisor review) next.
+
+---
+
+## 🔒 Supabase Security Advisor Review (2026-07-30)
+
+Checked Database → Advisors. Findings and decisions below.
+
+**ERROR — RLS disabled on all 12 public tables** (`alembic_version`, `earmarked_funds`, `categories`,
+`transactions`, `debts`, `recurring_transactions`, `bills`, `preferences`, `savings_goals`, `alerts`,
+`alert_preferences`, `budget_categories`). Real risk: Supabase auto-exposes every public table via
+PostgREST, and the frontend ships `VITE_SUPABASE_ANON_KEY` in the built JS bundle (readable by
+anyone via devtools). With RLS off, that public anon key could query any of these tables directly
+through the PostgREST endpoint — completely bypassing FastAPI's JWT auth and `user_id` scoping.
+
+- [x] **Fixed (2026-07-30)** — RLS enabled on all 12 tables via the Supabase dashboard.
+- [x] **Decision: no policies added.** With RLS on and zero policies, access defaults to deny for
+      every role except the table owner. `DATABASE_URL` connects as the `postgres` role (table
+      owner), which bypasses RLS automatically — FastAPI keeps working unchanged. Nothing in the
+      app queries Supabase directly for data (only for Auth), so there's no legitimate path that
+      needs a policy right now.
+- [ ] **If this changes** (e.g. frontend ever queries Supabase directly instead of going through
+      FastAPI) — policies will be needed then, e.g. `auth.uid() = user_id` per table. Not needed today.
+- [x] Re-ran the Advisor after enabling RLS — confirmed clear.
+
+**WARN — Leaked Password Protection disabled.** Separate issue from the 2026-07-29 DB password leak
+incident (that was *our* Supabase connection string being exposed on GitHub, already resolved). This
+is a different Supabase Auth feature — checks *end-user* signup passwords against HaveIBeenPwned.
+Still off. Low priority (WARN, not ERROR) — revisit later, toggle lives in Auth → Settings.
+
+**INFO (performance, not security)** — unindexed FKs on `bills` (×2), `debts` (×2), `transactions`,
+`budget_categories`; unused `ix_*_user_id` indexes on `recurring_transactions`, `transactions`,
+`budget_categories`, `bills`, `debts`, `categories`. Folded into item #5 (normalization) — see that
+row above.
+
+**Orphan flagged:** `earmarked_funds` table exists in the DB but isn't referenced anywhere in this
+tracker's schema section. Added to item #3 (codebase audit).
+
+**✅ Item #2 closed (2026-07-30).** Moving to item #3 (codebase orphan/dead-code audit) next.
+
+---
+
+## 🐛 Known Bugs — Backlog (unscheduled)
+
+Found incidentally, not yet triaged into a numbered priority item.
+
+- **Alerts "Dismiss" button doesn't delete the alert** (found 2026-07-30, while spot-checking
+  notifications after the Security Advisor pass). Clicking dismiss doesn't remove it from the feed.
+  Needs investigation — check whether `frontend/src/pages/Alerts.jsx` is calling the right endpoint
+  and whether `backend/app/routers/alerts.py`'s DELETE actually fires. Flagged for item #3 audit.
+- **Demo mode data is calendar-hardcoded, goes stale over time.** `MockData.js` seeds fixed dates —
+  as real time passes those months fall out of any "current month" filtering, so the demo dashboard
+  stops showing data even though it's supposed to always look populated. Needs demo data generated
+  relative to the current date instead of fixed calendar dates. Not urgent, not tied to current
+  priorities — just don't forget it.
 
 ---
 
@@ -626,7 +680,7 @@ linked payment. Flag any code still confusing the two during the codebase audit 
 | 6 · Banking API Sync (Plaid/GoCardless/TrueLayer) | ❌ Attempted, blocked — see "Banking API Sync" — pivoted to email ingestion |
 | Notifications (Telegram + PWA)                 | ✅ Telegram confirmed firing automatically (2026-07-30); PWA push still untested (VAPID keys not generated) |
 | Reliability fix (cron → GitHub Actions)         | ✅ Done (2026-07-30) — confirmed end-to-end                       |
-| Supabase Security Advisor review                | ⬜ Not started                                                    |
+| Supabase Security Advisor review                | ✅ Done (2026-07-30) — RLS enabled on all 12 tables, no policies needed |
 | Codebase orphan/dead-code audit                 | ⬜ Not started                                                    |
 | Docs overhaul                                    | 🔄 This pass (2026-07-29) — ongoing                               |
 | Database normalization + scalability            | ⬜ Not started — own session, tied to coursework                  |
