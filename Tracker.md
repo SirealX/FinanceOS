@@ -20,7 +20,7 @@ don't skip ahead.**
 
 | # | Item | Status | Details |
 |---|------|--------|---------|
-| 1 | **Reliability fix** — replace broken cron, stop Supabase pausing | 🔄 In progress | See "Reliability & Ops" below |
+| 1 | **Reliability fix** — replace broken cron, stop Supabase pausing | ✅ Done (2026-07-30) | Confirmed end-to-end via manual Actions trigger — see "Reliability & Ops" below |
 | 2 | **Supabase Security Advisor review** — check Database → Advisors for actual RLS/security warnings | ⬜ Not started | Nothing has been reviewed yet — don't assume specific issues, go look |
 | 3 | **Codebase orphan/dead-code audit** — find unused fields, dead functions, stale logic (e.g. the `is_draft`/`reviewed` confusion, see "Known Gotchas") | ⬜ Not started | Needs a real file-by-file pass, not a skim |
 | 4 | **Docs overhaul** — bring every `.md` file in line with actual repo state | ⬜ Not started | Do this *after* the audit (#3), not before, so it isn't stale again immediately |
@@ -146,7 +146,7 @@ The Supabase DB is shared between local and production so this only needs runnin
 | `VITE_API_URL`           | Vercel only (not in .env file)              | ⬜ Set to your Render URL after backend is deployed           |
 | `VITE_SUPABASE_URL`      | frontend `.env` + Vercel                    | ✅ Set                                                        |
 | `VITE_SUPABASE_ANON_KEY` | frontend `.env` + Vercel                    | ✅ Set                                                        |
-| `CRON_SECRET`            | Backend `.env` + Render                     | ✅ Set on Render (confirmed 2026-07-29)                       |
+| `CRON_SECRET`            | Backend `.env` + Render                     | ❌ **Corrected 2026-07-30** — variable existed on Render but value was empty, meaning `/scheduler/run` had zero auth protection (`alert_scheduler.py` skips the check when the secret is falsy). Fresh value generated and set 2026-07-30 — also added as a GitHub Actions repo secret with the same value. |
 | `BACKEND_URL`            | Render cron service only                    | ❌ **Missing** — cron's `startCommand` falls back to `http://localhost:8000`, which resolves to nothing inside the cron container. Likely cause of "zero notifications since the one test." |
 | `PLAID_CLIENT_ID`        | Backend `.env` + Render                     | ⬜ On hold — bank sync path blocked, see "Banking API Sync"   |
 | `PLAID_SECRET`           | Backend `.env` + Render                     | ⬜ On hold — same as above                                    |
@@ -190,16 +190,18 @@ trigger also fixes the notification silence.
    triggerable (`workflow_dispatch`, for testing) `curl` POST to `${{ secrets.BACKEND_URL }}/scheduler/run`
    with header `x-cron-secret: ${{ secrets.CRON_SECRET }}`. Retries 6x with 15s delay on any error
    (`--retry-all-errors`) to ride out Render's free-tier cold start.
-2. [ ] **Cesar to do:** set `BACKEND_URL` and `CRON_SECRET` as GitHub repo secrets — Settings →
-   Secrets and variables → Actions → New repository secret. Same values as Render.
+2. [x] `BACKEND_URL` and `CRON_SECRET` set as GitHub repo secrets (2026-07-30) — same values as Render.
+   Along the way found `CRON_SECRET` on Render was set but **empty** (zero auth on `/scheduler/run`
+   until fixed) — generated a fresh value, set on both Render and GitHub.
 3. [x] Removed the `cron:` block from `Backend/render.yaml` (replaced with a comment pointing to
    the GitHub Actions workflow) — it never deployed anyway since Render Cron has no free tier.
-4. [x] Added `BACKEND_URL` to the web service's `envVars` list in `render.yaml` as a reference —
-   **Cesar to do:** still needs setting to the actual value in the Render dashboard (Environment tab).
-5. [ ] **Cesar to do, once 2 & 4 are set:** manually trigger the GitHub Actions workflow once
-   (Actions tab → Daily Scheduler → Run workflow) to confirm end-to-end before trusting the daily
-   schedule — this is also the real test of whether Telegram alerts fire automatically (see Step 11
-   below).
+4. [x] Added `BACKEND_URL` to Render (both the `render.yaml` reference and the actual dashboard value).
+5. [x] **Manually triggered the GitHub Actions workflow (2026-07-30) — confirmed working end-to-end.**
+   Render woke up, `run_daily_checks()` ran, Telegram messages arrived. This is also the real-world
+   test for Step 11 below — closing that out too.
+
+**🟢 Reliability fix confirmed working (2026-07-30).** Daily automatic run (08:00 UTC) is now live via
+GitHub Actions. Moving to item #2 (Supabase Security Advisor review) next.
 
 ---
 
@@ -484,7 +486,7 @@ already implemented in code; what's missing is the *trigger*, not the dispatch l
 | 8B | Run `npx web-push generate-vapid-keys` → add VAPID keys | ⬜ Not done — PWA push untested |
 | 9  | `notifications.py` (Telegram + PWA push) | ✅ Already implemented — not a stub |
 | 10 | Notifications wired into `alert_engine.py` channel routing (`_dispatch_immediate`) | ✅ Already implemented |
-| 11 | Telegram end-to-end test | ⚠️ Manual `/telegram/test` works; automatic daily dispatch never fired — see "Reliability & Ops" (cron never actually ran) |
+| 11 | Telegram end-to-end test | ✅ Done (2026-07-30) — automatic dispatch confirmed via manual GitHub Actions trigger, messages received |
 | 12 | PWA Push service worker (`frontend/public/sw.js`) | ⬜ Not done |
 | 13 | Telegram categorization assistant | ⬜ On hold — depends on the email ingestion pipeline instead of "bank API" now |
 
@@ -582,8 +584,8 @@ linked payment. Flag any code still confusing the two during the codebase audit 
 | Deployment (Render + Vercel)                   | ✅ Live — small-group testing ran for ~1 month                    |
 | Multi-user live testing                        | 🔄 Ran, surfaced the reliability + friction issues tracked above  |
 | 6 · Banking API Sync (Plaid/GoCardless/TrueLayer) | ❌ Attempted, blocked — see "Banking API Sync" — pivoted to email ingestion |
-| Notifications (Telegram + PWA)                 | 🔄 Built, but never fired automatically — see "Reliability & Ops" |
-| Reliability fix (cron → GitHub Actions)         | 🔄 Diagnosed, designed, not yet implemented                       |
+| Notifications (Telegram + PWA)                 | ✅ Telegram confirmed firing automatically (2026-07-30); PWA push still untested (VAPID keys not generated) |
+| Reliability fix (cron → GitHub Actions)         | ✅ Done (2026-07-30) — confirmed end-to-end                       |
 | Supabase Security Advisor review                | ⬜ Not started                                                    |
 | Codebase orphan/dead-code audit                 | ⬜ Not started                                                    |
 | Docs overhaul                                    | 🔄 This pass (2026-07-29) — ongoing                               |
