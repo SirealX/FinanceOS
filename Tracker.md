@@ -22,7 +22,7 @@ don't skip ahead.**
 |---|------|--------|---------|
 | 1 | **Reliability fix** — replace broken cron, stop Supabase pausing | ✅ Done (2026-07-30) | Confirmed end-to-end via manual Actions trigger — see "Reliability & Ops" below |
 | 2 | **Supabase Security Advisor review** — check Database → Advisors for actual RLS/security warnings | ⬜ Not started | Nothing has been reviewed yet — don't assume specific issues, go look |
-| 3 | **Codebase orphan/dead-code audit** — find unused fields, dead functions, stale logic (e.g. the `is_draft`/`reviewed` confusion, see "Known Gotchas") | ⬜ Not started | Needs a real file-by-file pass, not a skim |
+| 3 | **Codebase orphan/dead-code audit** — find unused fields, dead functions, stale logic (e.g. the `is_draft`/`reviewed` confusion, see "Known Gotchas") | ⬜ Not started | Needs a real file-by-file pass, not a skim. **Also check:** the "digest" naming in code/UI against the 3-type notification model — see "Notification Model — 3 Types" note under Phase 5 |
 | 4 | **Docs overhaul** — bring every `.md` file in line with actual repo state | ⬜ Not started | Do this *after* the audit (#3), not before, so it isn't stale again immediately |
 | 5 | **Database normalization + scalability** | ⬜ Not started | Tied to Cesar's coursework — do this collaboratively, explain reasoning, don't just hand over a schema diff |
 | 6 | **Email ingestion pipeline (bank-transaction automation)** | ⬜ Design agreed, not built | See "Email Ingestion Pipeline" below — build after the schema settles |
@@ -494,6 +494,46 @@ already implemented in code; what's missing is the *trigger*, not the dispatch l
 ```
 alembic upgrade head
 ```
+
+### Notification Model — 3 Types (clarified 2026-07-30, design note — nothing built from this yet)
+
+Discussed to sort out confusion between "digest," "tiers," and what the user actually experiences.
+Cesar's 3-type model is the correct mental model going forward — **not** tiers, tiers are an
+internal implementation detail of Type 1 below.
+
+**Type 1 — Financial info alerts.** Everything currently in `alert_engine.py`: bill due, low
+balance, debt overdue, budget exceeded, spending spike, import reminder. ✅ Built and working.
+Internally split into Tier 1 (fires immediately per event, e.g. bill due) and Tier 2 (held and
+bundled into one once-daily message, only sent if something's actually pending — confirmed in
+code, `_send_digest()` returns early if nothing's queued). **Important terminology correction:**
+what the code and UI currently call "the digest" is just this Tier 2 bundling/timing mechanism —
+it is NOT Type 2 below, despite the name similarity. This caused real confusion in this session and
+will again unless renamed or clearly re-labeled during the audit (see note at bottom).
+
+**Type 2 — The resume.** A period-end summary/recap — user picks the cadence (monthly, quarterly,
+etc.) — that narratively summarizes how the period went (spending vs. plan, savings progress, etc.)
+and may or may not fold in whichever Type 1 items fired during that window. **Does not exist in
+code at all.** No model field, no assembly function, nothing — not even a stub. Open design
+questions, unresolved:
+- Format: rigid preset template vs. something more fluid/generated per period — Cesar flagged this
+  specifically as needing more thought, not decided.
+- Whether/how it references Type 1 alerts that fired during the period, or stands alone.
+- Cadence storage — needs its own preference field; `periodic_review_freq` (Type 3, below) is
+  a different setting and shouldn't be reused/conflated for this.
+
+**Type 3 — The review reminder.** A nudge to sit down and redo your budgeting (monthly / quarterly
+/ semester) so the system's numbers stay accurate. ✅ Built — `periodic_review_freq` on
+`AlertPreferences`, evaluated in `_check_periodic_review()`. Known limitation: only supports those
+three fixed cadences, no custom period for users with bigger/different budgeting cycles.
+
+**Next steps (not scheduled yet — revisit when alerts come back up as a work item):**
+- Design Type 2 properly (content + cadence field) before building it.
+- During the codebase/orphan audit (item #3 in Current Priorities): re-check the "digest" naming
+  in code/UI against this 3-type model and decide whether to rename it (e.g. to
+  `tier2_bundle_enabled` or similar) so it stops colliding with Type 2's "resume" concept in
+  conversation and in the UI copy.
+
+---
 
 ### Banking API Sync — attempted, blocked, pivoted (corrected 2026-07-29)
 
