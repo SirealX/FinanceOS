@@ -41,6 +41,7 @@ USAGE IN A ROUTER
 
 import os
 import json
+import time
 import urllib.request
 from dotenv import load_dotenv
 from fastapi import Depends, HTTPException, status
@@ -82,7 +83,26 @@ def _fetch_jwks() -> dict | None:
         return None
 
 
-_JWKS: dict | None = _fetch_jwks()
+# ── ARCH-04: TTL-aware JWKS cache ────────────────────────────────────────────
+# Supabase rotates keys every ~6 hours.  Fetching once at startup means a key
+# rotation locks out all users until the server restarts.  The cache below
+# refreshes automatically after _JWKS_TTL_SECONDS to avoid this.
+
+_JWKS_CACHE: dict | None = _fetch_jwks()   # warm the cache at startup
+_JWKS_FETCHED_AT: float = time.time()
+_JWKS_TTL_SECONDS: float = 6 * 3600        # 6 hours — matches Supabase rotation
+
+
+def _get_jwks() -> dict | None:
+    """Return the cached JWKS, refreshing if the cache is older than TTL."""
+    global _JWKS_CACHE, _JWKS_FETCHED_AT
+    if (time.time() - _JWKS_FETCHED_AT) > _JWKS_TTL_SECONDS:
+        fresh = _fetch_jwks()
+        if fresh is not None:
+            _JWKS_CACHE = fresh
+        # Always advance the timestamp so we don't hammer the endpoint on failure
+        _JWKS_FETCHED_AT = time.time()
+    return _JWKS_CACHE
 
 
 # ── Key resolution ─────────────────────────────────────────────────────────────
@@ -103,17 +123,18 @@ def _resolve_key(token: str):
 
     alg = header.get("alg", "ES256")
 
-    if alg in ("ES256", "RS256") and _JWKS and "keys" in _JWKS:
+    jwks = _get_jwks()   # ARCH-04 fix: use TTL-refreshed cache
+    if alg in ("ES256", "RS256") and jwks and "keys" in jwks:
         kid = header.get("kid")
         # Prefer the key whose `kid` matches the token header
         matched_key = None
-        for k in _JWKS["keys"]:
+        for k in jwks["keys"]:
             if kid and k.get("kid") == kid:
                 matched_key = k
                 break
         # If no kid match, use the first available key
-        if matched_key is None and _JWKS["keys"]:
-            matched_key = _JWKS["keys"][0]
+        if matched_key is None and jwks["keys"]:
+            matched_key = jwks["keys"][0]
 
         if matched_key:
             # Pass the raw JWK dict — jwt.decode() will construct the key internally

@@ -26,7 +26,7 @@ Three sync functions:
 """
 
 from sqlalchemy.orm import Session
-from ..models import BudgetCategory, Transaction, Bill, Debt, SavingsGoal
+from ..models import BudgetCategory, Transaction, Bill, Debt, SavingsGoal, RecurringTransaction
 
 
 # ── Direction 1: entity → transaction ────────────────────────────────────────
@@ -149,8 +149,27 @@ def reverse_transaction(tx: Transaction, db: Session) -> None:
         if debt:
             debt.balance = float(debt.balance) + amount
 
+            # BUG-05 fix: if the debt was paid off, restoring a payment must
+            # un-mark it as paid off and reactivate its recurring template.
+            if debt.is_paid_off and float(debt.balance) > 0:
+                debt.is_paid_off = False
+
+                # Reactivate the linked recurring template so future payments
+                # are still scheduled.
+                if debt.recurring_transaction_id:
+                    recurring = db.query(RecurringTransaction).filter(
+                        RecurringTransaction.id == debt.recurring_transaction_id,
+                    ).first()
+                    if recurring:
+                        recurring.is_active = True
+
         db.delete(hub)
         db.commit()
+
+        # Re-sync budget category planned amount after restoring balance.
+        if debt:
+            from ..routers.debts import sync_debt_minimums_to_budget
+            sync_debt_minimums_to_budget(hub.user_id, db)
 
     elif hub.type.startswith("Savings:"):
         goal_name = hub.type[len("Savings: "):]

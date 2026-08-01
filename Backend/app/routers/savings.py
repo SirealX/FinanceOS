@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from ..database import get_db
 from ..models import SavingsGoal, BudgetCategory, Transaction
 from ..dependencies import get_current_user
-from pydantic import BaseModel
+from pydantic import BaseModel, validator
 from datetime import date as DateType
 from typing import Optional
 import uuid
@@ -21,12 +21,19 @@ class SavingsCreate(BaseModel):
 class SavingsUpdate(BaseModel):
     goal_name: Optional[str] = None
     target_amount: Optional[float] = None
-    current_amount: Optional[float] = None
+    # BUG-07 fix: current_amount removed — it must only change via /contribute
+    # so every change is backed by a ledger transaction.
     deadline_date: Optional[DateType] = None
 
 
 class ContributionUpdate(BaseModel):
     amount: float
+
+    @validator("amount")
+    def amount_must_be_positive(cls, v):  # ARCH-03
+        if v <= 0:
+            raise ValueError("Contribution amount must be greater than zero.")
+        return v
 
 
 @router.get("/")
@@ -201,6 +208,23 @@ def delete_goal(
     if not goal:
         raise HTTPException(status_code=404, detail="Goal not found")
 
+    # BUG-06 fix: delete all BudgetCategory hub rows for this goal and their
+    # linked transactions before removing the goal itself.  Without this, hub
+    # rows and savings transactions were left as orphans when a goal was deleted.
+    hubs = db.query(BudgetCategory).filter(
+        BudgetCategory.user_id == current_user,
+        BudgetCategory.type    == f"Savings: {goal.goal_name}",
+    ).all()
+    for hub in hubs:
+        if hub.transaction_id:
+            tx = db.query(Transaction).filter(
+                Transaction.id == hub.transaction_id,
+            ).first()
+            if tx:
+                db.delete(tx)
+        db.delete(hub)
+
+    db.flush()
     db.delete(goal)
     db.commit()
     return {"message": "Goal deleted"}

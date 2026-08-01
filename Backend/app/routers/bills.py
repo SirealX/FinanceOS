@@ -1,10 +1,12 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 from ..database import get_db
 from ..models import Bill, BudgetCategory, Category, Debt, Transaction
 from ..services.entity_sync import entity_to_transaction
+from ..services.payment_utils import apply_cc_charge
 from ..dependencies import get_current_user
-from pydantic import BaseModel
+from pydantic import BaseModel, validator
 from datetime import date as DateType
 from typing import Optional
 from dateutil.relativedelta import relativedelta
@@ -45,8 +47,8 @@ def sync_bill_provisions_to_budget(user_id: str, db: Session) -> None:
     non_monthly = (
         db.query(Bill)
         .filter(
-            Bill.user_id  == user_id,
-            Bill.frequency.notin_(["Monthly", "monthly"]),
+            Bill.user_id           == user_id,
+            func.lower(Bill.frequency) != "monthly",  # BUG-17 fix: case-insensitive
         )
         .all()
     )
@@ -159,6 +161,12 @@ class BillCreate(BaseModel):
     frequency: str
     category: Optional[str] = "Other"
     status: str = "unpaid"
+
+    @validator("amount")
+    def amount_must_be_positive(cls, v):  # ARCH-03
+        if v <= 0:
+            raise ValueError("Bill amount must be greater than zero.")
+        return v
 
 
 class BillUpdate(BaseModel):
@@ -284,27 +292,16 @@ def update_bill(
         # "Mark as paid" — no draft needed, create confirmed immediately.
         payment_method = update_data.get("payment_method")
 
-        # ── Credit card detection ─────────────────────────────────────────────
-        # If the user selected one of their named credit cards as the payment
-        # method (e.g. "AMEX Gold"), treat this the same way as a cc_charge:
-        #   • source = "cc_charge"  → excluded from cash balance calculations
-        #   • CC debt balance increases by the bill amount
-        # This mirrors the same detection in transactions.py.
-        tx_source = "bill_payment"
-        if payment_method:
-            cc_debt = db.query(Debt).filter(
-                Debt.user_id     == current_user,
-                Debt.type        == "credit_card",
-                Debt.name        == payment_method,
-                Debt.is_paid_off == False,
-            ).first()
-            if cc_debt:
-                tx_source = "cc_charge"
-                cc_debt.balance = float(cc_debt.balance or 0) + float(bill.amount)
+        # ARCH-02 fix: CC detection extracted to apply_cc_charge() to avoid
+        # duplication between this router and transactions.py.
+        tx_source = apply_cc_charge(
+            current_user, payment_method, float(bill.amount), db,
+            default_source="bill_payment",
+        )
 
         tx = Transaction(
             user_id=current_user,
-            date=DateType.today(),
+            date=bill.due_date,   # BUG-10 fix: use the bill's due date, not today
             description=bill.name,
             category=bill.category or "Other",
             type="expense",

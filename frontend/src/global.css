@@ -1,20 +1,19 @@
 /* ============================================================
    FinanceOS — Global Stylesheet
-   Tailwind CSS v4  |  Design System v1.0
+   Custom CSS + inline styles  |  Design System v1.0
    Reference: DESIGN_SYSTEM.md before adding anything here.
+   (Tailwind CSS removed 2026-08-01 — was installed/configured but
+   never actually used anywhere; every component styles via inline
+   style={{}} or the custom classes below. See item #3 audit.)
    ============================================================ */
-
-@import "tailwindcss";
 
 /* ── 1. Design Tokens ─────────────────────────────────────────
    All tokens live here. Every color, size, and spacing value
-   used in the app must come from this block.
-   @theme registers them as Tailwind utilities automatically:
-     --color-bg-base  →  bg-bg-base, text-bg-base, etc.
-     --spacing-page   →  p-page, gap-page, etc.
+   used in the app must come from this block. Plain CSS custom
+   properties, referenced directly as var(--color-bg-base) etc.
    ──────────────────────────────────────────────────────────── */
 
-@theme {
+:root {
   /* --- Backgrounds ----------------------------------------- */
   --color-bg-base: #0b0d16;
   --color-bg-sidebar: #0e1020;
@@ -129,7 +128,7 @@
 }
 
 /* ── 2. Global Reset & Base ───────────────────────────────────
-   Minimal reset on top of Tailwind's preflight.
+   Minimal reset.
    ──────────────────────────────────────────────────────────── */
 
 *,

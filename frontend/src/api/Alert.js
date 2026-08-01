@@ -167,14 +167,15 @@ export function useAlerts() {
       setAlerts((prev) => prev.filter((a) => a.id !== id));
       return;
     }
+    // BUG-13 fix: capture wasUnread from the current alerts snapshot BEFORE
+    // any state updates — referencing `alerts` inside setUnread's updater
+    // captured a stale closure from the outer scope.
+    const wasUnread = alerts.find(
+      (a) => a.id === id && !a.read_at && a.tier <= 2,
+    );
     await deleteAlert(id);
     setAlerts((prev) => prev.filter((a) => a.id !== id));
-    setUnread((prev) => {
-      const wasUnread = alerts.find(
-        (a) => a.id === id && !a.read_at && a.tier <= 2,
-      );
-      return wasUnread ? Math.max(0, prev - 1) : prev;
-    });
+    setUnread((prev) => (wasUnread ? Math.max(0, prev - 1) : prev));
   }
 
   async function savePrefs(updates) {

@@ -166,6 +166,10 @@ def log_recurring(
     # Create the transaction.
     # savings and debt_payment types are excluded from the manual transaction
     # endpoint but are valid here — this router is the controlled creation path.
+    # BUG-12 fix: debt_payment recurring logs must carry source="debt_payment"
+    # so they are correctly excluded from cash-expense reports and budget actuals.
+    tx_source = "debt_payment" if row.type == "debt_payment" else "manual"
+
     tx = Transaction(
         user_id        = current_user,
         date           = row.next_due,
@@ -174,7 +178,7 @@ def log_recurring(
         type           = row.type,
         amount         = float(row.amount),
         payment_method = None,
-        source         = "manual",
+        source         = tx_source,
         is_draft       = False,
         reviewed       = True,
     )

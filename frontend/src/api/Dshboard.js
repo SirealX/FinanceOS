@@ -258,7 +258,9 @@ export function getBalanceTrendConfig(chartData, projectedOpening, fmtK = format
   };
 }
 
-export function getDonutChartConfig(donutData) {
+// BUG-14 fix: accept a currency-aware formatter so the tooltip respects the
+// user's currency instead of always hardcoding "$".
+export function getDonutChartConfig(donutData, fmt = formatAmount) {
   return {
     type: "doughnut",
     data: {
@@ -280,7 +282,7 @@ export function getDonutChartConfig(donutData) {
         legend: { display: false },
         tooltip: {
           ...TOOLTIP_STYLE,
-          callbacks: { label: (ctx) => ` $${ctx.parsed.toLocaleString()}` },
+          callbacks: { label: (ctx) => ` ${fmt(ctx.parsed)}` },
         },
       },
     },
@@ -576,7 +578,6 @@ export function useDashboard() {
   const [debtMinTotal, setDebtMinTotal] = useState(null); // sum of min payments
   const [upcomingBills, setUpcomingBills] = useState([]); // unpaid bills due ≤ 30 days
   const [plannedIncome, setPlannedIncome] = useState(null); // sum of income budget planned
-  const [earmarkedTotal, setEarmarkedTotal] = useState(null); // #4 reserved funds total
   const [loading, setLoading] = useState(!IS_DEMO);
   const [slowLoad, setSlowLoad] = useState(false); // true when load takes >2.5 s
   const [error, setError] = useState(null);
@@ -596,6 +597,8 @@ export function useDashboard() {
     const p = PERIOD_MAP[activePeriod] ?? "this_month";
 
     try {
+      // BUG-16 fix: also fetch debt_payment budget categories and actuals so
+      // the dashboard budget panel reflects committed debt minimums.
       const [
         summaryRes,
         cashflowRes,
@@ -607,7 +610,8 @@ export function useDashboard() {
         debtsRes,
         billsRes,
         incomeCatsRes,
-        earmarkedRes,
+        debtActualsRes,
+        debtBudgetCatsRes,
       ] = await Promise.all([
         client.get(`/summary?period=${p}`),
         client.get(`/cashflow?period=${p}`),
@@ -621,24 +625,31 @@ export function useDashboard() {
         client.get("/debts").catch(() => ({ data: [] })),
         client.get("/bills").catch(() => ({ data: [] })),
         client.get("/budget/categories?kind=income").catch(() => ({ data: [] })),
-        client.get("/earmarked/").catch(() => ({ data: [] })),   // #4
+        client.get(`/budget/actuals?period=${p}&kind=debt_payment`).catch(() => ({ data: [] })),
+        client.get("/budget/categories?kind=debt_payment").catch(() => ({ data: [] })),
       ]);
 
       setKpiData(summaryRes.data);
       setChartData(cashflowRes.data);
       setDonutData(breakdownRes.data);
 
-      // FIX #5: budgetCats already filtered to expense kind by the API call above
-      const budgetCats = budgetCatsRes.data;
-      const actualsMap = Object.fromEntries(
-        actualsRes.data.map((a) => [a.category, a.spent]),
-      );
+      // FIX #5: budgetCats already filtered to expense kind by the API call above.
+      // BUG-16 fix: merge expense and debt_payment categories into one unified map.
+      const budgetCats = [
+        ...budgetCatsRes.data,
+        ...(debtBudgetCatsRes.data ?? []),
+      ];
+      const actualsMap = Object.fromEntries([
+        ...actualsRes.data.map((a) => [a.category, a.spent]),
+        ...(debtActualsRes.data ?? []).map((a) => [a.category, a.spent]),
+      ]);
       const mult = activePeriod === "Last 3 Months" ? 3 : 1;
 
       setBudgetRows(
         budgetCats.map((c) => ({
           category: c.name,
           color: c.color,
+          kind: c.kind,
           planned: parseFloat(c.planned) * mult,
           spent: actualsMap[c.name] ?? 0,
         })),
@@ -676,13 +687,6 @@ export function useDashboard() {
       setDebtTotal(dTotal);
       setDebtOriginalTotal(dOrigTotal);
       setDebtMinTotal(dMinTotal);
-
-      // #4 — earmarked reserved funds total
-      const eTotal = (earmarkedRes.data ?? []).reduce(
-        (acc, e) => acc + parseFloat(e.amount ?? 0),
-        0,
-      );
-      setEarmarkedTotal(eTotal);
 
       // Upcoming bills: unpaid bills due within the next 30 days
       const today30 = new Date();
@@ -883,9 +887,11 @@ export function useDashboard() {
     );
   }, [chartData, period, formatAmountKCurrency]);
 
+  // BUG-14 fix: pass the currency-aware formatAmount from SettingsContext so
+  // the donut tooltip respects the user's chosen currency symbol.
   const donutChartConfig = useMemo(() => {
-    return getDonutChartConfig(IS_DEMO ? DASHBOARD_DONUT : donutData);
-  }, [donutData]);
+    return getDonutChartConfig(IS_DEMO ? DASHBOARD_DONUT : donutData, formatAmount);
+  }, [donutData, formatAmount]);
 
   // ── Net worth (internal — used for freeToSpend only, not exposed) ──────────
   const _netWorthBase = (() => {
@@ -901,8 +907,9 @@ export function useDashboard() {
     const base = projectedBankBalance ?? kpi.closingBalance;
     if (base === null || base === undefined) return null;
     const billsSum = upcomingBills.reduce((s, b) => s + parseFloat(b.amount ?? 0), 0);
-    const earmarked = earmarkedTotal ?? 0;
-    return Math.max(0, base - billsSum - earmarked);
+    // Note: earmarked_funds feature is shelved (2026-08-01 audit) — no UI ever
+    // creates an earmark, so this used to always subtract 0 anyway. See Tracker.md.
+    return Math.max(0, base - billsSum);
   })();
 
   return {

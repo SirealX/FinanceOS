@@ -12,7 +12,7 @@ class Transaction(Base):
     date               = Column(Date, nullable=False)
     description        = Column(String(255))
     category           = Column(String(100))
-    type               = Column(Enum("income", "expense", "savings", "debt_payment",
+    type               = Column(Enum("income", "expense", "savings", "debt_payment", "transfer",
                                      name="transaction_type"))
     amount             = Column(Numeric(10, 2))
     planned_amt        = Column(Numeric(10, 2))

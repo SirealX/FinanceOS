@@ -87,9 +87,10 @@ def _totals_by_type(db: Session, user_id: str, start: date, end: date) -> dict:
     rows = (
         db.query(Transaction.type, func.sum(Transaction.amount))
         .filter(
-            Transaction.user_id == user_id,
-            Transaction.date    >= start,
-            Transaction.date    <= end,
+            Transaction.user_id  == user_id,
+            Transaction.date     >= start,
+            Transaction.date     <= end,
+            Transaction.is_draft == False,   # BUG-19 fix
         )
         .group_by(Transaction.type)
         .all()
@@ -104,11 +105,12 @@ def _cc_charge_total(db: Session, user_id: str, start: date, end: date) -> float
     result = (
         db.query(func.sum(Transaction.amount))
         .filter(
-            Transaction.user_id == user_id,
-            Transaction.type    == "expense",
-            Transaction.source  == "cc_charge",
-            Transaction.date    >= start,
-            Transaction.date    <= end,
+            Transaction.user_id  == user_id,
+            Transaction.type     == "expense",
+            Transaction.source   == "cc_charge",
+            Transaction.date     >= start,
+            Transaction.date     <= end,
+            Transaction.is_draft == False,   # BUG-19 fix
         )
         .scalar()
     )
@@ -120,8 +122,9 @@ def _opening_totals(db: Session, user_id: str, before_date: date) -> dict:
     rows = (
         db.query(Transaction.type, func.sum(Transaction.amount))
         .filter(
-            Transaction.user_id == user_id,
-            Transaction.date    <  before_date,
+            Transaction.user_id  == user_id,
+            Transaction.date     <  before_date,
+            Transaction.is_draft == False,   # BUG-19 fix
         )
         .group_by(Transaction.type)
         .all()
@@ -134,10 +137,11 @@ def _opening_cc_charge_total(db: Session, user_id: str, before_date: date) -> fl
     result = (
         db.query(func.sum(Transaction.amount))
         .filter(
-            Transaction.user_id == user_id,
-            Transaction.type    == "expense",
-            Transaction.source  == "cc_charge",
-            Transaction.date    <  before_date,
+            Transaction.user_id  == user_id,
+            Transaction.type     == "expense",
+            Transaction.source   == "cc_charge",
+            Transaction.date     <  before_date,
+            Transaction.is_draft == False,   # BUG-19 fix
         )
         .scalar()
     )
@@ -183,10 +187,11 @@ def _total_for_month(db: Session, user_id: str, tx_type: str, year: int, month: 
     rows = (
         db.query(func.sum(Transaction.amount))
         .filter(
-            Transaction.user_id == user_id,
-            Transaction.type    == tx_type,
-            Transaction.date    >= start,
-            Transaction.date    <= end,
+            Transaction.user_id  == user_id,
+            Transaction.type     == tx_type,
+            Transaction.date     >= start,
+            Transaction.date     <= end,
+            Transaction.is_draft == False,   # BUG-19 fix
         )
         .scalar()
     )
@@ -200,10 +205,11 @@ def _total_types_for_month(db: Session, user_id: str, tx_types: list, year: int,
     rows = (
         db.query(func.sum(Transaction.amount))
         .filter(
-            Transaction.user_id == user_id,
+            Transaction.user_id  == user_id,
             Transaction.type.in_(tx_types),
-            Transaction.date    >= start,
-            Transaction.date    <= end,
+            Transaction.date     >= start,
+            Transaction.date     <= end,
+            Transaction.is_draft == False,   # BUG-19 fix
         )
         .scalar()
     )

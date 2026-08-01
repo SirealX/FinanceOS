@@ -23,7 +23,7 @@ from sqlalchemy.orm import Session
 from ..database import get_db
 from ..models import Category, Debt, BudgetCategory, Transaction, RecurringTransaction
 from ..dependencies import get_current_user
-from pydantic import BaseModel
+from pydantic import BaseModel, validator
 from typing import Optional
 from datetime import date as DateType
 import uuid
@@ -213,12 +213,24 @@ class DebtPaymentCreate(BaseModel):
     payment_method: str = "Bank Transfer"
     payment_date: Optional[DateType] = None
 
+    @validator("amount")
+    def amount_must_be_positive(cls, v):  # ARCH-03
+        if v <= 0:
+            raise ValueError("Payment amount must be greater than zero.")
+        return v
+
 
 class ChargeCreate(BaseModel):
     amount: float
     description: str = "Credit Card Purchase"
     category: str = "Other"
     charge_date: Optional[DateType] = None
+
+    @validator("amount")
+    def amount_must_be_positive(cls, v):  # ARCH-03
+        if v <= 0:
+            raise ValueError("Charge amount must be greater than zero.")
+        return v
 
 
 # ─────────────────────────────────────────────────────────────────────────────

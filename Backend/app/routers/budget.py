@@ -215,11 +215,13 @@ def get_budget_actuals(
             func.sum(Transaction.amount).label("spent"),
         )
         .filter(
-            Transaction.user_id == current_user,
-            Transaction.date    >= date_from,
-            Transaction.date    <= date_to,
+            Transaction.user_id  == current_user,
+            Transaction.date     >= date_from,
+            Transaction.date     <= date_to,
             Transaction.category.isnot(None),
             Transaction.type.isnot(None),
+            Transaction.is_draft == False,
+            Transaction.source   != "cc_charge",  # BUG-08 fix: CC charges hit the CC balance, not cash
         )
     )
 

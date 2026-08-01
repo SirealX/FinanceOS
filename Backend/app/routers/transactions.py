@@ -1,11 +1,11 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from ..database import get_db
-from ..models import Transaction, BudgetCategory, Debt
+from ..models import Transaction, BudgetCategory
 from ..services.entity_sync import transaction_to_entity, reverse_transaction
-from ..services.payment_utils import infer_payment_method
+from ..services.payment_utils import infer_payment_method, apply_cc_charge
 from ..dependencies import get_current_user
-from pydantic import BaseModel
+from pydantic import BaseModel, validator
 from datetime import date as DataType
 from typing import Optional
 import uuid
@@ -20,6 +20,12 @@ class TransactionCreate(BaseModel):
     type: str
     amount: float
     payment_method: Optional[str] = None
+
+    @validator("amount")
+    def amount_must_be_positive(cls, v):  # ARCH-03
+        if v <= 0:
+            raise ValueError("Transaction amount must be greater than zero.")
+        return v
 
 
 class TransactionUpdate(BaseModel):
@@ -126,22 +132,10 @@ def create_transaction(
             detail=f"Invalid type '{data.type}'. Must be one of: {', '.join(ALLOWED_MANUAL_TYPES)}.",
         )
 
-    # ── Credit card detection ─────────────────────────────────────────────────
-    # If the payment_method matches a known credit card name, record the
-    # transaction as source='cc_charge' and increase the CC balance.
-    # The transaction is still type='expense' for category/budget tracking,
-    # but the dashboard balance calc excludes cc_charge from cash outflow.
-    source = "manual"
-    if data.payment_method:
-        cc_debt = db.query(Debt).filter(
-            Debt.user_id    == current_user,
-            Debt.type       == "credit_card",
-            Debt.name       == data.payment_method,
-            Debt.is_paid_off == False,
-        ).first()
-        if cc_debt:
-            source = "cc_charge"
-            cc_debt.balance = float(cc_debt.balance or 0) + data.amount
+    # ARCH-02 fix: CC detection extracted to apply_cc_charge() — single source of truth.
+    # If payment_method matches an active credit card, source becomes "cc_charge"
+    # and the CC balance increases.  Otherwise source stays "manual".
+    source = apply_cc_charge(current_user, data.payment_method, data.amount, db)
 
     tx = Transaction(**data.dict(), source=source, user_id=current_user)
     db.add(tx)

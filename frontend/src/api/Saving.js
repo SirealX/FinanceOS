@@ -80,7 +80,11 @@ export const uid = () => String(++_id);
 // 3. PURE HELPERS
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** "$1,234.56" */
+/**
+ * @deprecated BUG-15 — hardcodes "$". Consumers should use `formatAmount`
+ * from `useSettings()` (returned by `useSavings()`) so the currency symbol
+ * and decimal rules match the user's settings.
+ */
 export function formatAmount(n) {
   return (
     "$" +
@@ -229,15 +233,29 @@ function normalizeSavingsGoal(raw) {
   };
 }
 
-/** Build the payload the backend expects when creating or updating a goal. */
-function buildGoalPayload(form) {
-  return {
-    goal_name: form.name.trim(),
+/**
+ * Build the payload the backend expects when creating or updating a goal.
+ *
+ * BUG-20 fix:
+ *   • `emoji` removed — the backend SavingsGoal model has no `emoji` column;
+ *     sending it is silently dropped by the ORM but then lost on reload.
+ *   • `current_amount` is only included on CREATE.  On edit it must NOT be
+ *     sent — balance adjustments must go through /contribute so every change
+ *     is backed by a ledger transaction.  (BUG-07 frontend fix)
+ *
+ * @param {object}  form      - goalForm state object
+ * @param {boolean} isEditing - true when updating an existing goal
+ */
+function buildGoalPayload(form, isEditing = false) {
+  const payload = {
+    goal_name:     form.name.trim(),
     target_amount: parseFloat(form.target),
-    current_amount: parseFloat(form.current) || 0,
     deadline_date: form.deadline,
-    emoji: form.emoji ?? "🎯",
   };
+  if (!isEditing) {
+    payload.current_amount = parseFloat(form.current) || 0;
+  }
+  return payload;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -347,7 +365,7 @@ export function useSavings() {
 
     // Live mode
     try {
-      const payload = buildGoalPayload(goalForm);
+      const payload = buildGoalPayload(goalForm, !!editingGoal);
       if (editingGoal) {
         await updateSavingsGoal(editingGoal.id, payload);
       } else {

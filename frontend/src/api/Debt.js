@@ -95,6 +95,11 @@ export function getSliderParams(currency) {
 
 // ── Pure helpers ──────────────────────────────────────────────────────────────
 
+/**
+ * @deprecated BUG-15 — hardcodes "$". Consumers should use `formatAmount`
+ * from `useSettings()` (returned by `useDebts()` as `formatAmount`) so the
+ * correct currency symbol and decimal rules are applied.
+ */
 export function formatAmount(n) {
   return (
     "$" +
@@ -105,6 +110,10 @@ export function formatAmount(n) {
   );
 }
 
+/**
+ * @deprecated BUG-15 — hardcodes "$". Use `formatAmountK` returned by
+ * `useDebts()` which is built from the currency-aware `currencySymbol`.
+ */
 export function formatAmountK(n) {
   if (n >= 1000) return "$" + (n / 1000).toFixed(1) + "k";
   return formatAmount(n);
@@ -482,9 +491,12 @@ export function useDebts() {
       setDebts((prev) => prev.filter((d) => d.id !== id));
       return;
     }
+    // BUG-11 fix: call fetchDebts() for a full server-side refresh instead of
+    // local state mutation.  This ensures creditCards and budgetSurplus are
+    // also updated — they depend on the full debt list from the server.
     try {
       await deleteDebt(id);
-      setDebts((prev) => prev.filter((d) => d.id !== id));
+      await fetchDebts();
     } catch (err) {
       setError("Delete failed. Please try again.");
       console.error(err);

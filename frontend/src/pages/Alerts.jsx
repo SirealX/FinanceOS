@@ -211,7 +211,7 @@ function AlertItem({ alert, onDismiss, onDelete, alertMode, onNavigate }) {
               whiteSpace: "nowrap",
             }}
           >
-            Dismiss
+            Mark read
           </button>
         )}
         <button

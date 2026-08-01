@@ -310,7 +310,7 @@ def _check_debt_overdue(
             db.query(Transaction)
             .filter(
                 Transaction.user_id  == user_id,
-                Transaction.type     == "expense",
+                Transaction.type     == "debt_payment",   # BUG-01 fix: was "expense"
                 Transaction.source.in_(["bill_payment", "manual", "debt_payment"]),
                 func.to_char(Transaction.date, "YYYY-MM") == month_key,
                 Transaction.description.ilike(f"%{debt.name}%"),
@@ -441,8 +441,9 @@ def _check_budget_exceeded(
             func.sum(Transaction.amount).label("actual"),
         )
         .filter(
-            Transaction.user_id == user_id,
-            Transaction.type    == "expense",
+            Transaction.user_id  == user_id,
+            Transaction.type     == "expense",
+            Transaction.source   != "cc_charge",   # BUG-09 fix: exclude CC charges
             Transaction.is_draft == False,
             func.to_char(Transaction.date, "YYYY-MM") == month_key,
         )
@@ -765,6 +766,7 @@ def _check_periodic_review(
     # Decide whether today is a review day for the chosen frequency
     is_review_day = False
     period_label  = ""
+    key           = ""   # BUG-18 fix: initialise before conditionals to avoid UnboundLocalError
 
     if freq == "monthly" and today.day == 1:
         import calendar
@@ -937,7 +939,8 @@ def _estimate_spendable_balance(user_id: str, db: Session) -> Optional[Decimal]:
         db.query(func.sum(Transaction.amount))
         .filter(
             Transaction.user_id  == user_id,
-            Transaction.type.in_(["expense", "savings"]),
+            Transaction.type.in_(["expense", "savings", "debt_payment"]),  # BUG-02 fix: include debt_payment
+            Transaction.source   != "cc_charge",   # BUG-02 fix: exclude CC charges (not cash yet)
             Transaction.is_draft == False,
             Transaction.date     <= today,
         )
@@ -1009,7 +1012,8 @@ def _check_cc_payment_due(user_id: str, today: date, db: Session) -> list[Alert]
 
         days_until = (cycle_end - today).days
         if 0 <= days_until <= 7:
-            entity_id = str(debt.id)
+            # BUG-03a fix: include month suffix so the alert re-fires each cycle
+            entity_id = f"{debt.id}:{today.year}-{today.month:02d}"
             if not _already_fired(user_id, "cc_payment_due", entity_id, db):
                 balance = Decimal(str(float(debt.balance or 0)))
                 alerts.append(_make_alert(
@@ -1052,7 +1056,8 @@ def _check_bnpl_installment_due(user_id: str, today: date, db: Session) -> list[
 
         days_until = (next_due - today).days
         if days_until == 3:
-            entity_id = str(debt.id)
+            # BUG-03b fix: include month suffix so the alert re-fires each cycle
+            entity_id = f"{debt.id}:{today.year}-{today.month:02d}"
             if not _already_fired(user_id, "bnpl_installment_due", entity_id, db):
                 amt = Decimal(str(float(debt.installment_amount or debt.min_payment or 0)))
                 paid = debt.installments_paid or 0

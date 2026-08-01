@@ -18,6 +18,7 @@ Keywords cover both English and Spanish (Bancolombia / LATAM banks).
 """
 
 import re
+from typing import Optional
 
 
 # ── Keyword patterns ──────────────────────────────────────────────────────────
@@ -80,3 +81,50 @@ def infer_payment_method(description: str) -> str:
         return "QR"
 
     return "Debit Card"
+
+
+# ── CC charge helper (ARCH-02) ────────────────────────────────────────────────
+
+def apply_cc_charge(
+    user_id: str,
+    payment_method: Optional[str],
+    amount: float,
+    db,
+    default_source: str = "manual",
+) -> str:
+    """
+    Check whether payment_method names an active credit card for this user.
+    If so, increase that card's balance by amount and return "cc_charge".
+    Otherwise return default_source unchanged.
+
+    Centralises the CC-detection logic that was duplicated in transactions.py
+    and bills.py (ARCH-02).  Import Debt lazily to avoid circular imports
+    between services/ and routers/.
+
+    Args:
+        user_id:        caller's user UUID string
+        payment_method: payment method name from the request (may be None)
+        amount:         transaction amount to add to CC balance
+        db:             active SQLAlchemy session
+        default_source: source value to return when no CC match is found
+
+    Returns:
+        "cc_charge" if matched, otherwise default_source.
+    """
+    if not payment_method:
+        return default_source
+
+    from ..models import Debt  # lazy import — avoids circular dependency
+
+    cc_debt = db.query(Debt).filter(
+        Debt.user_id     == user_id,
+        Debt.type        == "credit_card",
+        Debt.name        == payment_method,
+        Debt.is_paid_off == False,
+    ).first()
+
+    if cc_debt:
+        cc_debt.balance = float(cc_debt.balance or 0) + amount
+        return "cc_charge"
+
+    return default_source
