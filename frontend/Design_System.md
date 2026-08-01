@@ -1,9 +1,12 @@
 # FinanceOS — Design System & UI Guidelines
 
-> **Version:** 1.0  
-> **Last Updated:** 2026-04-02  
-> **Status:** Active — reference this document before making any UI changes  
-> **Stack:** React · Chart.js · Tailwind (or plain CSS with the tokens below)
+> **Version:** 1.1
+> **Last Updated:** 2026-08-01 — corrected stack line (Tailwind was removed from the project
+> 2026-08-01, see `Tracker.md` item #3 audit; this doc was untracked until the item #4 docs-
+> overhaul prep pass found it) and folded into the tracked docs list.
+> **Status:** Active — reference this document before making any UI changes
+> **Stack:** React · Chart.js · plain CSS (custom design tokens below, consumed via
+> `var(--token)` in inline `style={{}}` and hand-written CSS classes — no CSS framework)
 
 ---
 

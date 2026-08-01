@@ -8,14 +8,24 @@ A full-stack personal finance and budgeting application. Track income, expenses,
 
 ## Features
 
-- **Dashboard** — Income vs. expenses overview, cashflow chart, budget progress, expense breakdown
-- **Transactions** — Manual entry, CSV/XLSX bulk import from bank statements, draft review workflow
-- **Budget** — Plan monthly budgets per category, compare planned vs. actual spending
-- **Bills & Subscriptions** — Track recurring payments, mark as paid, upcoming due-date view
-- **Debt Tracker** — Manage balances and interest rates, Waterfall and Snowball payoff simulator
+- **Dashboard** — Balance (bank-anchored or computed), income vs. expenses, cashflow chart,
+  budget progress, expense breakdown, upcoming/overdue bills, Free-to-Spend calculation
+- **Transactions** — Manual entry, CSV/XLSX bulk import from bank statements, draft review
+  workflow, text search by description, recurring transaction templates
+- **Budget** — Plan monthly budgets per category (expense/income/savings), compare planned vs.
+  actual, planned surplus/deficit summary
+- **Bills & Subscriptions** — Track recurring payments, mark as paid, auto-reset to unpaid each
+  cycle, sinking-fund provision for annual/quarterly bills
+- **Debt Tracker** — Credit cards, loans, and BNPL as distinct types (amortization, billing
+  cycles, installments), Avalanche and Snowball payoff simulator that accounts for real budget
+  capacity
 - **Savings Goals** — Multiple independent goals with progress tracking and contribution history
-- **Smart Alerts** — Rule-based engine: over-budget, spending spikes, bills due, low balance
-- **Export** — Download transactions as CSV or XML for any date range
+- **Smart Alerts** — Rule-based engine (14 rule types — over-budget, spending spikes, bills/debt
+  due, low balance, goal pace, periodic review, and more), delivered via Telegram and PWA push,
+  informative or interactive (deep-link) mode per alert
+- **Month-End Review** — Score ring, budget scorecard, bills/debt snapshot, auto-generated
+  insights (built, not yet linked in navigation — see `Tracker.md`)
+- **Export** — Download transactions as CSV or XML (currently capped at a 3-month range)
 - **Demo Mode** — Full walkthrough with mock data, no sign-up required
 
 ---
@@ -25,7 +35,7 @@ A full-stack personal finance and budgeting application. Track income, expenses,
 | Layer | Technology |
 |---|---|
 | Frontend | React 19 + Vite |
-| Styling | Tailwind CSS v4 |
+| Styling | Custom CSS (design tokens) + inline styles — no CSS framework |
 | Charts | Chart.js |
 | Auth | Supabase Auth (email/password) |
 | API Client | Axios |
@@ -35,7 +45,7 @@ A full-stack personal finance and budgeting application. Track income, expenses,
 | Migrations | Alembic |
 | Frontend Host | Vercel |
 | Backend Host | Render |
-| Scheduled Jobs | Render Cron |
+| Scheduled Jobs | GitHub Actions (daily cron via `POST /scheduler/run`) — Render's Cron Jobs have no free tier |
 
 ---
 
@@ -206,22 +216,33 @@ alembic revision --autogenerate -m "description of change"
 
 Alerts are evaluated in two ways:
 
-- **Immediate (Tier 1):** Triggered in real time when a transaction is created or updated
-- **Daily digest (Tier 2):** Evaluated by the scheduler cron job (runs daily at 08:00 UTC)
+- **Immediate (Tier 1):** Fires right away for time-sensitive events (bill due, debt overdue, etc.)
+- **Daily digest (Tier 2):** Bundled and sent once a day, only if something's actually pending —
+  evaluated by the scheduler (daily GitHub Actions workflow, `POST /scheduler/run`)
 
-Rules currently implemented: `over_budget`, `near_limit`, `bill_due`, `large_transaction`, `spending_spike`, `low_balance`, `import_reminder`, `goal_reached`.
+14 rule types are implemented in `alert_engine.py`: `bill_due`, `low_balance`, `debt_overdue`,
+`goal_reached`, `budget_exceeded`, `spending_spike`, `import_reminder`, `balance_reminder`,
+`goal_behind_pace`, `periodic_review`, `cc_payment_due`, `bnpl_installment_due`, `loan_paid_off`,
+`min_payment_warning`.
 
-External delivery (Telegram + PWA push) is stubbed pending `TELEGRAM_BOT_TOKEN` and `VAPID_*` key setup.
+External delivery is via Telegram (confirmed working end-to-end) and PWA push (implemented, but
+untested — VAPID keys not yet generated).
 
 ---
 
 ## Roadmap
 
-- [ ] Banking API integration (Plaid / GoCardless / TrueLayer)
-- [ ] Telegram notifications (bot setup required)
-- [ ] PWA push notifications (VAPID setup required)
-- [ ] Monthly PDF report export
-- [ ] Auto-categorization rules engine (post banking API)
+- [ ] Database normalization pass (see `Tracker.md` item #5) — includes writing a proper Alembic
+      baseline migration, since the original `create_initial_tables` migration and 7 others were
+      never committed to git
+- [ ] Email ingestion pipeline (Gmail `+alias` forwarding → parser → transaction) — designed, not
+      built; replaces live bank-API sync as the near-term automation path
+- [ ] PWA push notifications (VAPID key generation + service worker)
+- [ ] Monthly PDF report export / lifting the 3-month export cap
+- [ ] Wire `MonthEndReview.jsx` into navigation (built, currently unreachable)
+- [ ] Variable/irregular income support
+- [ ] Live bank-account sync (Plaid / GoCardless / TrueLayer) — attempted, blocked by bank/aggregator
+      access limits, not abandoned but not the near-term path (see `Tracker.md`)
 
 ---
 

@@ -22,9 +22,9 @@ don't skip ahead.**
 |---|------|--------|---------|
 | 1 | **Reliability fix** — replace broken cron, stop Supabase pausing | ✅ Done (2026-07-30) | Confirmed end-to-end via manual Actions trigger — see "Reliability & Ops" below |
 | 2 | **Supabase Security Advisor review** — check Database → Advisors for actual RLS/security warnings | ✅ Done (2026-07-30) | RLS enabled on all 12 public tables, no policies (not needed — see "Supabase Security Advisor Review" below) |
-| 3 | **Codebase orphan/dead-code audit** — find unused fields, dead functions, stale logic (e.g. the `is_draft`/`reviewed` confusion, see "Known Gotchas") | ⬜ Not started | Needs a real file-by-file pass, not a skim. **Also check:** the "digest" naming in code/UI against the 3-type notification model — see "Notification Model — 3 Types" note under Phase 5. **Also check:** `earmarked_funds` table — not referenced anywhere in this schema, likely orphaned (found during Security Advisor review, 2026-07-30). **Also check:** Alerts "Dismiss" button doesn't actually remove the alert (found 2026-07-30) — see "Known Bugs" below |
-| 4 | **Docs overhaul** — bring every `.md` file in line with actual repo state | ⬜ Not started | Do this *after* the audit (#3), not before, so it isn't stale again immediately |
-| 5 | **Database normalization + scalability** | ⬜ Not started | Tied to Cesar's coursework — do this collaboratively, explain reasoning, don't just hand over a schema diff. **Also fold in:** unindexed FK / unused index cleanup from Security Advisor (2026-07-30) — see below |
+| 3 | **Codebase orphan/dead-code audit** — find unused fields, dead functions, stale logic (e.g. the `is_draft`/`reviewed` confusion, see "Known Gotchas") | ✅ **Done (2026-08-01)** | Full file-by-file pass done, then every finding that was actually #3's own scope was fixed the same day. See **"🔍 Codebase Audit — Findings & Fix Checklist (2026-08-01)"** below. What's *not* fixed was deliberately re-homed, not dropped: schema/column items (`planned_amt`, `auto_detected`, the missing Alembic baseline) move to item #5; stale-docs items move to item #4; `MonthEndReview` nav wiring stays a future alerts-item. |
+| 4 | **Docs overhaul** — bring every `.md` file in line with actual repo state | ✅ **Done (2026-08-01)** | `README.md`, `Backend/Requiremnets.md` (superseded banner), `frontend/Design_System.md` fixed and updated. All 8 legacy Finance-tracker docs stamped and status-reconciled, including a full item-by-item re-walk of the 26-issue `financial-logic-audit*.md` series. See **"📚 Item #4 Prep — Legacy Docs Reconciliation (2026-08-01)"** below for the full trail. Two real follow-ups this pass surfaced: variable-income support and the 3-month export cap/no-PDF-report — both added to the roadmap in `README.md`, neither urgent enough for their own numbered item yet |
+| 5 | **Database normalization + scalability** | ⬜ Not started | Tied to Cesar's coursework — do this collaboratively, explain reasoning, don't just hand over a schema diff. **Also fold in:** unindexed FK / unused index cleanup from Security Advisor (2026-07-30) — see below; **from the item #3 audit (2026-08-01):** the missing Alembic baseline migration (prerequisite, do first), plus the `Transaction.planned_amt` / `Bill.auto_detected` dead-column decisions; **and from the item #4 prep pass (2026-08-01):** `entity_sync.py`'s name-based entity lookups (fragile/collision-prone within a user's own records), plus the three still-open items from the April `AUDIT_REPORT.md` risk list — `user_id` nullable on data tables, unused `Preferences.month_start`, no pagination on `GET /transactions` — all reconfirmed still open this pass, see below |
 | 6 | **Email ingestion pipeline (bank-transaction automation)** | ⬜ Design agreed, not built | See "Email Ingestion Pipeline" below — build after the schema settles |
 
 **Why this order:** reliability first because nothing else can be tested reliably while Supabase
@@ -243,14 +243,305 @@ tracker's schema section. Added to item #3 (codebase audit).
 
 ---
 
+## 🔍 Codebase Audit — Findings & Fix Checklist (2026-08-01)
+
+Full file-by-file pass, item #3. Backend and frontend, both a sanity/wiring
+pass (is everything actually connected the way it looks) and a deep
+dead-code pass (unused fields, dead functions, orphaned files). Detailed
+reasoning for every item below lives in `AUDIT_FINDINGS.md` in the repo
+root if more context is needed — this section is the actionable summary.
+
+**✅ Item #3 closed (2026-08-01).** Everything below that was actually in
+#3's own scope (small cleanups, and the two decisions that were #3's to
+make) is fixed. Everything that turned out to belong to schema work or docs
+work was deliberately re-homed to item #5 / item #4 / a future alerts item
+instead of being forced into #3 — see the "Re-homed" subsections below.
+
+### Fix checklist — small, low-risk (✅ fixed 2026-08-01)
+
+- [x] **Renamed Alerts "Dismiss" button label** → "Mark read"
+      (`frontend/src/pages/Alerts.jsx`). Behavior was already correct
+      (marks read, Tier-2 items need to stay in DB for digest de-dup) —
+      only the label was misleading. The separate "✕" delete button
+      already worked correctly end-to-end and is untouched.
+- [x] **Deleted `Backend/app/services/reconciliation.py`.** Both functions
+      were empty `pass` stubs, confirmed zero external references
+      (`models.py`/`preferences.py`/a migration filename hit "bank balance
+      reconciliation" as an unrelated feature name, not this file — double
+      checked before deleting).
+- [x] **"The resume" → "Type 2 notification" rename** — checked the actual
+      codebase: the nickname was never in real code, only ever used
+      conversationally in these tracker docs, which already say "Type 2
+      notification" throughout the current text. Nothing left to rename.
+
+### Decisions made & actioned 2026-08-01
+
+- [x] **`earmarked_funds` → shelved (Cesar's call).** Removed the dead
+      `client.get("/earmarked/")` call and `earmarkedTotal` state from
+      `frontend/src/api/Dshboard.js` — the Free-to-Spend calc no longer
+      subtracts it (was always 0 in practice, since no UI ever created an
+      earmark, so behavior is unchanged for every real user). Deleted the
+      unused `frontend/src/api/earmarked.js` wrapper file. **Backend CRUD
+      (`routers/earmarked.py`) left untouched** — it's real, working code,
+      just not reachable from any UI right now. Building the actual
+      create/edit/delete UI is now its own future feature item, not part
+      of closing #3.
+- [x] **Tailwind CSS → removed (Cesar's call).** Uninstalled `tailwindcss`
+      + `@tailwindcss/vite` from `frontend/package.json`, removed the
+      plugin from `vite.config.js`, removed `@import "tailwindcss"` from
+      `global.css` and converted the `@theme {}` token block to a plain
+      `:root {}` custom-properties block (tokens are consumed via
+      `var(--x)` in inline styles throughout the app, not through Tailwind
+      utility classes, so this is a no-op for actual visuals). Verified
+      with `npm install` (removed 14 packages) + `npm run build` (clean).
+
+### Not part of #3 — stays a future item
+
+- [ ] **Wire `MonthEndReview.jsx` into `App.jsx`'s nav.** This *is* the
+      Type 2 notification content — a real, working month-end scorecard
+      (score ring, budget category table, bills, debt snapshot,
+      auto-generated insights via `buildInsights()`), reading live data
+      from existing endpoints. It is simply never imported into
+      `NAV_ITEMS_CONFIG`, so no user can ever open it. Confirmed
+      2026-08-01 (contradicts this file's older "Type 2 does not exist in
+      code at all" note under Phase 5 — corrected below). Remaining real
+      gaps once wired in: only has a "Last Month / This Month" toggle
+      (no monthly/quarterly/semester cadence), and doesn't fold in fired
+      Type 1 alerts (stands alone). Both are open design questions to
+      resolve when this gets built out properly. **Deliberately not done
+      as part of #3** — it's a build/design task, not an audit fix; pick
+      it up when alerts work comes back around (see Phase 5 section below).
+
+### Re-homed to item #5 (database normalization) — not part of closing #3
+
+Both of these are dead-column removals that need a migration. Bundling them
+into #5's schema work instead of writing one-off migrations now, ahead of
+the missing-baseline-migration fix that #5 already needs as a prerequisite
+(see the structural find directly below).
+
+- [ ] **`Transaction.planned_amt` column — dead, no reads or writes
+      anywhere in the repo.** Budget-vs-actual tracking is fully handled
+      via `BudgetCategory`/`Category.planned_amount` instead. Decide when
+      #5 is worked: drop the column, or repurpose for an actual
+      per-transaction planned-amount feature if one is wanted.
+- [ ] **`Bill.auto_detected` field — write-only, always `False`, never
+      read.** Hardcoded in `routers/bills.py` at creation, never set `True`
+      anywhere, never checked anywhere. Looks like a stub for the shelved
+      banking-API bill-auto-detection idea. Same question as above: keep
+      as a placeholder for a future feature, or remove — decide during #5.
+
+### 🔴 Bigger structural find — relevant to item #5, not just item #3
+
+- [ ] **The Alembic migration history is missing its own foundation — 8
+      migrations were never committed to git**, including the original
+      `create_initial_tables` migration. Nothing in the *tracked* history
+      creates `transactions`, `bills`, `debts`, `savings_goals`,
+      `categories`, `preferences`, or `budget_categories` — only compiled
+      `.pyc` leftovers in a local `__pycache__` folder prove these
+      migrations ever existed (`60f07ef1fab8_create_initial_tables`,
+      `649adf51abdf_add_categories_table`, `4ff6598f1998_add_preferences_table`,
+      `13541706eb86_add_budget_categories`, `68a3f1b7b628_add_category_fk_columns`,
+      `aa3ceb629c05_new_changes`, `d2133d11b1b7_bills_add_category_frequency_to_string`,
+      `5dadb7844cf9_add_is_draft_and_planned_amount` — all from early
+      April, never in `git log --all --full-history`, for any of them).
+      The current alembic "root" (`4b9d636e9e03`) has a docstring saying
+      it revises `5dadb7844cf9`, but its actual `down_revision` was
+      hand-edited to `None` after that file disappeared, so Alembic
+      stopped complaining.
+      **Practical impact: `alembic upgrade head` cannot rebuild this
+      database from an empty Postgres instance today.** This is a real
+      disaster-recovery / new-environment gap, and it's why `planned_amt`,
+      `auto_detected`, and `is_draft`'s true origin is untraceable — the
+      migration that created them was never version-controlled.
+      **Recommend: write a proper baseline migration (autogenerate against
+      an empty DB reflecting current `models.py`, or a schema-only dump
+      from live Supabase) as a prerequisite for item #5's normalization
+      work**, not an afterthought once #5 is already underway.
+
+### Confirmed clean / no action needed
+
+- All 14 backend routers registered and reachable; only 3 of ~50 total
+  endpoints have no frontend caller, and all 3 have a good reason
+  (`earmarked` writes — above; `backfill-payment-method` — a deliberate
+  one-shot admin tool per its own docstring, fine as-is; JWKS endpoint —
+  meant for external callers, not our frontend).
+- `requirements.txt` — no orphaned Plaid/GoCardless/TrueLayer dependencies
+  left over from the shelved banking-API path.
+- Re-scanned for leaked secrets (per this file's own note to double-check
+  during this audit) — clean, only placeholder examples in docs.
+- `recurring.py`/`recurring_transactions` (`#22`) — fully built and wired,
+  real UI in `Transactions.jsx`. Just undocumented here until now (see docs
+  note below).
+- Debt table's BNPL/credit-card/amortization fields — all fully wired both
+  directions, no orphans.
+- `alert_engine.py`, `entity_sync.py`, `payment_utils.py`, `file_parser.py`
+  — no dead functions found.
+- All frontend context providers, `ImportWizard`, `ExportModal`,
+  `OnboardingWizard` — all properly wired. All exported functions in the
+  main data-hook files (`Alert.js`, `Transaction.js`, `Dshboard.js`,
+  `Debt.js`, `Bill.js`, `Budget.js`, `Saving.js`, `Settings.js`,
+  `MonthEndReview.js`) are genuinely consumed — no unused exports.
+
+### Docs-vs-repo gaps (feeds item #4 — flagging now so it isn't lost, not fixing yet)
+
+- `backend/app/categorization.py` and `backend/app/routers/sync.py` —
+  referenced in this file as "On hold" — **do not exist in the repo.**
+  Either never created or deleted at some point; this file's wording
+  should stop implying they're sitting there half-built.
+- `alert_engine.py` actually implements **14 check functions**, not the
+  "8 rule types" stated under Phase 5 below (bill_due, low_balance,
+  debt_overdue, goal_reached, budget_exceeded, spending_spike,
+  import_reminder, balance_reminder, goal_behind_pace, periodic_review,
+  cc_payment_due, bnpl_installment_due, loan_paid_off,
+  min_payment_warning) — all 14 confirmed wired into `evaluate_alerts()`.
+- `Backend/Requiremnets.md` (375 lines, note the filename typo) — the
+  original day-one project spec (dated 2026-04-01), predates every
+  tracked migration, almost certainly superseded by this file now. Needs
+  reconciling/retiring during the docs overhaul, not blind deletion.
+- Minor comment drift: `alert_engine.py` (lines ~23, ~956) still describes
+  `notifications.py` as "stubs / no-ops," which is stale — Step 9 confirmed
+  it's fully implemented, not a stub.
+
+---
+
+## 📚 Item #4 Prep — Legacy Docs Reconciliation (2026-08-01)
+
+Before writing the actual docs overhaul, every `.md` file in the separate `Finance-tracker`
+folder (not part of this repo — Cesar's own audit-history archive) was read and checked against
+the live code. **All files in that folder are legacy** — snapshots of past thinking/audits, not
+maintained going forward. Anything in them that's still unresolved gets pulled into this Tracker
+as a real item (below); anything already resolved just gets referenced here as legacy backing, the
+same way `AUDIT_FINDINGS.md` already works for item #3.
+
+### Legacy docs index (Finance-tracker folder — historical only, not updated going forward)
+
+| File | Covers | Status |
+|---|---|---|
+| `AUDIT_REPORT.md` | Backend-only audit, April 2026 — 5 bugs, 3 missing features, 3 risks | Mostly resolved — see reconciliation below for the 2 items still open |
+| `AUDIT_FINDINGS.md` | Full item #3 codebase audit detail (2026-08-01) | Already the backing doc for item #3 above, current |
+| `audit_update.md` | "Safe batch" + "risky batch" fixes, April 28 | Fully superseded — all 10 safe-batch + all 4 risky-batch items confirmed shipped |
+| `financial-logic-audit.md` (+ Part 2, Part 3) | 26 conceptual/financial-logic gaps, April 26 | Largely resolved — most map to features built since (recurring, earmarked, month-end review, liquid balance, savings rate fix, onboarding wizard). Not re-walked item-by-item — flagged as a real item #4 subtask below |
+| `DEBT_RESTRUCTURE_PLAN.md` | Credit card / loan / BNPL debt restructure design, May | Shipped — migrations `m1_extend_enums_for_debt.py` / `m2_debt_restructure_columns.py` are the last two in `alembic/versions/` |
+| `FinanceOS_How_It_Works.md` | Intended product behavior, narrative form | Held up well — reads accurate to current behavior on every section spot-checked. Good base doc for the overhaul rather than a from-scratch rewrite |
+| `UI_UX_REDESIGN_PLAN.md` | Dashboard declutter + mobile layout plan, May | Decision recorded below — current dashboard state is the intended final state |
+
+### The bigger finding — three undocumented fix-tracking series live only in code comments
+
+Verifying `AUDIT_REPORT.md`'s bugs against the code turned up numbered fix tags with **no
+write-up anywhere** — not in this file, not in any Finance-tracker doc. Cataloged this pass:
+
+**`BUG-01` – `BUG-20`** (backend + frontend, only `BUG-01` – `BUG-05` trace back to
+`AUDIT_REPORT.md`'s original five):
+
+| Tag | File | What it fixed |
+|---|---|---|
+| BUG-01 | `alert_engine.py` | Debt-overdue check reads `type == "debt_payment"`, was `"expense"` |
+| BUG-02 | `alert_engine.py` | `budget_exceeded` reads `Category.planned_amount`, not `BudgetCategory`; excludes `cc_charge`, includes `debt_payment` in spend checks |
+| BUG-03a/b | `alert_engine.py` | Periodic-review dedup key includes month suffix so the alert re-fires each cycle |
+| BUG-04 | `savings.py` | Pre-filled `current_amount` on goal creation now writes a real ledger transaction |
+| BUG-05 | `entity_sync.py` | Restoring a payment on a paid-off debt un-marks it paid-off + reactivates its recurring template |
+| BUG-06 | `savings.py` | Goal deletion cleans up orphaned hub rows + linked transactions |
+| BUG-07 | `savings.py` | `current_amount` removed from the update schema — only changeable via `/contribute` |
+| BUG-08 | `budget.py` | `cc_charge` transactions excluded from cash budget actuals |
+| BUG-09 | `alert_engine.py` | `cc_charge` excluded from spending-spike calc |
+| BUG-10 | `bills.py` | Bill-paid transaction uses the bill's `due_date`, not today's date |
+| BUG-11 | `Debt.js` | Delete now triggers a full server refetch instead of local state mutation (kept `creditCards`/`budgetSurplus` stale before) |
+| BUG-12 | `recurring.py` | `debt_payment` recurring logs carry `source="debt_payment"` |
+| BUG-13 | `Alert.js` | Fixed a stale-closure bug capturing `wasUnread` before state update |
+| BUG-14 | `Dshboard.js` | Donut chart tooltip uses the currency-aware formatter, not hardcoded `$` |
+| BUG-15 | `Debt.js` / `Saving.js` | Deprecated the hardcoded-`$` formatter helper in favor of `formatAmount` |
+| BUG-16 | `Dshboard.js` | Dashboard budget panel merges `debt_payment` categories in, not just expense |
+| BUG-17 | `bills.py` | Bill frequency check is now case-insensitive (`"Monthly"` vs `"monthly"`) |
+| BUG-18 | `alert_engine.py` | Initialized a variable before conditional branches to avoid `UnboundLocalError` |
+| BUG-19 | `summary.py` | Added `is_draft == False` filter to income/expense summary queries (drafts were being counted) |
+| BUG-20 | `Saving.js` | Payload builder drops a nonexistent `emoji` field and stops re-sending `current_amount` on edit |
+
+**`ARCH-02` – `ARCH-04`** (no `ARCH-01` found tagged anywhere — worth checking if it ever
+existed): `ARCH-02` = CC-charge detection extracted into one shared `apply_cc_charge()` helper
+(`payment_utils.py`) used by both `transactions.py` and `bills.py`. `ARCH-03` = positive-amount
+validators added consistently across `transactions.py`/`savings.py`/`debts.py`/`bills.py`.
+`ARCH-04` = TTL-aware JWKS cache in `dependencies.py` (Supabase rotates keys ~6h; the old
+fetch-once-at-startup approach would lock out all users on rotation).
+
+**`FIX #N`** — a *separate*, per-file numbering (not one global sequence) found in `Bill.js`/
+`Bills.jsx` (#1–#2, live categories/colors from `SettingsContext`), `Dshboard.js` (#5 budget-row
+filtering, #10 parallelized API calls), `Debt.js` (#6 currency-aware simulator slider, #7 verified
+avalanche/snowball logic is correct), and a few more not fully cataloged this pass
+(`Transactions.jsx`, `Budget.jsx`).
+
+**Recommendation for the actual overhaul:** don't try to write prose docs for all ~30 of these —
+most are exactly the kind of micro-fix that belongs in commit messages, not a doc. What's worth
+capturing is a short "fix history" pointer (this table, essentially) so nobody re-discovers the
+same things by re-auditing from scratch again.
+
+### RISK-01/02/03 (from `AUDIT_REPORT.md`) — re-checked this pass, all three still open
+
+Per Cesar's instruction, every open risk from the legacy audit was re-verified against current
+code rather than assumed:
+
+- **RISK-01 — `user_id` nullable on data tables.** Still `nullable=True` on `Transaction`,
+  `BudgetCategory`, and most other user-data tables in `models.py`. Folded into item #5 above.
+- **RISK-02 — `Preferences.month_start` unused.** Confirmed still true — `month_start` is a full,
+  validated preference field (`preferences.py`), but `summary.py`'s `_period_bounds()` still
+  hardcodes `today.replace(day=1)` and never reads it. Folded into item #5 above.
+- **RISK-03 — no pagination on `GET /transactions`.** Confirmed still true — no `limit`/`offset`
+  params on the endpoint. Folded into item #5 above (lower urgency than the other two until the
+  user base actually grows).
+
+### MISSING-03 — PDF export: not a current requirement
+
+Per Cesar: PDF export (`AUDIT_REPORT.md` MISSING-03, also mentioned in `Backend/Requiremnets.md`
+and `README.md`'s roadmap) is **not required for the app to function** right now — it stays a
+future nice-to-have, not a tracked bug. Docs overhaul should describe it as roadmap/future, not
+as an outstanding gap.
+
+### BUG-03 — transfer type enum mismatch — fixed today (2026-08-01)
+
+`Backend/app/models.py`'s `Transaction.type` SQLAlchemy `Enum(...)` literal was missing
+`"transfer"`, even though the live Postgres `transaction_type` enum already had it (added by
+migration `k5l6m7n8o9p0_add_transfer_type.py`, April 28) and `transactions.py`'s
+`ALLOWED_MANUAL_TYPES` already allowed it. **Fixed:** added `"transfer"` to the enum literal in
+`models.py` so the model matches both the DB and the router.
+
+### UI/UX dashboard — decision recorded (2026-08-01)
+
+Per Cesar: the current `Dashboard.jsx`/`Dshboard.js` state (post item #3 audit — no Free to
+Spend card, no Net Worth row, no Reserved Funds/Earmarked panel exposed) **is the intended final
+state**, not a partial/contradicted version of `UI_UX_REDESIGN_PLAN.md`. That plan doc is
+superseded by what actually shipped. Any leftover internal-only computations that no longer feed
+a visible UI element (e.g. `Dshboard.js`'s `_netWorthBase`, `freeToSpend`) should be treated as
+dead code for a future cleanup pass, not as missing UI to build.
+
+### Docs-overhaul writing pass — done (2026-08-01)
+
+- **`README.md`** — rewritten: Tailwind removed from stack table, "Render Cron" → "GitHub
+  Actions," alert-rule list corrected to all 14, Telegram moved from roadmap to confirmed-working,
+  recurring transactions / earmarked (built-then-shelved) / month-end review (built-but-unwired) /
+  debt restructure (credit card, loan, BNPL, amortization) / Free-to-Spend all added to Features.
+  Roadmap rewritten to match `Tracker.md`'s actual current priorities (item #5 normalization,
+  email ingestion, PWA push, export cap/PDF, MonthEndReview nav wiring, variable income, live
+  bank sync framed as blocked-not-abandoned).
+- **`Backend/Requiremnets.md`** — superseded banner added; kept as historical scope record, not
+  an active spec.
+- **`frontend/Design_System.md`** — Tailwind line fixed, now folded into the tracked docs list.
+- **`financial-logic-audit.md` Parts 1–3 (26 items)** — full item-by-item status re-walk done,
+  replacing the earlier spot-check. Two real, still-open gaps surfaced that weren't previously on
+  any active list: **Issue 16, variable/irregular income support** (nothing built) and **Issue
+  26, the 3-month export cap with no PDF/monthly-report format** (unchanged since April). Both
+  added to `README.md`'s roadmap. Issue 14 (net worth) is genuinely partial — computed internally,
+  never shown to the user, consistent with the 2026-08-01 dashboard-declutter decision.
+
+---
+
 ## 🐛 Known Bugs — Backlog (unscheduled)
 
 Found incidentally, not yet triaged into a numbered priority item.
 
-- **Alerts "Dismiss" button doesn't delete the alert** (found 2026-07-30, while spot-checking
-  notifications after the Security Advisor pass). Clicking dismiss doesn't remove it from the feed.
-  Needs investigation — check whether `frontend/src/pages/Alerts.jsx` is calling the right endpoint
-  and whether `backend/app/routers/alerts.py`'s DELETE actually fires. Flagged for item #3 audit.
+- ~~**Alerts "Dismiss" button doesn't delete the alert"**~~ — **investigated during the item #3
+  audit (2026-08-01), not actually a bug.** The button's own tooltip says "Mark as read," and that's
+  exactly what it does — intentional, since Tier-2 alerts need to stay in the DB for digest
+  de-duplication. The separate "✕" button already deletes correctly end-to-end. Real fix is just a
+  label rename ("Acknowledge" or "Mark read") — tracked in the item #3 fix checklist above, not here.
 - **Demo mode data is calendar-hardcoded, goes stale over time.** `MockData.js` seeds fixed dates —
   as real time passes those months fall out of any "current month" filtering, so the demo dashboard
   stops showing data even though it's supposed to always look populated. Needs demo data generated
@@ -521,7 +812,7 @@ More powerful but more complex to build.
 | `backend/alembic/versions/a1b2…`      | ✅ Done | Migration: source enum + reviewed + last_seen_at                                             |
 | `backend/alembic/versions/b2c3…`      | ✅ Done | Migration: alerts + alert_preferences tables                                                 |
 | `backend/app/models.py`               | ✅ Done | Alert + AlertPreferences models added; Transaction.reviewed + Preferences.last_seen_at added |
-| `backend/app/alert_engine.py`         | ✅ Done | All 8 rule types; source-aware routing; Tier 1 immediate dispatch stub                       |
+| `backend/app/alert_engine.py`         | ✅ Done | Actually 14 rule types now, not 8 — see item #3 audit section above; source-aware routing; Tier 1 immediate dispatch stub |
 | `backend/app/alert_scheduler.py`      | ✅ Done | Daily cron runner + POST /scheduler/run HTTP trigger                                         |
 | `backend/app/notifications.py`        | ✅ Done | Stub — functions defined, no-ops until Step 9 (TELEGRAM_BOT_TOKEN + VAPID keys)             |
 | `backend/app/routers/alerts.py`       | ✅ Done | GET /alerts, unread-count, PUT read/read-all, DELETE, GET/PUT preferences, Telegram, PWA    |
@@ -564,16 +855,30 @@ what the code and UI currently call "the digest" is just this Tier 2 bundling/ti
 it is NOT Type 2 below, despite the name similarity. This caused real confusion in this session and
 will again unless renamed or clearly re-labeled during the audit (see note at bottom).
 
-**Type 2 — The resume.** A period-end summary/recap — user picks the cadence (monthly, quarterly,
-etc.) — that narratively summarizes how the period went (spending vs. plan, savings progress, etc.)
-and may or may not fold in whichever Type 1 items fired during that window. **Does not exist in
-code at all.** No model field, no assembly function, nothing — not even a stub. Open design
-questions, unresolved:
-- Format: rigid preset template vs. something more fluid/generated per period — Cesar flagged this
-  specifically as needing more thought, not decided.
-- Whether/how it references Type 1 alerts that fired during the period, or stands alone.
-- Cadence storage — needs its own preference field; `periodic_review_freq` (Type 3, below) is
-  a different setting and shouldn't be reused/conflated for this.
+**Type 2 notification** (per the 2026-08-01 naming decision — no more "the resume," it just
+causes confusion, same lesson as the "digest" naming below). A period-end summary/recap — user
+picks the cadence (monthly, quarterly, etc.) — that narratively summarizes how the period went
+(spending vs. plan, savings progress, etc.) and may or may not fold in whichever Type 1 items
+fired during that window.
+
+**Corrected 2026-08-01 — this was wrong.** The line that used to be here said Type 2 "does not
+exist in code at all." It does: `frontend/src/pages/MonthEndReview.jsx` +
+`frontend/src/api/MonthEndReview.js` (tagged `#25`) are a complete, working implementation — score
+ring, budget category scorecard, bills paid/unpaid, debt snapshot, and a real `buildInsights()`
+function generating text insights, all built from live `/summary`, `/budget/categories`,
+`/budget/actuals`, `/bills`, `/debts` data (deliberately no new backend needed). **It's just never
+wired into `App.jsx`'s nav** — no sidebar link, no route, so no user can ever open it. That's almost
+certainly why it was believed to not exist — built in a session that never made it into this file.
+See the item #3 audit section above for the fix-checklist entry.
+
+Remaining open design questions, now scoped down to what's actually missing (not a from-scratch
+build):
+- Cadence: currently only a "Last Month / This Month" toggle — no monthly/quarterly/semester
+  selection, no preference field. Confirmed it does NOT reuse `periodic_review_freq` (good — avoids
+  the conflation flagged below), but doesn't have any broader cadence concept yet either.
+- Whether it should reference Type 1 alerts that fired during the period — currently stands alone,
+  generates its own independent insights from raw data instead.
+- Format is already resolved in practice: it's a rigid fixed template, not fluid/generated.
 
 **Type 3 — The review reminder.** A nudge to sit down and redo your budgeting (monthly / quarterly
 / semester) so the system's numbers stay accurate. ✅ Built — `periodic_review_freq` on
@@ -581,11 +886,11 @@ questions, unresolved:
 three fixed cadences, no custom period for users with bigger/different budgeting cycles.
 
 **Next steps (not scheduled yet — revisit when alerts come back up as a work item):**
-- Design Type 2 properly (content + cadence field) before building it.
-- During the codebase/orphan audit (item #3 in Current Priorities): re-check the "digest" naming
-  in code/UI against this 3-type model and decide whether to rename it (e.g. to
-  `tier2_bundle_enabled` or similar) so it stops colliding with Type 2's "resume" concept in
-  conversation and in the UI copy.
+- Wire `MonthEndReview.jsx` into `App.jsx` nav, then design the remaining gaps properly (cadence
+  field beyond this/last month; decide whether to fold in Type 1 alerts) — see item #3 audit
+  section above, it's mostly built already, not a from-scratch design.
+- "Digest" naming rename (e.g. to `tier2_bundle_enabled`) — checked during the item #3 audit
+  (2026-08-01), still unchanged/still an open decision, no new information either way.
 
 ---
 
@@ -681,8 +986,8 @@ linked payment. Flag any code still confusing the two during the codebase audit 
 | Notifications (Telegram + PWA)                 | ✅ Telegram confirmed firing automatically (2026-07-30); PWA push still untested (VAPID keys not generated) |
 | Reliability fix (cron → GitHub Actions)         | ✅ Done (2026-07-30) — confirmed end-to-end                       |
 | Supabase Security Advisor review                | ✅ Done (2026-07-30) — RLS enabled on all 12 tables, no policies needed |
-| Codebase orphan/dead-code audit                 | ⬜ Not started                                                    |
-| Docs overhaul                                    | 🔄 This pass (2026-07-29) — ongoing                               |
+| Codebase orphan/dead-code audit                 | ✅ Done (2026-08-01) — audit + in-scope fixes applied; schema items re-homed to #5, docs items to #4, see section above |
+| Docs overhaul                                    | ✅ Done (2026-08-01) — README, Requiremnets.md, Design_System.md updated; all 8 legacy docs reconciled |
 | Database normalization + scalability            | ⬜ Not started — own session, tied to coursework                  |
 | Email ingestion pipeline                        | 🔄 Designed, not built                                            |
 
@@ -701,7 +1006,13 @@ Then name the specific item from "Current Priorities," e.g.:
 
 - "Let's implement the reliability fix — the GitHub Actions workflow and render.yaml cleanup"
 - "Let's go through Supabase's Security Advisor findings"
-- "Let's do the codebase orphan/dead-code audit"
+- Item #3 (codebase orphan/dead-code audit) is fully done as of 2026-08-01 — audit + every in-scope
+  fix applied. `AUDIT_FINDINGS.md` in the repo root has the full detailed reasoning behind every
+  finding if more context is needed.
+- Item #4 (docs overhaul) is fully done as of 2026-08-01 — legacy docs reconciled, `README.md` /
+  `Backend/Requiremnets.md` / `frontend/Design_System.md` updated. Next up is #5 (database
+  normalization) — see "Current Priorities" at the top, it now carries several extra items folded
+  in from both the #3 audit and the #4 reconciliation pass.
 - "Let's work on database normalization — I want to actually understand the reasoning, not just get a diff"
 - "Let's build the email ingestion pipeline"
 

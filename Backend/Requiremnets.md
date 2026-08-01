@@ -1,8 +1,18 @@
 # Personal Finance App — Project Requirements
 
-> **Status:** In Progress  
-> **Last Updated:** 2026-04-01  
-> **Stack:** React · FastAPI · PostgreSQL (Supabase) · Chart.js  
+> **Superseded — 2026-08-01.** This is the original day-one project spec (2026-04-01) and predates
+> essentially everything built since: Phases 1–4, Auth, Alerts, recurring transactions, earmarked
+> funds, the debt restructure (credit card/loan/BNPL types), Month-End Review, and the Type 1/2/3
+> notification model are all missing from this doc. Several things listed as planned here shipped
+> differently than described — e.g. `POST /debts/simulate` was never built as a backend endpoint,
+> the payoff simulator runs client-side instead; the banking-API sync (`sync.py`,
+> `categorization.py`) was abandoned in favor of an email-ingestion pipeline; WhatsApp/Twilio
+> delivery became Telegram + PWA push. Kept here as the original scope record, not as an active
+> spec. **`Tracker.md` (repo root) is the live source of truth** for what's built and what's next.
+>
+> **Status:** Superseded by `Tracker.md`
+> **Last Updated:** 2026-04-01 (original)
+> **Stack:** React · FastAPI · PostgreSQL (Supabase) · Chart.js
 > **Hosting:** Vercel (frontend) · Render (backend)
 
 ---
