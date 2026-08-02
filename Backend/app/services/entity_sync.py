@@ -89,6 +89,17 @@ def transaction_to_entity(
     hub.amount = tx.amount
     hub.date   = tx.date
 
+    # CC-charge hubs are identified by tx.source, not a "Debt:"-prefixed
+    # hub.type -- charge_credit_card() deliberately sets hub.type to the
+    # expense category name (e.g. "Groceries") so it still groups correctly
+    # in expense reporting, which means the hub.type-prefix branches below
+    # never match it. Checked first, before those branches, for that reason.
+    if tx.source == "cc_charge":
+        hub.categories_name = tx.category
+        db.commit()
+        _adjust_cc_charge(hub, old_amount, new_amount, db)
+        return
+
     if hub.type.startswith("Bill:"):
         hub.categories_name = tx.category
 
@@ -109,6 +120,13 @@ def transaction_to_entity(
     elif hub.type.startswith("Savings:"):
         db.commit()
         _adjust_savings(hub, old_amount, new_amount, db)
+
+        # Re-sync the "Savings" budget category — editing a contribution
+        # changes the goal's current_amount, which changes how much is still
+        # needed per month (same reasoning as the Debt: branch above).
+        from ..routers.savings import sync_savings_to_budget
+        sync_savings_to_budget(hub.user_id, db)
+        db.commit()
 
     else:
         db.commit()
@@ -132,6 +150,21 @@ def reverse_transaction(tx: Transaction, db: Session) -> None:
         return
 
     amount = float(tx.amount)
+
+    # Same reasoning as transaction_to_entity above -- cc_charge hubs are
+    # identified by tx.source, never by a "Debt:"-prefixed hub.type.
+    if tx.source == "cc_charge":
+        debt = db.query(Debt).filter(
+            Debt.id == hub.debt_id,
+            Debt.user_id == hub.user_id,
+        ).first()
+        if debt:
+            # Undo the balance increase this charge originally caused.
+            debt.balance = max(0.0, float(debt.balance) - amount)
+
+        db.delete(hub)
+        db.commit()
+        return
 
     if hub.type.startswith("Bill:"):
         bill = db.query(Bill).filter(
@@ -190,6 +223,13 @@ def reverse_transaction(tx: Transaction, db: Session) -> None:
         db.delete(hub)
         db.commit()
 
+        # Re-sync the "Savings" budget category after restoring the goal's
+        # current_amount — same reasoning as the Debt: branch above.
+        if goal:
+            from ..routers.savings import sync_savings_to_budget
+            sync_savings_to_budget(hub.user_id, db)
+            db.commit()
+
 
 # ── Private helpers ───────────────────────────────────────────────────────────
 
@@ -208,6 +248,30 @@ def _adjust_debt(
 
     debt.balance = float(debt.balance) + old_amount
     debt.balance = max(0.0, float(debt.balance) - new_amount)
+    db.commit()
+
+
+def _adjust_cc_charge(
+    hub: BudgetCategory,
+    old_amount: float,
+    new_amount: float,
+    db: Session,
+) -> None:
+    """
+    Mirror of _adjust_debt, opposite sign: a debt PAYMENT decreases the
+    balance (so editing it re-adds the old amount before subtracting the
+    new one), but a CC CHARGE increases the balance, so editing it must
+    un-add the old amount before re-adding the new one.
+    """
+    debt = db.query(Debt).filter(
+        Debt.id == hub.debt_id,
+        Debt.user_id == hub.user_id,
+    ).first()
+    if not debt:
+        return
+
+    debt.balance = max(0.0, float(debt.balance) - old_amount)
+    debt.balance = float(debt.balance) + new_amount
     db.commit()
 
 

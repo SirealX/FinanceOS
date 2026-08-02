@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from ..database import get_db
-from ..models import SavingsGoal, BudgetCategory, Transaction
+from ..models import SavingsGoal, BudgetCategory, Transaction, Category
 from ..dependencies import get_current_user
 from pydantic import BaseModel, validator
 from datetime import date as DateType
@@ -9,6 +9,95 @@ from typing import Optional
 import uuid
 
 router = APIRouter(prefix="/savings", tags=["savings"])
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Budget sync helper — keeps the single "Savings" category in sync with what
+# active goals actually need per month. Mirrors debts.py's
+# sync_debt_minimums_to_budget() (same trigger points: goal create / update /
+# contribute / delete; same one-row-per-user target), so the "Savings"
+# planned amount is never something the user hand-types anymore.
+# ─────────────────────────────────────────────────────────────────────────────
+
+_SAVINGS_CATEGORY_NAME = "Savings"
+
+
+def sync_savings_to_budget(user_id: str, db: Session) -> None:
+    """
+    Recalculate the total monthly contribution needed across every active
+    savings goal and write that single number into the user's "Savings"
+    budget Category row (kind='savings').
+
+    Per-goal math ports Saving.js's goalStatus()/monthlyNeeded exactly, so
+    this total always agrees with what each goal card already tells the user
+    it needs per month:
+
+      - goal already reached (current >= target) -> contributes 0
+      - no deadline_date set                      -> contributes 0 (no pace
+                                                       to compute against)
+      - deadline already passed, or <1 calendar
+        month left                                -> contributes the full
+                                                       remaining amount (a
+                                                       monthly rate would be
+                                                       meaningless over <1mo,
+                                                       same reasoning as the
+                                                       frontend)
+      - otherwise                                 -> remaining / monthsLeft
+    """
+    today = DateType.today()
+
+    goals = db.query(SavingsGoal).filter(SavingsGoal.user_id == user_id).all()
+
+    total_needed = 0.0
+    for g in goals:
+        target = float(g.target_amount or 0)
+        current = float(g.current_amount or 0)
+        remaining = max(target - current, 0.0)
+
+        if remaining <= 0 or not g.deadline_date:
+            continue
+
+        days_left = (g.deadline_date - today).days
+        months_left = days_left / 30.44
+
+        if months_left <= 1:
+            total_needed += remaining
+        else:
+            total_needed += remaining / months_left
+
+    # Inherit color/sort_order from the shared system "Savings" row (seeded by
+    # POST /categories/seed) so a first-time sync doesn't clobber the look of
+    # the category the user already sees in Settings.
+    sys_cat = db.query(Category).filter(
+        Category.user_id.is_(None),
+        Category.name    == _SAVINGS_CATEGORY_NAME,
+        Category.kind    == "savings",
+    ).first()
+
+    cat = db.query(Category).filter(
+        Category.user_id == user_id,
+        Category.name    == _SAVINGS_CATEGORY_NAME,
+        Category.kind    == "savings",
+    ).first()
+
+    if cat:
+        cat.planned_amount = total_needed
+        cat.is_active      = True
+    else:
+        cat = Category(
+            id             = uuid.uuid4(),
+            user_id        = user_id,
+            name           = _SAVINGS_CATEGORY_NAME,
+            kind           = "savings",
+            color          = sys_cat.color if sys_cat else "#A78BFA",
+            planned_amount = total_needed,
+            sort_order     = sys_cat.sort_order if sys_cat else 998,
+            system         = False,
+            is_active      = True,
+        )
+        db.add(cat)
+
+    db.flush()
 
 
 class SavingsCreate(BaseModel):
@@ -95,6 +184,7 @@ def create_goal(
         db.flush()
         hub.transaction_id = tx.id
 
+    sync_savings_to_budget(current_user, db)
     db.commit()
     db.refresh(goal)
     return goal
@@ -122,6 +212,8 @@ def update_goal(
 
     for key, value in data.dict(exclude_unset=True).items():
         setattr(goal, key, value)
+
+    sync_savings_to_budget(current_user, db)
     db.commit()
     db.refresh(goal)
     return goal
@@ -186,6 +278,7 @@ def log_contribution(
         float(goal.target_amount),
     )
 
+    sync_savings_to_budget(current_user, db)
     db.commit()
     db.refresh(goal)
     return goal
@@ -228,5 +321,7 @@ def delete_goal(
 
     db.flush()
     db.delete(goal)
+    db.flush()
+    sync_savings_to_budget(current_user, db)
     db.commit()
     return {"message": "Goal deleted"}

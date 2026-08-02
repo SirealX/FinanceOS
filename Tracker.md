@@ -25,7 +25,7 @@ don't skip ahead.**
 | 3 | **Codebase orphan/dead-code audit** — find unused fields, dead functions, stale logic (e.g. the `is_draft`/`reviewed` confusion, see "Known Gotchas") | ✅ **Done (2026-08-01)** | Full file-by-file pass done, then every finding that was actually #3's own scope was fixed the same day. See **"🔍 Codebase Audit — Findings & Fix Checklist (2026-08-01)"** below. What's *not* fixed was deliberately re-homed, not dropped: schema/column items (`planned_amt`, `auto_detected`, the missing Alembic baseline) move to item #5; stale-docs items move to item #4; `MonthEndReview` nav wiring stays a future alerts-item. |
 | 4 | **Docs overhaul** — bring every `.md` file in line with actual repo state | ✅ **Done (2026-08-01)** | `README.md`, `Backend/Requiremnets.md` (superseded banner), `frontend/Design_System.md` fixed and updated. All 8 legacy Finance-tracker docs stamped and status-reconciled, including a full item-by-item re-walk of the 26-issue `financial-logic-audit*.md` series. See **"📚 Item #4 Prep — Legacy Docs Reconciliation (2026-08-01)"** below for the full trail. Two real follow-ups this pass surfaced: variable-income support and the 3-month export cap/no-PDF-report — both added to the roadmap in `README.md`, neither urgent enough for their own numbered item yet |
 | 5 | **Database normalization + scalability** | ✅ **Done (2026-08-02)** | Worked collaboratively item-by-item — see **"🗄️ Item #5 — Database Normalization & Scalability (2026-08-02)"** below for the full trail. All 7 sub-items closed: Alembic baseline, `planned_amt`/`auto_detected` drops, FK index cleanup, `entity_sync.py` FK rework, `user_id` NOT NULL, `month_start` wiring, `GET /transactions` pagination. Two real follow-ups surfaced along the way, not fixed yet, added to "Known Bugs" below: the CC-charge debt-reversal gap, and the cashflow chart's month labels still being calendar-only |
-| 6 | **Email ingestion pipeline (bank-transaction automation)** | 🔄 Code-complete, not live (2026-08-02) | Schema, poller, and parser (5 real fixtures, all passing) all built. Not yet: commit/push, Render env vars, Cesar's local connection test, forward rule setup — see "Email Ingestion Pipeline" below |
+| 6 | **Email ingestion pipeline (bank-transaction automation)** | ✅ **Done (2026-08-02)** | Deployed and confirmed working end-to-end on a real transaction — see "Email Ingestion Pipeline" below |
 
 **Why this order:** reliability first because nothing else can be tested reliably while Supabase
 keeps pausing mid-session. Security Advisor before normalization because it's five minutes of
@@ -154,9 +154,9 @@ The Supabase DB is shared between local and production so this only needs runnin
 | `VAPID_PUBLIC_KEY`       | Backend `.env` + Render + frontend + Vercel | ⬜ Not yet generated                                          |
 | `VAPID_PRIVATE_KEY`      | Backend `.env` + Render only                | ⬜ Never expose to frontend                                   |
 | `VAPID_CONTACT_EMAIL`    | Backend `.env` + Render only                | ⬜ After VAPID key generation                                 |
-| `GMAIL_CLIENT_ID`        | Backend `.env` + Render                     | ⚠️ Set in `.env` (2026-08-02) — **not yet on Render.** See item #6. |
-| `GMAIL_CLIENT_SECRET`    | Backend `.env` + Render                     | ⚠️ Set in `.env` (2026-08-02) — **not yet on Render.**        |
-| `GMAIL_REFRESH_TOKEN`    | Backend `.env` + Render                     | ⚠️ Set in `.env` (2026-08-02) — **not yet on Render.** Test-user token, doesn't expire on its own. |
+| `GMAIL_CLIENT_ID`        | Backend `.env` + Render                     | ✅ Set on both, confirmed working (2026-08-02)                |
+| `GMAIL_CLIENT_SECRET`    | Backend `.env` + Render                     | ✅ Set on both, confirmed working (2026-08-02)                |
+| `GMAIL_REFRESH_TOKEN`    | Backend `.env` + Render                     | ✅ Set on both, confirmed working (2026-08-02) — regenerated once with `gmail.modify` scope after the readonly-scope 403, see item #6. Test-user token, doesn't expire on its own. |
 
 > Note: `ALERTS_SPEC.md` and `INTERCONNECTION_ADR.md` are referenced throughout this file (and in
 > code comments) but do not currently exist in the repo. Either they were never committed or were
@@ -727,6 +727,43 @@ Found incidentally, not yet triaged into a numbered priority item.
 
 ---
 
+## 🔄 Reset My Data (2026-08-02)
+
+Self-service data wipe, requested mid-item-#6 testing (Cesar had stopped using the app for a
+while, wanted to re-test from a clean slate after all the item #3/#4/#5/#6 changes).
+
+**Deliberately scoped to the calling user only** — this is a shared production DB with other
+testers' real data in it from the multi-user trial, so there is no "reset everyone" version.
+
+- **Backend:** `POST /account/reset` (`Backend/app/routers/account.py`, new file). Deletes every
+  row the caller owns across `transactions`, `budget_categories` (hub rows), `bills`, `debts`,
+  `savings_goals`, `earmarked_funds`, `recurring_transactions`, and `alerts`. Delete order doesn't
+  matter — every FK among these is `ondelete="SET NULL"` in `models.py`, confirmed by reading all
+  of them before writing this, not assumed.
+- **Deliberately kept:** `Preferences` (currency, month_start, `ingest_token`, bank-balance
+  settings), `AlertPreferences` (notification channels/thresholds), and `Category` rows (system +
+  this user's custom ones). Those are Settings, not data — account should be immediately usable
+  right after a reset, not need reconfiguring too.
+- **Frontend:** turns out Settings already had a "Danger Zone" UI skeleton — `DANGER_ACTIONS` in
+  `frontend/src/api/Settings.js`, a confirm-before-delete flow in `Settings.jsx`, wired to
+  `SettingsContext.jsx` — but the two existing entries (`clearAllTransactions`, `resetAllBudgets`)
+  were **never actually implemented**, just `console.warn("...: stub")`. Added a third entry,
+  **"Reset My Data,"** that's real: calls `POST /account/reset`, then does a full page reload so
+  every context refetches fresh/empty from the API instead of needing each one's local state
+  manually cleared by hand.
+- ⚠️ **Left as-is, not fixed:** the two pre-existing stub buttons still sit in the same Danger
+  Zone, still silently do nothing when clicked. Wasn't asked to fix those, but a dead button next
+  to a working one is confusing — worth wiring for real or removing at some point. Flagged, not
+  actioned.
+- [x] **Committed, pushed, deployed, and tested live (2026-08-02) — confirmed working.** Commit
+  `09fba98 "reset button"`, on `origin/main`. Cesar ran it against the live production account —
+  Settings → Danger Zone → "Reset My Data" clears transactions/bills/debts/savings/budget/
+  recurring/alerts and reloads to a clean, still-logged-in, still-configured account.
+
+**✅ Reset My Data closed (2026-08-02).**
+
+---
+
 ## 📥 Email Ingestion Pipeline (planned — replaces live bank sync for now)
 
 **Why not Plaid / GoCardless / TrueLayer:** evaluated during the original Phase 6 attempt (see
@@ -944,7 +981,19 @@ run against it. Two real bugs found:**
   envelope recipient at final delivery. **Fixed:** `poll_inbox()` now reads `Delivered-To` first
   (falling back to `To` for the hypothetical case of someone emailing the alias directly, not via
   a forward), and `_resolve_user_id()` renamed/re-documented to make that explicit rather than
-  implying `To:` was ever the right header. Not yet re-tested live — next run should tell us.
+  implying `To:` was ever the right header.
+- [x] **Confirmed live (2026-08-02) — end-to-end, real transaction.** Re-ran the GitHub Action
+  after the `Delivered-To` fix: alias resolved correctly, `parse_bank_email()` parsed the real
+  forwarded Bancolombia email, and a real transaction was created (`source='email_import'`,
+  `is_draft=False`, `reviewed=False`) from Cesar's own real transfer. Full pipeline — Gmail OAuth,
+  scope, sender-domain check, alias resolution, parsing, transaction creation — verified working
+  against production, not just fixtures.
+
+**✅ Item #6 (email ingestion pipeline) closed (2026-08-02).** Built, deployed, and confirmed
+working end-to-end on a real transaction. Known, accepted gaps for a future pass (not blocking):
+sender verification is domain-string-only, not DKIM-based (see "Known Bugs"); only Bancolombia is
+supported; banks that only send monthly statements (not per-transaction emails) aren't covered by
+this pipeline at all, per the original design note above.
 
 ---
 
@@ -1360,7 +1409,8 @@ linked payment. Flag any code still confusing the two during the codebase audit 
 | Codebase orphan/dead-code audit                 | ✅ Done (2026-08-01) — audit + in-scope fixes applied; schema items re-homed to #5, docs items to #4, see section above |
 | Docs overhaul                                    | ✅ Done (2026-08-01) — README, Requiremnets.md, Design_System.md updated; all 8 legacy docs reconciled |
 | Database normalization + scalability            | ✅ Done (2026-08-02) — 7 sub-items closed, see item #5 section     |
-| Email ingestion pipeline                        | 🔄 Code-complete, not live (2026-08-02) — schema, poller, parser all built; needs commit/push, Render env vars, connection test, forward rule |
+| Email ingestion pipeline                        | ✅ Done (2026-08-02) — deployed, confirmed working end-to-end on a real transaction |
+| Reset My Data (Danger Zone)                     | ✅ Done (2026-08-02) — self-service data wipe, scoped per-user, tested live            |
 
 ---
 

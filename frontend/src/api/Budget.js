@@ -81,6 +81,49 @@ export function periodMultiplier(period) {
   return period === "Last 3 Months" ? 3 : 1;
 }
 
+// ── Shared surplus/deficit formula ───────────────────────────────────────────
+//
+// Single source of truth for "how much money is actually left over."
+// Expenses, savings, and debt payments are money going OUT — they only ever
+// subtract. Income is the only kind that adds, and even then only the
+// non-variable ("FIX") rows count toward the real, counted-on number.
+// Variable ("VAR") income is real money that MIGHT show up, so it's surfaced
+// separately as a best-case add-on, never folded into the guaranteed figure.
+// Used by both the All-tab summary banner and the "Set Monthly Budget"
+// popup preview, so the two can never drift back out of sync with each other.
+//
+// `rows` — flat array of { kind, amount, is_variable?, is_active? }
+//   kind: "expense" | "income" | "savings" | "debt_payment"
+export function computeBudgetSurplus(rows) {
+  const active = rows.filter((r) => r.is_active !== false);
+
+  const sum = (kind, filterFn = () => true) =>
+    active
+      .filter((r) => r.kind === kind && filterFn(r))
+      .reduce((s, r) => s + (r.amount || 0), 0);
+
+  const expenseTotal = sum("expense");
+  const savingsTotal = sum("savings");
+  const debtTotal = sum("debt_payment");
+  const guaranteedIncome = sum("income", (r) => !r.is_variable);
+  const variableIncome = sum("income", (r) => !!r.is_variable);
+
+  const outflow = expenseTotal + savingsTotal + debtTotal;
+  const guaranteedSurplus = guaranteedIncome - outflow;
+  const bestCaseSurplus = guaranteedIncome + variableIncome - outflow;
+
+  return {
+    expenseTotal,
+    savingsTotal,
+    debtTotal,
+    guaranteedIncome,
+    variableIncome,
+    guaranteedSurplus,
+    bestCaseSurplus,
+    hasVariableIncome: variableIncome > 0,
+  };
+}
+
 // ── Chart config builders ─────────────────────────────────────────────────────
 
 /** Grouped bar chart for a single kind (Expenses, Income, or Savings tab) */

@@ -22,6 +22,7 @@ import {
   BUDGET_TABS,
   getBudgetChartConfig,
   getAllTabChartConfig,
+  computeBudgetSurplus,
   useBudget,
 } from "../api/Budget";
 import { useSettings } from "../context/SettingsContext";
@@ -258,10 +259,28 @@ function BudgetModal({ allCategories, budgetTab, saving, onSave, onClose, fmt })
     onSave(updated);
   }
 
-  const totalPlanned = draft.reduce(
-    (s, c) => s + (parseFloat(c._input) || 0),
-    0,
-  );
+  // Signed surplus/deficit preview — same formula as the All-tab banner
+  // (computeBudgetSurplus in api/Budget.js), NOT a flat sum of every field.
+  // Expenses/savings/debt only ever subtract; only non-variable income counts
+  // toward the guaranteed number, variable income shows separately.
+  const surplusRows = draft.map((c) => ({
+    kind: c.kind,
+    amount: parseFloat(c._input) || 0,
+    is_variable: c.is_variable,
+    is_active: c.is_active,
+  }));
+  const {
+    expenseTotal,
+    savingsTotal,
+    debtTotal,
+    guaranteedIncome,
+    variableIncome,
+    guaranteedSurplus,
+    bestCaseSurplus,
+    hasVariableIncome,
+  } = computeBudgetSurplus(surplusRows);
+  const isPositive = bestCaseSurplus >= 0;
+  const isGuaranteedPositive = guaranteedSurplus >= 0;
 
   // Group by kind for display
   const groups = [
@@ -325,7 +344,9 @@ function BudgetModal({ allCategories, budgetTab, saving, onSave, onClose, fmt })
           </button>
         </div>
 
-        {/* Total preview */}
+        {/* Total preview — signed, not a flat sum of every field. Expenses/
+            savings/debt only subtract; only fixed income counts toward the
+            guaranteed number, variable income is called out separately. */}
         <div
           style={{
             background: "var(--color-bg-input)",
@@ -336,21 +357,77 @@ function BudgetModal({ allCategories, budgetTab, saving, onSave, onClose, fmt })
             justifyContent: "space-between",
             alignItems: "center",
             marginBottom: 20,
+            gap: 12,
           }}
         >
-          <span style={{ fontSize: 12, color: "var(--color-text-muted)" }}>
-            Total planned budget
-          </span>
-          <span
-            style={{
-              fontSize: 16,
-              fontWeight: 600,
-              color: "var(--color-text-primary)",
-              letterSpacing: "-0.3px",
-            }}
-          >
-            {fmt(totalPlanned)}
-          </span>
+          {budgetTab === "all" && (
+            <>
+              <span style={{ fontSize: 12, color: "var(--color-text-muted)" }}>
+                Planned surplus
+              </span>
+              <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 2 }}>
+                <span
+                  style={{
+                    fontSize: 16,
+                    fontWeight: 700,
+                    letterSpacing: "-0.3px",
+                    color: isPositive ? "var(--color-income)" : "var(--color-danger)",
+                  }}
+                >
+                  {isPositive ? "+" : "−"}
+                  {fmt(Math.abs(bestCaseSurplus))}{" "}
+                  <span style={{ fontSize: 10, fontWeight: 500, color: "var(--color-text-muted)" }}>
+                    {hasVariableIncome ? "best case" : isPositive ? "surplus" : "deficit"}
+                  </span>
+                </span>
+                {hasVariableIncome && (
+                  <span
+                    style={{
+                      fontSize: 12,
+                      fontWeight: 600,
+                      color: isGuaranteedPositive ? "rgba(16,185,129,0.75)" : "var(--color-danger)",
+                    }}
+                  >
+                    {isGuaranteedPositive ? "+" : "−"}
+                    {fmt(Math.abs(guaranteedSurplus))}{" "}
+                    <span style={{ fontSize: 10, fontWeight: 500, color: "var(--color-text-muted)" }}>
+                      guaranteed floor
+                    </span>
+                  </span>
+                )}
+              </div>
+            </>
+          )}
+          {budgetTab === "income" && (
+            <>
+              <span style={{ fontSize: 12, color: "var(--color-text-muted)" }}>
+                Fixed income
+              </span>
+              <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 2 }}>
+                <span style={{ fontSize: 16, fontWeight: 700, letterSpacing: "-0.3px", color: "var(--color-text-primary)" }}>
+                  {fmt(guaranteedIncome)}
+                </span>
+                {variableIncome > 0 && (
+                  <span style={{ fontSize: 12, fontWeight: 600, color: "#a78bfa" }}>
+                    + {fmt(variableIncome)}{" "}
+                    <span style={{ fontSize: 10, fontWeight: 500, color: "var(--color-text-muted)" }}>
+                      possible (variable)
+                    </span>
+                  </span>
+                )}
+              </div>
+            </>
+          )}
+          {(budgetTab === "expense" || budgetTab === "savings" || budgetTab === "debt_payment") && (
+            <>
+              <span style={{ fontSize: 12, color: "var(--color-text-muted)" }}>
+                Total planned {budgetTab === "debt_payment" ? "debt payments" : budgetTab}
+              </span>
+              <span style={{ fontSize: 16, fontWeight: 600, color: "var(--color-text-primary)", letterSpacing: "-0.3px" }}>
+                {fmt(budgetTab === "expense" ? expenseTotal : budgetTab === "savings" ? savingsTotal : debtTotal)}
+              </span>
+            </>
+          )}
         </div>
 
         {/* Grouped inputs */}
@@ -466,32 +543,67 @@ function BudgetModal({ allCategories, budgetTab, saving, onSave, onClose, fmt })
                           </button>
                         )}
                       </label>
-                      <div style={{ position: "relative" }}>
-                        <span
+                      {/* "Savings" and "Debt Payments" are always system-managed —
+                          kept in sync with the Savings goals / Debts tabs
+                          (sync_savings_to_budget / sync_debt_minimums_to_budget on
+                          the backend). Users can never create a category of
+                          either kind themselves, so there's no legitimate manual
+                          value to type here — show the synced number, not an input. */}
+                      {kind === "savings" || kind === "debt_payment" ? (
+                        <div
                           style={{
-                            position: "absolute",
-                            left: 10,
-                            top: "50%",
-                            transform: "translateY(-50%)",
-                            fontSize: 13,
-                            color: "var(--color-text-muted)",
-                            pointerEvents: "none",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "space-between",
+                            padding: "8px 10px",
+                            borderRadius: 8,
+                            background: "rgba(255,255,255,0.03)",
+                            border: "0.5px solid rgba(255,255,255,0.06)",
                           }}
                         >
-                          {currencySymbol}
-                        </span>
-                        <input
-                          className="input"
-                          type="number"
-                          min="0"
-                          step="1"
-                          placeholder="0"
-                          value={c._input}
-                          onChange={(e) => handleChange(i, e.target.value)}
-                          style={{ paddingLeft: 22 }}
-                          disabled={(c.system && kind === "savings") || !isActive}
-                        />
-                      </div>
+                          <span style={{ fontSize: 13, color: "var(--color-text-primary)" }}>
+                            {fmt(parseFloat(c._input) || 0)}
+                          </span>
+                          <span
+                            style={{
+                              fontSize: 9,
+                              fontWeight: 600,
+                              letterSpacing: "0.3px",
+                              textTransform: "uppercase",
+                              color: "var(--color-text-muted)",
+                            }}
+                          >
+                            Synced from {kind === "savings" ? "Savings" : "Debts"}
+                          </span>
+                        </div>
+                      ) : (
+                        <div style={{ position: "relative" }}>
+                          <span
+                            style={{
+                              position: "absolute",
+                              left: 10,
+                              top: "50%",
+                              transform: "translateY(-50%)",
+                              fontSize: 13,
+                              color: "var(--color-text-muted)",
+                              pointerEvents: "none",
+                            }}
+                          >
+                            {currencySymbol}
+                          </span>
+                          <input
+                            className="input"
+                            type="number"
+                            min="0"
+                            step="1"
+                            placeholder="0"
+                            value={c._input}
+                            onChange={(e) => handleChange(i, e.target.value)}
+                            style={{ paddingLeft: 22 }}
+                            disabled={!isActive}
+                          />
+                        </div>
+                      )}
                     </div>
                   );
                 })}
@@ -669,20 +781,28 @@ export default function Budget() {
             )}
           </div>
 
-          {/* Planned surplus / deficit banner */}
+          {/* Planned surplus / deficit banner — same shared formula
+              (computeBudgetSurplus) as the "Set Monthly Budget" popup
+              preview, so the two numbers can never drift apart again. */}
           {(() => {
-            const plannedSurplus =
-              incomeStats.totalPlanned -
-              expenseStats.totalPlanned -
-              savingsStats.totalPlanned -
-              debtPaymentStats.totalPlanned;
-            const guaranteedSurplus =
-              (incomeStats.guaranteedPlanned ?? incomeStats.totalPlanned) -
-              expenseStats.totalPlanned -
-              savingsStats.totalPlanned -
-              debtPaymentStats.totalPlanned;
-            const hasVariableIncome = (incomeStats.variablePlanned ?? 0) > 0;
-            const isPositive = plannedSurplus >= 0;
+            const surplusRows = [
+              { kind: "expense", amount: expenseStats.totalPlanned },
+              { kind: "savings", amount: savingsStats.totalPlanned },
+              { kind: "debt_payment", amount: debtPaymentStats.totalPlanned },
+              {
+                kind: "income",
+                amount: incomeStats.guaranteedPlanned ?? incomeStats.totalPlanned,
+                is_variable: false,
+              },
+              {
+                kind: "income",
+                amount: incomeStats.variablePlanned ?? 0,
+                is_variable: true,
+              },
+            ];
+            const { guaranteedSurplus, bestCaseSurplus, hasVariableIncome } =
+              computeBudgetSurplus(surplusRows);
+            const isPositive = bestCaseSurplus >= 0;
             const isGuaranteedPositive = guaranteedSurplus >= 0;
             return (
               <div
@@ -747,7 +867,7 @@ export default function Budget() {
                     }}
                   >
                     {isPositive ? "+" : "−"}
-                    {formatAmount(Math.abs(plannedSurplus))}{" "}
+                    {formatAmount(Math.abs(bestCaseSurplus))}{" "}
                     <span
                       style={{
                         fontSize: 10,

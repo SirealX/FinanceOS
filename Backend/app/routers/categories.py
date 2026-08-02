@@ -48,7 +48,15 @@ SYSTEM_CATEGORIES = [
     { "name": "Health",          "color": "#A78BFA", "kind": "expense", "sort_order": 4  },
     { "name": "Entertainment",   "color": "#F97316", "kind": "expense", "sort_order": 5  },
     { "name": "Utilities",       "color": "#84CC16", "kind": "expense", "sort_order": 6  },
-    { "name": "Debt Payments",   "color": "#EF4444", "kind": "expense", "sort_order": 7  },
+    # NOTE: "Debt Payments" deliberately NOT seeded as an expense-kind category.
+    # The real, live "Debt Payments" category is a debt_payment-kind row,
+    # auto-created and kept in sync with actual debt minimum payments by
+    # debts.py's sync_debt_minimums_to_budget() -- it never needs seeding here
+    # and doesn't show up in this Settings list at all (VALID_KINDS below only
+    # covers expense/income/savings). An expense-kind "Debt Payments" row used
+    # to be seeded here too, which left a dead, un-deletable duplicate sitting
+    # in Settings with no real budget behind it -- removed 2026-08-02, cleaned
+    # up by migration e1a2b3c4d5f6.
     { "name": "Other",           "color": "#475569", "kind": "expense", "sort_order": 8  },
     { "name": "Salary",          "color": "#10B981", "kind": "income",  "sort_order": 9  },
     { "name": "Side Income",     "color": "#10B981", "kind": "income",  "sort_order": 10 },

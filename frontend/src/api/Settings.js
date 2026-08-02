@@ -39,6 +39,12 @@ export const DANGER_ACTIONS = [
     label: "Reset All Budgets",
     description: "Sets all planned budget amounts back to zero.",
   },
+  {
+    id: "resetMyData",
+    label: "Reset My Data",
+    description:
+      "Wipes all your transactions, bills, debts, savings goals, budget history, recurring templates, and alerts — like a fresh account, ready to use. Keeps your login, currency/date settings, and categories.",
+  },
 ];
 
 // ── Pure formatters ───────────────────────────────────────────────────────────
@@ -254,8 +260,26 @@ export function useSettingsPage() {
     setDangerPending(id);
   }
   function confirmDangerAction() {
-    if (dangerPending === "clearTransactions") settings.clearAllTransactions();
-    if (dangerPending === "resetBudgets") settings.resetAllBudgets();
+    // None of these three are awaited deliberately — each reloads the page
+    // on success, which unmounts everything anyway. setDangerPending(null)
+    // below still runs first so the "Are you sure?" state doesn't linger if
+    // one fails fast, but a full error UI isn't worth building for a page
+    // that's about to reload.
+    if (dangerPending === "clearTransactions") {
+      settings.clearAllTransactions().catch(() => {
+        alert("Clearing transactions failed. Please try again, or check the console for details.");
+      });
+    }
+    if (dangerPending === "resetBudgets") {
+      settings.resetAllBudgets().catch(() => {
+        alert("Resetting budgets failed. Please try again, or check the console for details.");
+      });
+    }
+    if (dangerPending === "resetMyData") {
+      settings.resetMyData().catch(() => {
+        alert("Reset failed. Please try again, or check the console for details.");
+      });
+    }
     setDangerPending(null);
   }
   function cancelDangerAction() {

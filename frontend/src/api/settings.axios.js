@@ -35,3 +35,24 @@ export const seedCategories = () => client.post("/categories/seed");
 export const getPreferences = () => client.get("/preferences/");
 
 export const updatePreferences = (data) => client.put("/preferences/", data);
+
+// ── Account (Danger Zone) ────────────────────────────────────────────────────
+//   resetMyData()                 → POST /account/reset
+//   Wipes this user's transactions/bills/debts/savings/budget/alerts/
+//   recurring/earmarked. Keeps login, Preferences, AlertPreferences, and
+//   Category rows — see Backend/app/routers/account.py for the full contract.
+//
+//   clearAllTransactions()        → POST /account/clear-transactions
+//   Removes only transactions (bills/debts/savings goals survive) — each one
+//   is reversed through the same entity_sync logic as a single-transaction
+//   delete, so linked bills/debts/goals don't go stale.
+//
+//   resetAllBudgets()             → POST /account/reset-budgets
+//   Zeroes planned amounts for expense/income categories only. Savings and
+//   Debt Payments are system-synced now and untouched by this.
+
+export const resetMyData = () => client.post("/account/reset");
+
+export const clearAllTransactions = () => client.post("/account/clear-transactions");
+
+export const resetAllBudgets = () => client.post("/account/reset-budgets");

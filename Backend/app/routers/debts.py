@@ -565,6 +565,7 @@ def charge_credit_card(
     hub = BudgetCategory(
         user_id                    = current_user,
         transaction_id             = None,
+        debt_id                    = debt.id,  # real FK so entity_sync can reverse this charge
         transaction_name           = data.description,
         transaction_payment_method = debt.name,
         categories_name            = data.category,

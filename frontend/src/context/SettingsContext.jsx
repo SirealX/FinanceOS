@@ -25,6 +25,9 @@ import {
   deleteCategory as apiDelete,
   getPreferences,
   updatePreferences as apiUpdatePrefs,
+  resetMyData as apiResetMyData,
+  clearAllTransactions as apiClearAllTransactions,
+  resetAllBudgets as apiResetAllBudgets,
 } from "../api/settings.axios";
 
 // ── Demo seed — mirrors what the backend seeds via POST /categories/seed ───────
@@ -264,13 +267,66 @@ export function SettingsProvider({ children }) {
 
   // ── Danger Zone ─────────────────────────────────────────────────────────────
 
-  const clearAllTransactions = useCallback(() => {
-    console.warn("clearAllTransactions: stub");
-  }, []);
+  // Removes only this user's transactions via POST /account/clear-transactions
+  // (bills/debts/savings goals survive — each transaction is reversed through
+  // the same entity_sync logic as a single delete, so a paid bill goes back
+  // to unpaid, a debt payment's amount is restored, a savings contribution is
+  // backed out of its goal, instead of leaving those entities stale). Full
+  // page reload after, same reasoning as resetMyData below.
+  const clearAllTransactions = useCallback(async () => {
+    if (IS_DEMO) {
+      console.warn("clearAllTransactions: no-op in demo mode");
+      return;
+    }
+    try {
+      const res = await apiClearAllTransactions();
+      console.info("clearAllTransactions: deleted", res.data.deleted);
+      window.location.reload();
+    } catch (err) {
+      console.error("clearAllTransactions failed", err);
+      throw err;
+    }
+  }, [IS_DEMO]);
 
-  const resetAllBudgets = useCallback(() => {
-    console.warn("resetAllBudgets: stub");
-  }, []);
+  // Zeroes planned amounts for expense/income categories via
+  // POST /account/reset-budgets. Deliberately leaves Savings and Debt
+  // Payments alone — those are system-synced from the Savings/Debts tabs now,
+  // not something this button should ever zero out.
+  const resetAllBudgets = useCallback(async () => {
+    if (IS_DEMO) {
+      console.warn("resetAllBudgets: no-op in demo mode");
+      return;
+    }
+    try {
+      const res = await apiResetAllBudgets();
+      console.info("resetAllBudgets: updated", res.data.updated);
+      window.location.reload();
+    } catch (err) {
+      console.error("resetAllBudgets failed", err);
+      throw err;
+    }
+  }, [IS_DEMO]);
+
+  // Wipes this user's transactions/bills/debts/savings/budget/alerts/
+  // recurring/earmarked via POST /account/reset. Keeps login, Preferences,
+  // AlertPreferences, and categories — see Backend/app/routers/account.py.
+  // Full page reload afterward so every context (Transactions, Bills, Debts,
+  // Savings, Budget, Alerts, Dashboard) refetches fresh/empty from the API
+  // instead of needing each one's local state manually cleared here.
+  const resetMyData = useCallback(async () => {
+    if (IS_DEMO) {
+      console.warn("resetMyData: no-op in demo mode");
+      return;
+    }
+    try {
+      const res = await apiResetMyData();
+      console.info("resetMyData: deleted", res.data.deleted);
+      window.location.reload();
+    } catch (err) {
+      console.error("resetMyData failed", err);
+      throw err;
+    }
+  }, [IS_DEMO]);
 
   // ── Lookup helpers ──────────────────────────────────────────────────────────
 
@@ -371,6 +427,7 @@ export function SettingsProvider({ children }) {
     // Danger zone
     clearAllTransactions,
     resetAllBudgets,
+    resetMyData,
 
     // Loading
     loading,
