@@ -26,11 +26,8 @@ import {
   getPreferences,
   updatePreferences as apiUpdatePrefs,
   resetMyData as apiResetMyData,
-<<<<<<< HEAD
   clearAllTransactions as apiClearAllTransactions,
   resetAllBudgets as apiResetAllBudgets,
-=======
->>>>>>> 09fba98087161f5e2aa32117b7407b44bbff5a40
 } from "../api/settings.axios";
 
 // ── Demo seed — mirrors what the backend seeds via POST /categories/seed ───────
@@ -270,7 +267,6 @@ export function SettingsProvider({ children }) {
 
   // ── Danger Zone ─────────────────────────────────────────────────────────────
 
-<<<<<<< HEAD
   // Removes only this user's transactions via POST /account/clear-transactions
   // (bills/debts/savings goals survive — each transaction is reversed through
   // the same entity_sync logic as a single delete, so a paid bill goes back
@@ -291,16 +287,6 @@ export function SettingsProvider({ children }) {
       throw err;
     }
   }, [IS_DEMO]);
-=======
-  // NOTE: these two are pre-existing stubs (never wired up, console.warn only)
-  // — left as-is, fixing them wasn't part of this pass. Only resetMyData below
-  // is real. Worth eventually either wiring these for real or removing the
-  // buttons — a "Danger Zone" button that silently does nothing is worse than
-  // not having it.
-  const clearAllTransactions = useCallback(() => {
-    console.warn("clearAllTransactions: stub");
-  }, []);
->>>>>>> 09fba98087161f5e2aa32117b7407b44bbff5a40
 
   // Zeroes planned amounts for expense/income categories via
   // POST /account/reset-budgets. Deliberately leaves Savings and Debt
@@ -317,27 +303,6 @@ export function SettingsProvider({ children }) {
       window.location.reload();
     } catch (err) {
       console.error("resetAllBudgets failed", err);
-      throw err;
-    }
-  }, [IS_DEMO]);
-
-  // Wipes this user's transactions/bills/debts/savings/budget/alerts/
-  // recurring/earmarked via POST /account/reset. Keeps login, Preferences,
-  // AlertPreferences, and categories — see Backend/app/routers/account.py.
-  // Full page reload afterward so every context (Transactions, Bills, Debts,
-  // Savings, Budget, Alerts, Dashboard) refetches fresh/empty from the API
-  // instead of needing each one's local state manually cleared here.
-  const resetMyData = useCallback(async () => {
-    if (IS_DEMO) {
-      console.warn("resetMyData: no-op in demo mode");
-      return;
-    }
-    try {
-      const res = await apiResetMyData();
-      console.info("resetMyData: deleted", res.data.deleted);
-      window.location.reload();
-    } catch (err) {
-      console.error("resetMyData failed", err);
       throw err;
     }
   }, [IS_DEMO]);

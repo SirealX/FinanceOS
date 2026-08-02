@@ -260,7 +260,6 @@ export function useSettingsPage() {
     setDangerPending(id);
   }
   function confirmDangerAction() {
-<<<<<<< HEAD
     // None of these three are awaited deliberately — each reloads the page
     // on success, which unmounts everything anyway. setDangerPending(null)
     // below still runs first so the "Are you sure?" state doesn't linger if
@@ -277,16 +276,6 @@ export function useSettingsPage() {
       });
     }
     if (dangerPending === "resetMyData") {
-=======
-    if (dangerPending === "clearTransactions") settings.clearAllTransactions();
-    if (dangerPending === "resetBudgets") settings.resetAllBudgets();
-    if (dangerPending === "resetMyData") {
-      // Not awaited deliberately — resetMyData() reloads the page on success,
-      // which unmounts everything anyway. setDangerPending(null) below still
-      // runs first so the "Are you sure?" state doesn't linger if it fails
-      // fast, but a full error UI isn't worth building for a page that's
-      // about to reload.
->>>>>>> 09fba98087161f5e2aa32117b7407b44bbff5a40
       settings.resetMyData().catch(() => {
         alert("Reset failed. Please try again, or check the console for details.");
       });
