@@ -242,6 +242,13 @@ def _gmail_service():
     during the one-time OAuth setup (see Tracker.md "Email Ingestion
     Pipeline" for the setup checklist). Imports are local so the rest of the
     module (and its tests) don't require the Gmail packages to be installed.
+
+    Scope is gmail.modify, not gmail.readonly (confirmed the hard way,
+    2026-08-02 — the first live run 403'd on labels.create/messages.modify
+    with "Insufficient Permission"). readonly only covers reading; creating
+    the PROCESSED_LABEL and tagging messages with it are both writes.
+    gmail.modify is the narrowest scope that covers both without granting
+    permanent delete or send — see the SCOPE note above PROCESSED_LABEL.
     """
     from google.oauth2.credentials import Credentials
     from googleapiclient.discovery import build
@@ -263,7 +270,7 @@ def _gmail_service():
         client_id=client_id,
         client_secret=client_secret,
         token_uri="https://oauth2.googleapis.com/token",
-        scopes=["https://www.googleapis.com/auth/gmail.readonly"],
+        scopes=["https://www.googleapis.com/auth/gmail.modify"],
     )
     return build("gmail", "v1", credentials=creds, cache_discovery=False)
 
@@ -458,6 +465,15 @@ def trigger_poll(x_cron_secret: str = Header(default="")):
     """
     HTTP endpoint for the GitHub Actions poller cron to trigger email
     ingestion. Same CRON_SECRET protection as /scheduler/run.
+
+    Catches broadly and returns the real error in the response body —
+    deliberately, not just for style. GitHub Actions' curl (--fail-with-body)
+    prints whatever the response body says, and Render's own generic 500
+    page says nothing useful ("Internal Server Error", no detail) when an
+    exception escapes uncaught. The first real run surfaced exactly that —
+    a bare 500 with no way to tell GMAIL_* env vars missing from a Gmail API
+    error from a DB error without digging through Render's log dashboard.
+    This makes future failures self-diagnosing from the Actions run alone.
     """
     if _CRON_SECRET and x_cron_secret != _CRON_SECRET:
         raise HTTPException(status_code=403, detail="Forbidden")
@@ -466,6 +482,9 @@ def trigger_poll(x_cron_secret: str = Header(default="")):
         return poll_inbox()
     except NotImplementedError as exc:
         raise HTTPException(status_code=501, detail=str(exc))
+    except Exception as exc:
+        log.exception("[email_ingest] /email/poll failed")
+        raise HTTPException(status_code=500, detail=f"{type(exc).__name__}: {exc}")
 
 
 # ─────────────────────────────────────────────────────────────────────────────

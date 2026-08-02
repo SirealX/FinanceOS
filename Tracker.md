@@ -910,6 +910,39 @@ since the GitHub repo is public).**
    **"Forward it to"** → select the now-verified address from step 2 → Create Filter. Leave
    "Skip the Inbox" unchecked so the emails still show up normally too — this is a copy, not a move.
 
+**First live test (2026-08-02) — deployed, forward rule set up, real transfer sent, GitHub Actions
+run against it. Two real bugs found:**
+
+- [x] **First run: bare 500, no detail.** Root cause turned out to be a Gmail scope error (below),
+  but the actual exception wasn't visible anywhere useful — `trigger_poll()` only caught
+  `NotImplementedError`, so anything else escaped to FastAPI's default handler and Render/curl
+  just showed generic "Internal Server Error" (21 bytes, no detail). **Fixed:** broad
+  `except Exception` added, returns `{type}: {message}` in the response body — GitHub Actions'
+  `--fail-with-body` curl now prints the real error directly in the Action log, no more digging
+  through Render's log dashboard for every future failure.
+- [x] **Real cause, once visible: wrong OAuth scope.** `googleapiclient.errors.HttpError: 403
+  ... "Insufficient Permission" ... insufficientPermissions` on `labels.create`. The setup
+  checklist above requested `gmail.readonly`, but creating the `FinanceOS/Processed` label and
+  tagging messages with it (`_get_or_create_label()`, `_mark_processed()`) are both *writes* —
+  readonly never covered them, this was wrong from the start, not a regression.
+  **Fixed:** scope changed to `gmail.modify` in `_gmail_service()` (narrowest scope that covers
+  read + label management + tagging messages, without granting permanent delete or send).
+- ⚠️ **Not yet done: the refresh token in `Backend/.env` (and wherever it's set on Render) is
+  STALE** — it was minted under the old `gmail.readonly` scope and can't be silently upgraded.
+  Needs regenerating: re-run the same local `InstalledAppFlow` script from the original setup,
+  but with the scope updated to `https://www.googleapis.com/auth/gmail.modify`, approve again
+  while logged into `financeos.ingest@gmail.com`, then replace `GMAIL_REFRESH_TOKEN` in both
+  `Backend/.env` and Render's Environment tab with the new value. Also worth double-checking the
+  Google Cloud OAuth consent screen (Step 3 of the original setup) lists `gmail.modify` as an
+  available scope, not just `gmail.readonly`.
+- **Still unverified:** whether `_resolve_user_id()` actually finds the `+alias` token on a
+  real forwarded message. Gmail delivers a filter-forwarded copy to the new envelope recipient,
+  but it's not confirmed here whether the message's own `To:` header gets rewritten to that
+  address or still shows the original recipient (Cesar's personal address) — if the latter, alias
+  resolution would silently fail (`unresolved`, not a crash) even once the scope issue is fixed.
+  Worth checking the `unresolved` count specifically on the next real test, not just whether the
+  run succeeds.
+
 ---
 
 ## File Convention (every feature = 3 files)
