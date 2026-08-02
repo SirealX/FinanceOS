@@ -32,3 +32,7 @@ python-dateutil==2.9.0.post0
 # Notifications — required by notifications.py
 httpx==0.27.2
 pywebpush==2.0.0
+
+# Gmail API client — required by email_ingest.py (item #6, email ingestion poller)
+google-api-python-client==2.149.0
+google-auth==2.35.0

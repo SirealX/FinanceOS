@@ -1,0 +1,32 @@
+name: Email Ingestion Poller
+
+# Item #6 — polls the shared financeos.ingest@gmail.com inbox and turns
+# forwarded bank transaction emails into transactions. Rides the same
+# GitHub-Actions-hits-a-protected-endpoint pattern as daily-scheduler.yml —
+# no GMAIL_* secrets needed here, those live on Render only, since the
+# backend (not this workflow) is what actually talks to the Gmail API.
+#
+# Tighter interval than the daily scheduler (design called for 15-30 min)
+# since the whole point is timely capture of bank confirmation emails.
+
+on:
+  schedule:
+    - cron: "*/20 * * * *"   # every 20 minutes
+  workflow_dispatch: {}       # manual trigger from the Actions tab, for testing
+
+jobs:
+  trigger-poller:
+    runs-on: ubuntu-latest
+    steps:
+      - name: POST /email/poll
+        run: |
+          curl --fail-with-body \
+            --retry 3 \
+            --retry-delay 15 \
+            --retry-all-errors \
+            --max-time 60 \
+            -X POST "${BACKEND_URL}/email/poll" \
+            -H "x-cron-secret: ${CRON_SECRET}"
+        env:
+          BACKEND_URL: ${{ secrets.BACKEND_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}

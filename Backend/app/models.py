@@ -24,6 +24,7 @@ class Transaction(Base):
                              "bill_payment", "savings_contribution", "csv_import",
                              "cc_charge",      # expense paid via CC (no cash debit, CC balance rises)
                              "debt_payment",   # paying off a debt balance
+                             "email_import",   # item #6 — created by the Gmail ingestion poller
                              name="source_type"
                          ))
     created_at         = Column(DateTime, default=datetime.utcnow)
@@ -253,6 +254,15 @@ class Preferences(Base):
     # requiring the user to re-enter it after every new transaction.
     # projected_bank = bank_balance + (current_closing - balance_anchor_app)
     balance_anchor_app   = Column(Numeric(12, 2), nullable=True)
+
+    # ── Email ingestion (item #6) ──────────────────────────────────────────────
+    # Random per-user token, NOT the raw user_id — deliberately non-guessable so
+    # knowing it doesn't let someone email fake transactions into this account.
+    # Forwarding address the user sets up at their bank:
+    #     financeos.ingest+<ingest_token>@gmail.com
+    # Generated lazily on first GET /preferences/ingest-email call, not at row
+    # creation, since most users will never touch this feature.
+    ingest_token         = Column(String(24), nullable=True, unique=True, index=True)
 
 
 class Alert(Base):

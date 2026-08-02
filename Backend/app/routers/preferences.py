@@ -4,9 +4,11 @@ Each user gets their own preferences row, keyed by user_id.
 GET auto-creates defaults on first call for a new user.
 """
 
+import secrets
 from datetime import date as date_type
 from decimal import Decimal
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from typing import Optional
 from pydantic import BaseModel, validator
@@ -16,6 +18,14 @@ from ..models import Preferences
 from ..dependencies import get_current_user
 
 router = APIRouter(prefix="/preferences", tags=["preferences"])
+
+# Item #6 (email ingestion). The dedicated ingestion inbox's local-part and
+# domain, split so the per-user token can be inserted as a +alias:
+#     <INGEST_LOCAL_PART>+<ingest_token>@<INGEST_DOMAIN>
+# See Tracker.md "Email Ingestion Pipeline" for the inbox/OAuth setup this
+# depends on -- must match whatever address that setup actually creates.
+INGEST_LOCAL_PART = "financeos.ingest"
+INGEST_DOMAIN = "gmail.com"
 
 VALID_CURRENCIES = {"USD", "EUR", "GBP", "COP", "MXN", "BRL", "CAD", "ARS"}
 VALID_DATE_FORMATS = {"MM/DD/YYYY", "DD/MM/YYYY", "YYYY-MM-DD", "MMM D, YYYY"}
@@ -98,12 +108,52 @@ def _get_or_create(user_id: str, db: Session) -> Preferences:
     return prefs
 
 
+def _ingest_email(prefs: Preferences) -> Optional[str]:
+    if not prefs.ingest_token:
+        return None
+    return f"{INGEST_LOCAL_PART}+{prefs.ingest_token}@{INGEST_DOMAIN}"
+
+
 @router.get("/")
 def get_preferences(
     current_user: str = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    return _serialize(_get_or_create(current_user, db))
+    prefs = _get_or_create(current_user, db)
+    data = _serialize(prefs)
+    data["ingest_email"] = _ingest_email(prefs)
+    return data
+
+
+@router.post("/ingest-email")
+def create_ingest_email(
+    current_user: str = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Generates (or returns the existing) email-ingestion forwarding address for
+    this user. Lazy on purpose -- most users will never opt into email
+    ingestion, so nobody gets a token minted for them just by loading
+    Settings. Idempotent: calling this again just returns the same address.
+    """
+    prefs = _get_or_create(current_user, db)
+    if prefs.ingest_token:
+        return {"ingest_email": _ingest_email(prefs)}
+
+    # Retry on the (astronomically unlikely) chance of a token collision --
+    # same defensive pattern as any other unique-random-value generation.
+    for _ in range(5):
+        candidate = secrets.token_hex(10)  # 20 hex chars, well under the 24-char column
+        prefs.ingest_token = candidate
+        try:
+            db.commit()
+            db.refresh(prefs)
+            return {"ingest_email": _ingest_email(prefs)}
+        except IntegrityError:
+            db.rollback()
+            continue
+
+    raise HTTPException(status_code=500, detail="Could not generate a unique ingest_token — try again.")
 
 
 @router.put("/")

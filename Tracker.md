@@ -25,7 +25,7 @@ don't skip ahead.**
 | 3 | **Codebase orphan/dead-code audit** — find unused fields, dead functions, stale logic (e.g. the `is_draft`/`reviewed` confusion, see "Known Gotchas") | ✅ **Done (2026-08-01)** | Full file-by-file pass done, then every finding that was actually #3's own scope was fixed the same day. See **"🔍 Codebase Audit — Findings & Fix Checklist (2026-08-01)"** below. What's *not* fixed was deliberately re-homed, not dropped: schema/column items (`planned_amt`, `auto_detected`, the missing Alembic baseline) move to item #5; stale-docs items move to item #4; `MonthEndReview` nav wiring stays a future alerts-item. |
 | 4 | **Docs overhaul** — bring every `.md` file in line with actual repo state | ✅ **Done (2026-08-01)** | `README.md`, `Backend/Requiremnets.md` (superseded banner), `frontend/Design_System.md` fixed and updated. All 8 legacy Finance-tracker docs stamped and status-reconciled, including a full item-by-item re-walk of the 26-issue `financial-logic-audit*.md` series. See **"📚 Item #4 Prep — Legacy Docs Reconciliation (2026-08-01)"** below for the full trail. Two real follow-ups this pass surfaced: variable-income support and the 3-month export cap/no-PDF-report — both added to the roadmap in `README.md`, neither urgent enough for their own numbered item yet |
 | 5 | **Database normalization + scalability** | ✅ **Done (2026-08-02)** | Worked collaboratively item-by-item — see **"🗄️ Item #5 — Database Normalization & Scalability (2026-08-02)"** below for the full trail. All 7 sub-items closed: Alembic baseline, `planned_amt`/`auto_detected` drops, FK index cleanup, `entity_sync.py` FK rework, `user_id` NOT NULL, `month_start` wiring, `GET /transactions` pagination. Two real follow-ups surfaced along the way, not fixed yet, added to "Known Bugs" below: the CC-charge debt-reversal gap, and the cashflow chart's month labels still being calendar-only |
-| 6 | **Email ingestion pipeline (bank-transaction automation)** | ⬜ Design agreed, not built | See "Email Ingestion Pipeline" below — build after the schema settles |
+| 6 | **Email ingestion pipeline (bank-transaction automation)** | 🔄 In progress (2026-08-02) | Schema piece done (source enum + `ingest_token`); parser + poller blocked on a sample Bancolombia email and Gmail OAuth setup — see "Email Ingestion Pipeline" below |
 
 **Why this order:** reliability first because nothing else can be tested reliably while Supabase
 keeps pausing mid-session. Security Advisor before normalization because it's five minutes of
@@ -154,6 +154,9 @@ The Supabase DB is shared between local and production so this only needs runnin
 | `VAPID_PUBLIC_KEY`       | Backend `.env` + Render + frontend + Vercel | ⬜ Not yet generated                                          |
 | `VAPID_PRIVATE_KEY`      | Backend `.env` + Render only                | ⬜ Never expose to frontend                                   |
 | `VAPID_CONTACT_EMAIL`    | Backend `.env` + Render only                | ⬜ After VAPID key generation                                 |
+| `GMAIL_CLIENT_ID`        | Backend `.env` + Render                     | ⚠️ Set in `.env` (2026-08-02) — **not yet on Render.** See item #6. |
+| `GMAIL_CLIENT_SECRET`    | Backend `.env` + Render                     | ⚠️ Set in `.env` (2026-08-02) — **not yet on Render.**        |
+| `GMAIL_REFRESH_TOKEN`    | Backend `.env` + Render                     | ⚠️ Set in `.env` (2026-08-02) — **not yet on Render.** Test-user token, doesn't expire on its own. |
 
 > Note: `ALERTS_SPEC.md` and `INTERCONNECTION_ADR.md` are referenced throughout this file (and in
 > code comments) but do not currently exist in the repo. Either they were never committed or were
@@ -632,6 +635,25 @@ system categories ("Debt Payments", "ATM Withdrawal") via raw `INSERT` — fully
 "Deployment Checklist" above. A genuinely fresh environment would come up with zero categories until
 someone remembers to call it. Not fixed — added to "Known Bugs" below.
 
+**Second addendum (2026-08-02) — DB ↔ backend ↔ frontend contract check.** Before closing out,
+audited every change above for a broken contract between the database, the routers, and the
+frontend — not fixing anything new, just confirming nothing already shipped was silently broken.
+
+- **Dropped columns (`planned_amt`, `auto_detected`).** Confirmed clean — zero references anywhere
+  in `Backend/` or `frontend/` outside the migration files themselves and historical docs.
+- **`user_id` NOT NULL on the 8 tables.** Confirmed clean — every constructor call for the 8 affected
+  models across every router (including the less-obvious ones: `earmarked.py`, `recurring.py`,
+  `preferences.py`'s auto-create-on-first-GET, `import_router.py`'s bulk CSV path) explicitly passes
+  `user_id`. No path was relying on the column being nullable.
+- **New CHECK/UNIQUE constraints.** Alerts confirmed clean — `alert_engine.py`'s `_ALERT_META` table
+  only ever produces tier∈{1,2,3} and valid severities. Categories — real gap found, see "Known Bugs"
+  above (`categories.py` can 500 on a duplicate-name race instead of a clean 4xx).
+- **`entity_sync.py` FK rework.** Frontend shape unaffected — `hub_type` in `GET /transactions`'
+  response is still derived from `hub.type`'s string prefix exactly as before, nothing reads the new
+  `debt_id`/`savings_goal_id` columns directly. Re-confirmed the already-flagged `charge_credit_card`
+  gap (its hub row still never gets a `debt_id`, and its `type` isn't a "Debt: " prefix either, so
+  `entity_sync.py` never touches it either way) — same known issue, not a new one.
+
 **✅ Item #5 closed (2026-08-02).** Next up: item #6 (email ingestion pipeline).
 
 ---
@@ -675,6 +697,17 @@ Found incidentally, not yet triaged into a numbered priority item.
   categories — nothing calls the seed endpoint automatically. Needs a step added to the "Deployment
   Checklist" section, probably right after Step 6 (run migrations). Not fixed yet — flagging so it
   isn't lost.
+- **`categories.py` create/rename can 500 on a duplicate name under a race, instead of a clean 4xx.**
+  Found 2026-08-02, closing out item #5 with a full DB↔backend↔frontend contract check (see item #5's
+  second addendum below for the full audit). `create_category` and `update_category` (and
+  `seed_system_categories`) only do a pre-check `SELECT` before insert/rename — no
+  `try/except IntegrityError` around the commit. Normally fine (the pre-check catches it), but two
+  concurrent requests creating the same name at once (or a manual create racing the seed endpoint)
+  would hit the `uq_categories_name_system`/`uq_categories_name_user` partial unique indexes
+  (item #5's addendum above) and surface as an unhandled 500 instead of a clean "name already exists"
+  error. Low severity — pre-existing gap (the constraint has been live on production since April, this
+  isn't new exposure, just newly documented), not urgent, but a real gap. Not fixed — flagging so it
+  isn't lost.
 
 ---
 
@@ -710,7 +743,101 @@ authorizing. Decision: don't keep chasing aggregator coverage — build a bridge
   through this pipeline entirely — those users stay on manual entry, or the SMS-forwarding
   alternative (iOS Shortcuts automation, or MacroDroid/Tasker on Android) discussed but not chosen
   as the primary path.
-- Not yet built — will be scoped as its own session after the schema work.
+
+**🔄 In progress — kicked off 2026-08-02.** Decisions made this session:
+
+- **`+alias` token — random per-user token, not the raw `user_id`.** Non-guessable, rotatable
+  independently. New `Preferences.ingest_token` column (nullable, unique, generated lazily via
+  `POST /preferences/ingest-email` — most users will never opt in, no reason to mint one for
+  everybody). Address is `financeos.ingest+<ingest_token>@gmail.com`.
+- **First bank to build the real parser against: Bancolombia** (matches the default already in
+  `import_router.py`'s CSV importer). `parse_bank_email()` needs one real, redacted sample
+  transaction email from Cesar before it can be written for real — blocked until that's shared.
+- **Gmail inbox + OAuth: not set up yet.** Manual, one-time setup Cesar has to do himself (account
+  creation and Google Cloud OAuth app registration aren't things Claude can do) — checklist below.
+  The Gmail poller itself is blocked until `GMAIL_CLIENT_ID` / `GMAIL_CLIENT_SECRET` /
+  `GMAIL_REFRESH_TOKEN` exist.
+
+**Done this session (unblocked, schema-only):**
+- [x] `email_import` added to `Transaction.source` enum — migration `648b41c29881`.
+- [x] `Preferences.ingest_token` column added — migration `70819a409406`.
+- [x] `GET /preferences/` now also returns `ingest_email` (`null` until generated); new
+  `POST /preferences/ingest-email` generates it idempotently.
+- [x] `google-api-python-client` / `google-auth` added to `Backend/requirements.txt`
+  (`google-auth-oauthlib` deliberately NOT added — it's only needed for the one-time local
+  refresh-token generation script below, not for the running service).
+
+**Blocked — needs Cesar to do manually before the poller can be built/tested:**
+1. Create the Gmail account (e.g. `financeos.ingest@gmail.com` — must match
+   `INGEST_LOCAL_PART`/`INGEST_DOMAIN` in `preferences.py` if a different address is used).
+2. [console.cloud.google.com](https://console.cloud.google.com) → new project → APIs & Services →
+   Library → enable **Gmail API**.
+3. APIs & Services → OAuth consent screen → External → fill app name/support email → scope
+   `https://www.googleapis.com/auth/gmail.readonly` (read-only is all the poller needs) → add
+   `financeos.ingest@gmail.com` as a **test user**. Leave the app in "Testing" status — refresh
+   tokens for test users don't expire, and publishing/verification isn't needed for a
+   single-inbox personal tool.
+4. APIs & Services → Credentials → Create Credentials → OAuth client ID → **Desktop app** → note
+   the Client ID and Client Secret.
+5. One-time, locally, to mint the refresh token (needs to be run while logged into the
+   `financeos.ingest@…` Google account in the browser that pops up):
+   ```bash
+   pip install google-auth-oauthlib --break-system-packages
+   python3 - <<'EOF'
+   from google_auth_oauthlib.flow import InstalledAppFlow
+   flow = InstalledAppFlow.from_client_config(
+       {"installed": {
+           "client_id": "YOUR_CLIENT_ID",
+           "client_secret": "YOUR_CLIENT_SECRET",
+           "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+           "token_uri": "https://oauth2.googleapis.com/token",
+       }},
+       scopes=["https://www.googleapis.com/auth/gmail.readonly"],
+   )
+   creds = flow.run_local_server(port=0)
+   print("GMAIL_REFRESH_TOKEN =", creds.refresh_token)
+   EOF
+   ```
+6. Set `GMAIL_CLIENT_ID`, `GMAIL_CLIENT_SECRET`, `GMAIL_REFRESH_TOKEN` — Backend `.env` + Render
+   (same pattern as `PLAID_CLIENT_ID`/`PLAID_SECRET` in "Environment Variables" above) + GitHub
+   Actions repo secrets (poller rides the same cron mechanism as `BACKEND_URL`/`CRON_SECRET`).
+
+Once those two blockers clear (a sample Bancolombia email, and the three `GMAIL_*` secrets),
+`email_ingest.py` (parser + poller) and its GitHub Actions wiring can be built and tested
+end-to-end.
+
+**Update (2026-08-02, later same day) — Gmail credentials received, poller built.**
+
+- [x] Cesar completed the Gmail account + Google Cloud OAuth setup and generated a refresh token.
+  `GMAIL_CLIENT_ID` / `GMAIL_CLIENT_SECRET` / `GMAIL_REFRESH_TOKEN` set in `Backend/.env`
+  (gitignored — confirmed, same as every other secret in that file).
+- [x] **`Backend/app/email_ingest.py` built** — the poller half (piece #2) is real:
+  authenticates to the Gmail API, lists messages not yet tagged with a `FinanceOS/Processed`
+  label, resolves each message's `+alias` to a `user_id` via `Preferences.ingest_token`, and
+  (once the parser below exists) creates the transaction with `is_draft=False`,
+  `source='email_import'`, `reviewed=False` — reuses `import_reminder` and
+  `payment_utils.infer_payment_method()` exactly as designed, no new alert mechanism needed.
+  Exposed as `POST /email/poll`, protected by the same `CRON_SECRET` header pattern as
+  `/scheduler/run`. Registered in `main.py`.
+- [x] **`parse_bank_email()` (piece #1) is a deliberate stub, not a guess.** Raises
+  `NotImplementedError` rather than inventing Bancolombia parsing logic without a real fixture —
+  a wrong guess would silently create incorrect real transactions, worse than not building it
+  yet. `poll_inbox()` propagates that error cleanly (doesn't mislabel messages as processed when
+  the parser isn't ready) rather than pretending to succeed.
+- [x] `.github/workflows/email-poller.yml` added — every 20 min, same `BACKEND_URL`/`CRON_SECRET`
+  pattern as `daily-scheduler.yml`. No new GitHub secrets needed — the workflow just hits the
+  Render endpoint; Render is what talks to Gmail.
+- ⚠️ **Could not test the live Gmail connection from this session** — the sandbox's network
+  egress blocks `googleapis.com` (confirmed: `curl https://oauth2.googleapis.com` →
+  `403 Forbidden` from the sandbox's own proxy, while `pypi.org` succeeds — a sandbox allowlist
+  restriction, not a credentials problem). Gave Cesar a standalone local test script
+  (`test_gmail_connection.py`) to run on his own machine, where network isn't restricted.
+- **Not yet done:** commit + push the changed files (`models.py`, `main.py`, `preferences.py`,
+  `requirements.txt`, both new migrations, `email_ingest.py`, `email-poller.yml`) — left
+  uncommitted deliberately for Cesar to review first. Add the three `GMAIL_*` vars to Render
+  (same pattern as `PLAID_CLIENT_ID` in "Environment Variables" above, now actually filled in
+  instead of on-hold). Then send the redacted Bancolombia sample email so `parse_bank_email()`
+  can be written for real.
 
 ---
 
@@ -902,22 +1029,31 @@ Tested locally with `VITE_DEMO_MODE=false` against live Supabase. All flows veri
 - Dashboard: KPIs, cashflow chart (includes savings), donut, budget progress (expense only)
 - Transactions: filter by All/Income/Expense/Savings, draft badge, savings rows locked
 
-**Known issues deferred to Phase 5 / multi-user testing:**
+**Known issues deferred to Phase 5 / multi-user testing (historical — both since resolved, see
+"Quick Status Summary" and the "Resolved — CSV Import & Savings Mapping" note below):**
 
-- CSV/Excel import not yet implemented (stubs in Settings.js)
-- Banking API auto-categorization for savings transactions — needs design decision before implementing (see note below)
+- ~~CSV/Excel import not yet implemented (stubs in Settings.js)~~ — shipped, see "CSV / Excel Import" below.
+- ~~Banking API auto-categorization for savings transactions — needs design decision~~ — Banking API itself is dead (blocked, decided paused 2026-07-29); CSV side resolved, see below.
 
 ---
 
-## ⚠️ IMPORTANT FUTURE DECISION — CSV Import & Banking API + Savings
+## ✅ Resolved — CSV Import & Savings Mapping (2026-08-02, was "IMPORTANT FUTURE DECISION")
 
-When CSV import and banking API sync land in Phase 5, a decision is needed:
+This used to frame a pending decision covering both CSV import *and* banking API sync. Banking
+API is dead — attempted, blocked, formally decided paused 2026-07-29 (see "Banking API Sync —
+attempted, blocked, pivoted" below) — nothing in this section applies to it anymore. Stale
+reference removed.
 
-> When a transaction comes in from CSV or bank API that looks like a savings
-> transfer (e.g. "Transfer to savings account"), how does the system know
-> which savings goal it belongs to, or whether it is a savings transaction at all?
+The original question (how does a savings-transfer-looking transaction get mapped to a savings
+goal on import?) is resolved for CSV by how the importer actually shipped:
+`import_router.py`'s `/commit` step restricts `type` to `income`/`expense` only — there's no
+`savings` type in the import path. A savings transfer lands as a regular transaction, and the
+user reassigns it to a savings goal manually afterward. That's **Option A** below, adopted
+implicitly by the build rather than a deliberate conversation. **Option B** (rule-based
+auto-categorization) doesn't exist. Fine as current behavior — revisit only if manual
+reassignment becomes an actual pain point, not before.
 
-**Two options to evaluate in Phase 5:**
+<details><summary>Original two options (kept for context)</summary>
 
 **Option A — Manual mapping after import.** Imported transactions land as regular
 expense transactions. The user reassigns any savings-related ones manually.
@@ -927,7 +1063,7 @@ Simple but requires user intervention.
 "transactions from account X or with description matching Y → Savings goal Z".
 More powerful but more complex to build.
 
-**Do not implement either option before Phase 5 starts.** Keep this note visible.
+</details>
 
 ---
 
@@ -1117,7 +1253,7 @@ linked payment. Flag any code still confusing the two during the codebase audit 
 | Codebase orphan/dead-code audit                 | ✅ Done (2026-08-01) — audit + in-scope fixes applied; schema items re-homed to #5, docs items to #4, see section above |
 | Docs overhaul                                    | ✅ Done (2026-08-01) — README, Requiremnets.md, Design_System.md updated; all 8 legacy docs reconciled |
 | Database normalization + scalability            | ✅ Done (2026-08-02) — 7 sub-items closed, see item #5 section     |
-| Email ingestion pipeline                        | 🔄 Designed, not built                                            |
+| Email ingestion pipeline                        | 🔄 In progress (2026-08-02) — schema done, parser/poller blocked on sample email + Gmail OAuth setup |
 
 ---
 
