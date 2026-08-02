@@ -727,6 +727,41 @@ Found incidentally, not yet triaged into a numbered priority item.
 
 ---
 
+## 🔄 Reset My Data (2026-08-02)
+
+Self-service data wipe, requested mid-item-#6 testing (Cesar had stopped using the app for a
+while, wanted to re-test from a clean slate after all the item #3/#4/#5/#6 changes).
+
+**Deliberately scoped to the calling user only** — this is a shared production DB with other
+testers' real data in it from the multi-user trial, so there is no "reset everyone" version.
+
+- **Backend:** `POST /account/reset` (`Backend/app/routers/account.py`, new file). Deletes every
+  row the caller owns across `transactions`, `budget_categories` (hub rows), `bills`, `debts`,
+  `savings_goals`, `earmarked_funds`, `recurring_transactions`, and `alerts`. Delete order doesn't
+  matter — every FK among these is `ondelete="SET NULL"` in `models.py`, confirmed by reading all
+  of them before writing this, not assumed.
+- **Deliberately kept:** `Preferences` (currency, month_start, `ingest_token`, bank-balance
+  settings), `AlertPreferences` (notification channels/thresholds), and `Category` rows (system +
+  this user's custom ones). Those are Settings, not data — account should be immediately usable
+  right after a reset, not need reconfiguring too.
+- **Frontend:** turns out Settings already had a "Danger Zone" UI skeleton — `DANGER_ACTIONS` in
+  `frontend/src/api/Settings.js`, a confirm-before-delete flow in `Settings.jsx`, wired to
+  `SettingsContext.jsx` — but the two existing entries (`clearAllTransactions`, `resetAllBudgets`)
+  were **never actually implemented**, just `console.warn("...: stub")`. Added a third entry,
+  **"Reset My Data,"** that's real: calls `POST /account/reset`, then does a full page reload so
+  every context refetches fresh/empty from the API instead of needing each one's local state
+  manually cleared by hand.
+- ⚠️ **Left as-is, not fixed:** the two pre-existing stub buttons still sit in the same Danger
+  Zone, still silently do nothing when clicked. Wasn't asked to fix those, but a dead button next
+  to a working one is confusing — worth wiring for real or removing at some point. Flagged, not
+  actioned.
+- **Not yet committed/pushed** — `Backend/app/routers/account.py` (new),
+  `Backend/app/main.py`, `frontend/src/api/settings.axios.js`, `frontend/src/api/Settings.js`,
+  `frontend/src/context/SettingsContext.jsx`. Needs both a Render redeploy (backend) and a Vercel
+  redeploy (frontend) before the button works.
+
+---
+
 ## 📥 Email Ingestion Pipeline (planned — replaces live bank sync for now)
 
 **Why not Plaid / GoCardless / TrueLayer:** evaluated during the original Phase 6 attempt (see

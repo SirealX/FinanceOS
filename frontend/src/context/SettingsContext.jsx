@@ -25,6 +25,7 @@ import {
   deleteCategory as apiDelete,
   getPreferences,
   updatePreferences as apiUpdatePrefs,
+  resetMyData as apiResetMyData,
 } from "../api/settings.axios";
 
 // ── Demo seed — mirrors what the backend seeds via POST /categories/seed ───────
@@ -264,6 +265,11 @@ export function SettingsProvider({ children }) {
 
   // ── Danger Zone ─────────────────────────────────────────────────────────────
 
+  // NOTE: these two are pre-existing stubs (never wired up, console.warn only)
+  // — left as-is, fixing them wasn't part of this pass. Only resetMyData below
+  // is real. Worth eventually either wiring these for real or removing the
+  // buttons — a "Danger Zone" button that silently does nothing is worse than
+  // not having it.
   const clearAllTransactions = useCallback(() => {
     console.warn("clearAllTransactions: stub");
   }, []);
@@ -271,6 +277,27 @@ export function SettingsProvider({ children }) {
   const resetAllBudgets = useCallback(() => {
     console.warn("resetAllBudgets: stub");
   }, []);
+
+  // Wipes this user's transactions/bills/debts/savings/budget/alerts/
+  // recurring/earmarked via POST /account/reset. Keeps login, Preferences,
+  // AlertPreferences, and categories — see Backend/app/routers/account.py.
+  // Full page reload afterward so every context (Transactions, Bills, Debts,
+  // Savings, Budget, Alerts, Dashboard) refetches fresh/empty from the API
+  // instead of needing each one's local state manually cleared here.
+  const resetMyData = useCallback(async () => {
+    if (IS_DEMO) {
+      console.warn("resetMyData: no-op in demo mode");
+      return;
+    }
+    try {
+      const res = await apiResetMyData();
+      console.info("resetMyData: deleted", res.data.deleted);
+      window.location.reload();
+    } catch (err) {
+      console.error("resetMyData failed", err);
+      throw err;
+    }
+  }, [IS_DEMO]);
 
   // ── Lookup helpers ──────────────────────────────────────────────────────────
 
@@ -371,6 +398,7 @@ export function SettingsProvider({ children }) {
     // Danger zone
     clearAllTransactions,
     resetAllBudgets,
+    resetMyData,
 
     // Loading
     loading,

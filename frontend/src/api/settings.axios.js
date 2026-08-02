@@ -35,3 +35,11 @@ export const seedCategories = () => client.post("/categories/seed");
 export const getPreferences = () => client.get("/preferences/");
 
 export const updatePreferences = (data) => client.put("/preferences/", data);
+
+// ── Account (Danger Zone) ────────────────────────────────────────────────────
+//   resetMyData()                 → POST /account/reset
+//   Wipes this user's transactions/bills/debts/savings/budget/alerts/
+//   recurring/earmarked. Keeps login, Preferences, AlertPreferences, and
+//   Category rows — see Backend/app/routers/account.py for the full contract.
+
+export const resetMyData = () => client.post("/account/reset");
