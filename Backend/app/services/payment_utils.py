@@ -20,6 +20,36 @@ Keywords cover both English and Spanish (Bancolombia / LATAM banks).
 import re
 from typing import Optional
 
+# ── Payment-frequency normalization ──────────────────────────────────────────
+#
+# Number of times a given frequency actually bills per year, divided by 12 to
+# get the "how much of this happens in an average month" multiplier. This is
+# the single source of truth for converting a debt's min_payment (entered
+# exactly as billed -- weekly/biweekly/monthly/quarterly) into a monthly
+# figure for anything that needs to compare it against monthly interest or
+# sum it across debts as a monthly total (budget sync, payoff simulator,
+# negative-amortization check). Mirrored exactly in frontend/src/api/Debt.js
+# -- keep both in sync if this ever changes.
+_PAYMENTS_PER_YEAR = {
+    "weekly": 52,
+    "biweekly": 26,
+    "monthly": 12,
+    "quarterly": 4,
+}
+
+
+def monthly_equivalent(amount: float, frequency: Optional[str]) -> float:
+    """
+    Convert a per-period payment amount into its monthly equivalent.
+
+    Unknown/None frequency defaults to 'monthly' (a no-op conversion) so
+    existing debts entered before this concept existed, or any bad/blank
+    data, degrade to the old assume-it's-monthly behavior instead of raising
+    or silently zeroing out a real payment.
+    """
+    periods_per_year = _PAYMENTS_PER_YEAR.get(frequency or "monthly", 12)
+    return float(amount or 0) * periods_per_year / 12
+
 
 # ── Keyword patterns ──────────────────────────────────────────────────────────
 

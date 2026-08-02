@@ -31,6 +31,8 @@ import {
   DEBT_TYPES,
   DEBT_TYPE_OPTIONS,
   PAYMENT_TYPE_OPTIONS,
+  MIN_PAYMENT_FREQUENCY_OPTIONS,
+  monthlyEquivalent,
   useDebts,
 } from "../api/Debt";
 
@@ -357,7 +359,7 @@ function DebtRow({ debt, onEdit, onDelete, onPay, onAmortization, fmt }) {
                 marginBottom: 3,
               }}
             >
-              Min / mo
+              Min Payment
             </div>
             <div
               style={{
@@ -367,7 +369,26 @@ function DebtRow({ debt, onEdit, onDelete, onPay, onAmortization, fmt }) {
               }}
             >
               {fmt(debt.minPayment)}
+              {debt.minPaymentFrequency && debt.minPaymentFrequency !== "monthly" && (
+                <span style={{ fontSize: 10, color: "var(--color-text-muted)" }}>
+                  {" "}/{debt.minPaymentFrequency}
+                </span>
+              )}
             </div>
+            {/* Shown only when billed on a non-monthly cadence — the raw
+                number above isn't what budgeting/the payoff simulator
+                actually use, so make the converted figure visible here too. */}
+            {debt.minPaymentFrequency && debt.minPaymentFrequency !== "monthly" && (
+              <div
+                style={{
+                  fontSize: 10,
+                  color: "var(--color-text-muted)",
+                  marginTop: 2,
+                }}
+              >
+                ≈ {fmt(monthlyEquivalent(debt.minPayment, debt.minPaymentFrequency))}/mo
+              </div>
+            )}
             {/* #21 — due day */}
             {debt.dueDay && (
               <div
@@ -521,6 +542,7 @@ function DebtRow({ debt, onEdit, onDelete, onPay, onAmortization, fmt }) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 function DebtModal({ form, isEditing, onChange, onSave, onClose }) {
+  const { formatAmount } = useSettings();
   // Credit cards may legitimately have a $0 balance (fully paid for this cycle)
   // and still need to be editable. Allow balance = 0 for all debt types so
   // users aren't blocked from updating other fields on a cleared card.
@@ -680,7 +702,7 @@ function DebtModal({ form, isEditing, onChange, onSave, onClose }) {
             />
           </div>
           <div className="field-wrap">
-            <label className="field-label">Min Monthly Payment ($)</label>
+            <label className="field-label">Min Payment ($)</label>
             <input
               className="input"
               type="number"
@@ -691,6 +713,38 @@ function DebtModal({ form, isEditing, onChange, onSave, onClose }) {
               onChange={(e) => f("minPayment", e.target.value)}
             />
           </div>
+        </div>
+
+        {/* Min Payment Frequency — enter the number exactly as it's billed on
+            the statement (e.g. a biweekly loan payment stays biweekly here);
+            everywhere this needs to be treated as a monthly figure (budget,
+            payoff simulator) converts it internally via monthlyEquivalent(). */}
+        <div className="field-wrap" style={{ marginBottom: 12 }}>
+          <label className="field-label">How Often Is That Billed?</label>
+          <select
+            className="input"
+            value={form.minPaymentFrequency}
+            onChange={(e) => f("minPaymentFrequency", e.target.value)}
+          >
+            {MIN_PAYMENT_FREQUENCY_OPTIONS.map((freq) => (
+              <option key={freq} value={freq}>
+                {freq[0].toUpperCase() + freq.slice(1)}
+              </option>
+            ))}
+          </select>
+          {form.minPaymentFrequency !== "monthly" && +form.minPayment > 0 && (
+            <p
+              style={{
+                fontSize: 11,
+                color: "var(--color-text-muted)",
+                marginTop: 6,
+              }}
+            >
+              ≈ {formatAmount(monthlyEquivalent(+form.minPayment, form.minPaymentFrequency))}
+              /mo equivalent — this is the number used for budgeting and the
+              payoff simulator.
+            </p>
+          )}
         </div>
 
         {/* Due Day */}
@@ -1312,6 +1366,7 @@ export default function Debts() {
     setExtraPmt,
     interestSaved,
     monthsSaved,
+    negativeAmortizationDebts,
     stats,
     showModal,
     editingDebt,
@@ -1670,6 +1725,47 @@ export default function Debts() {
                       >
                         Use this →
                       </button>
+                    )}
+                  </div>
+                )}
+
+                {/* Negative-amortization warning — a debt whose minimum payment
+                    doesn't cover its own monthly interest will grow, not
+                    shrink, at $0 extra. That's what actually produces the
+                    "30+ years" / huge total-interest / upward-curving chart
+                    below — this makes the real cause visible instead of it
+                    just looking like the simulator glitched. */}
+                {negativeAmortizationDebts.length > 0 && (
+                  <div
+                    style={{
+                      marginTop: 10,
+                      padding: "8px 12px",
+                      borderRadius: 7,
+                      background: "rgba(239,68,68,0.06)",
+                      border: "0.5px solid rgba(239,68,68,0.18)",
+                      fontSize: 11,
+                      color: "var(--color-text-secondary)",
+                    }}
+                  >
+                    ⚠{" "}
+                    {negativeAmortizationDebts.length === 1 ? (
+                      <>
+                        <strong>{negativeAmortizationDebts[0].name}</strong>'s minimum
+                        payment ({formatAmount(negativeAmortizationDebts[0].minPaymentMonthly)}/mo
+                        equivalent) doesn't cover its monthly interest — at $0 extra, this
+                        balance grows instead of shrinking, which is why the chart below
+                        curves up instead of down. Raise its minimum payment or add extra
+                        to actually pay it off.
+                      </>
+                    ) : (
+                      <>
+                        <strong>{negativeAmortizationDebts.length} of your debts</strong>{" "}
+                        ({negativeAmortizationDebts.map((d) => d.name).join(", ")}) have a
+                        minimum payment that doesn't cover their monthly interest — at $0
+                        extra, those balances grow instead of shrinking, which is why the
+                        chart below curves up instead of down. Raise their minimum
+                        payments or add extra to actually pay them off.
+                      </>
                     )}
                   </div>
                 )}

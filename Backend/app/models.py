@@ -109,6 +109,17 @@ class Debt(Base):
     original_balance = Column(Numeric(10, 2), nullable=True)  # tracks starting balance
     interest_rate    = Column(Numeric(5, 2))
     min_payment      = Column(Numeric(10, 2))
+    # How often min_payment is actually billed by the lender -- entered as-is
+    # off the real statement (e.g. a biweekly loan payment stays biweekly
+    # here), never pre-converted by the user. Everywhere min_payment needs to
+    # be compared against or summed as a MONTHLY figure (budget sync, payoff
+    # simulator, negative-amortization check), it must go through
+    # payment_utils.monthly_equivalent(min_payment, min_payment_frequency)
+    # first -- never read min_payment directly assuming it's already monthly.
+    # 'weekly' | 'biweekly' | 'monthly' | 'quarterly'. Defaults 'monthly' so
+    # every pre-existing debt (entered before this field existed, always as a
+    # true monthly figure) keeps behaving exactly as before.
+    min_payment_frequency = Column(String(20), nullable=False, default="monthly")
     priority_rank    = Column(Integer)
     due_day          = Column(Integer, nullable=True)  # day of month payment is due (1–31)
 

@@ -23,6 +23,24 @@ export { DEBT_TYPES };
 
 export const SIM_MAX_MONTHS = 360;
 
+// How often min_payment_frequency actually bills per year, /12 for "how much
+// of this happens in an average month." Mirrors
+// Backend/app/services/payment_utils.py's monthly_equivalent() exactly --
+// keep both in sync if this ever changes.
+const PAYMENTS_PER_YEAR = { weekly: 52, biweekly: 26, monthly: 12, quarterly: 4 };
+
+export const MIN_PAYMENT_FREQUENCY_OPTIONS = ["weekly", "biweekly", "monthly", "quarterly"];
+
+/**
+ * Convert a per-period payment amount into its monthly equivalent.
+ * Unknown/missing frequency defaults to "monthly" (a no-op conversion), same
+ * reasoning as the backend helper.
+ */
+export function monthlyEquivalent(amount, frequency) {
+  const periodsPerYear = PAYMENTS_PER_YEAR[frequency] ?? 12;
+  return (Number(amount) || 0) * periodsPerYear / 12;
+}
+
 // Debt type options for the form dropdown
 export const DEBT_TYPE_OPTIONS = [
   { value: "loan",        label: "Loan" },
@@ -44,6 +62,7 @@ export const BLANK_FORM = {
   originalBalance: "",
   apr: "",
   minPayment: "",
+  minPaymentFrequency: "monthly", // 'weekly' | 'biweekly' | 'monthly' | 'quarterly' -- how min_payment is actually billed
   dueDay: "",
   bankName: "",
   paymentType: "manual",         // 'manual' | 'auto_bank_debit' | 'payroll_deduction'
@@ -155,7 +174,15 @@ export function downsample(arr, maxPoints = 60) {
 
 export function simulate(debts, extraPayment) {
   function run(strategy) {
-    const d = debts.map((x) => ({ ...x, balance: +x.balance }));
+    // minPayment is entered exactly as billed (weekly/biweekly/monthly/
+    // quarterly), not pre-converted -- everything below needs a MONTHLY
+    // figure, so convert once up front rather than re-deriving it every
+    // iteration of the while loop.
+    const d = debts.map((x) => ({
+      ...x,
+      balance: +x.balance,
+      minPaymentMonthly: monthlyEquivalent(x.minPayment, x.minPaymentFrequency),
+    }));
     let months = 0;
     let totalInterest = 0;
     const history = [d.reduce((s, x) => s + x.balance, 0)];
@@ -178,7 +205,7 @@ export function simulate(debts, extraPayment) {
         if (x.balance > 0) {
           x.balance = Math.max(
             0,
-            x.balance - Math.min(x.minPayment, x.balance),
+            x.balance - Math.min(x.minPaymentMonthly, x.balance),
           );
         }
       });
@@ -219,6 +246,7 @@ function normalizeDebt(raw) {
     originalBalance:       parseFloat(raw.original_balance ?? raw.balance),
     apr:                   parseFloat(raw.interest_rate),
     minPayment:            parseFloat(raw.min_payment),
+    minPaymentFrequency:   raw.min_payment_frequency ?? "monthly",
     priority:              raw.priority_rank ?? 1,
     dueDay:                raw.due_day ?? null,
     bankName:              raw.bank_name ?? null,
@@ -252,6 +280,7 @@ function buildPayload(form, existingDebt) {
     original_balance: !isNaN(origBal) ? Math.max(origBal, bal) : bal,
     interest_rate:    parseFloat(form.apr) || 0,
     min_payment:      parseFloat(form.minPayment) || 0,
+    min_payment_frequency: form.minPaymentFrequency || "monthly",
     priority_rank:    existingDebt ? existingDebt.priority : 999,
     due_day:          !isNaN(dueDay) && dueDay >= 1 && dueDay <= 31 ? dueDay : null,
     // New fields
@@ -363,7 +392,10 @@ export function useDebts() {
 
   const stats = useMemo(() => {
     const totalDebt = debts.reduce((s, d) => s + d.balance, 0);
-    const totalMin = debts.reduce((s, d) => s + d.minPayment, 0);
+    const totalMin = debts.reduce(
+      (s, d) => s + monthlyEquivalent(d.minPayment, d.minPaymentFrequency),
+      0,
+    );
     const interestBearing = debts.filter((d) => d.apr > 0);
     const avgApr =
       interestBearing.length > 0
@@ -377,6 +409,33 @@ export function useDebts() {
     if (debts.length === 0) return null;
     return simulate(debts, extraPmt);
   }, [debts, extraPmt]);
+
+  // Flags debts whose minimum payment doesn't even cover the interest that
+  // accrues on them each month. Mathematically, at $0 extra those balances
+  // grow instead of shrink no matter how long you wait -- simulate() reflects
+  // that faithfully (that's why "$0 extra" can show 30+ years / a huge total
+  // interest and an upward-curving chart), but without this called out
+  // explicitly it just looks like the simulator is broken. Purely
+  // informational -- doesn't change the simulation itself.
+  //
+  // Compares against the MONTHLY EQUIVALENT of min_payment, not the raw
+  // entered figure -- a biweekly-billed debt's real monthly payment is
+  // ~2.17x the number on the Debts tab, and comparing the raw (smaller)
+  // number against monthly interest is exactly what made a healthy loan
+  // look like it was in negative amortization (2026-08-02 bug).
+  const negativeAmortizationDebts = useMemo(() => {
+    return debts
+      .filter((d) => {
+        if (d.isPaidOff || d.balance <= 0) return false;
+        const monthlyInterest = d.balance * (d.apr / 100 / 12);
+        const minPaymentMonthly = monthlyEquivalent(d.minPayment, d.minPaymentFrequency);
+        return minPaymentMonthly < monthlyInterest;
+      })
+      .map((d) => ({
+        ...d,
+        minPaymentMonthly: monthlyEquivalent(d.minPayment, d.minPaymentFrequency),
+      }));
+  }, [debts]);
 
   const interestSaved = sim
     ? Math.max(0, sim.snowball.totalInterest - sim.avalanche.totalInterest)
@@ -399,6 +458,7 @@ export function useDebts() {
       originalBalance:    String(debt.originalBalance),
       apr:                String(debt.apr),
       minPayment:         String(debt.minPayment),
+      minPaymentFrequency: debt.minPaymentFrequency ?? "monthly",
       dueDay:             debt.dueDay != null ? String(debt.dueDay) : "",
       bankName:           debt.bankName ?? "",
       paymentType:        debt.paymentType ?? "manual",
@@ -514,6 +574,7 @@ export function useDebts() {
     setExtraPmt,
     interestSaved,
     monthsSaved,
+    negativeAmortizationDebts,
     stats,
     showModal,
     editingDebt,

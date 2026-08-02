@@ -23,6 +23,7 @@ from sqlalchemy.orm import Session
 from ..database import get_db
 from ..models import Category, Debt, BudgetCategory, Transaction, RecurringTransaction
 from ..dependencies import get_current_user
+from ..services.payment_utils import monthly_equivalent
 from pydantic import BaseModel, validator
 from typing import Optional
 from datetime import date as DateType
@@ -50,14 +51,22 @@ def sync_debt_minimums_to_budget(user_id: str, db: Session) -> None:
     Migration safety: deletes any legacy expense-kind rows with the same name
     so users who had "Debt Payments" as an expense category before the debt
     restructure don't end up with duplicate rows showing in both sections.
+
+    Each debt's min_payment is converted to its monthly equivalent via
+    monthly_equivalent() before summing -- min_payment is entered exactly as
+    billed (e.g. a biweekly loan stays biweekly), not pre-converted, so a
+    biweekly debt's real monthly cost is ~2.17x the raw min_payment number,
+    not the number itself.
     """
     total_min = (
         db.query(Debt)
         .filter(Debt.user_id == user_id, Debt.balance > 0, Debt.is_paid_off == False)
-        .with_entities(Debt.min_payment)
+        .with_entities(Debt.min_payment, Debt.min_payment_frequency)
         .all()
     )
-    planned = sum(float(r.min_payment or 0) for r in total_min)
+    planned = sum(
+        monthly_equivalent(r.min_payment, r.min_payment_frequency) for r in total_min
+    )
 
     # ── Migration cleanup ─────────────────────────────────────────────────────
     # Delete any expense-kind rows named "Debt Payments" for this user.
@@ -154,6 +163,7 @@ class DebtCreate(BaseModel):
     original_balance: Optional[float] = None
     interest_rate: float
     min_payment: float
+    min_payment_frequency: str = "monthly"          # 'weekly' | 'biweekly' | 'monthly' | 'quarterly'
     priority_rank: Optional[int] = None
     due_day: Optional[int] = None                   # day of month payment is due (1–31)
 
@@ -187,6 +197,7 @@ class DebtUpdate(BaseModel):
     original_balance: Optional[float] = None
     interest_rate: Optional[float] = None
     min_payment: Optional[float] = None
+    min_payment_frequency: Optional[str] = None
     priority_rank: Optional[int] = None
     due_day: Optional[int] = None
     type: Optional[str] = None
@@ -246,6 +257,7 @@ def _serialize_debt(d: Debt) -> dict:
         "original_balance":         float(d.original_balance or d.balance or 0),
         "interest_rate":            float(d.interest_rate or 0),
         "min_payment":              float(d.min_payment or 0),
+        "min_payment_frequency":    d.min_payment_frequency or "monthly",
         "priority_rank":            d.priority_rank,
         "due_day":                  d.due_day,
         "type":                     d.type or "loan",
@@ -320,6 +332,7 @@ def create_debt(
         original_balance      = data.original_balance or data.balance,
         interest_rate         = data.interest_rate,
         min_payment           = data.min_payment,
+        min_payment_frequency = data.min_payment_frequency or "monthly",
         priority_rank         = data.priority_rank,
         due_day               = data.due_day,
         type                  = data.type,
@@ -397,7 +410,14 @@ def get_amortization(
 
     term = debt.term_months
     if not term:
-        pmt = float(debt.payment_amount or debt.min_payment or 0)
+        # calculate_amortization() works in monthly periods, so whichever
+        # figure is used here needs to be a monthly equivalent -- payment_amount
+        # is paired with payment_frequency, min_payment with
+        # min_payment_frequency, neither is guaranteed to already be monthly.
+        if debt.payment_amount:
+            pmt = monthly_equivalent(debt.payment_amount, debt.payment_frequency)
+        else:
+            pmt = monthly_equivalent(debt.min_payment, debt.min_payment_frequency)
         if pmt > 0 and principal > 0:
             term = max(1, round(principal / pmt))
         else:
