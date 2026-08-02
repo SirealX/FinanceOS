@@ -1,4 +1,7 @@
-from sqlalchemy import Column, String, Numeric, Date, DateTime, Boolean, Integer, Enum, ForeignKey, Text, Time
+from sqlalchemy import (
+    Column, String, Numeric, Date, DateTime, Boolean, Integer, Enum, ForeignKey, Text, Time,
+    CheckConstraint, Index, text,
+)
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 import uuid
 from datetime import datetime
@@ -195,6 +198,24 @@ class Category(Base):
     # #16 — variable income flag (income kind only)
     is_variable    = Column(Boolean, nullable=False, default=False)
 
+    # These 2 only ever existed as raw SQL in the old (now-archived) migration
+    # chain -- never declared here, so the 2026-08-02 baseline squash missed
+    # them entirely. They're what actually enforces the "one name per system
+    # category, one name per user" rule described in the docstring above --
+    # without them nothing stops a duplicate category name from being
+    # inserted, which is the exact same class of bug this whole item #5
+    # session has been fixing for debts/savings goals/bills.
+    __table_args__ = (
+        Index(
+            "uq_categories_name_system", "name",
+            unique=True, postgresql_where=text("user_id IS NULL"),
+        ),
+        Index(
+            "uq_categories_name_user", "name", "user_id",
+            unique=True, postgresql_where=text("user_id IS NOT NULL"),
+        ),
+    )
+
 
 class Preferences(Base):
     """
@@ -254,6 +275,24 @@ class Alert(Base):
     read_at         = Column(DateTime,    nullable=True)   # NULL = unread
     fired_immediate = Column(Boolean,     nullable=False, default=False)
     digest_date     = Column(Date,        nullable=True)   # date it was included in a digest
+
+    # These 3 only ever existed as raw SQL in the old (now-archived) migration
+    # chain -- never declared here, so the 2026-08-02 baseline squash missed
+    # them entirely. Declared now so (a) they're actually documented as part
+    # of the schema instead of tribal knowledge in a migration file, and (b)
+    # future `alembic revision --autogenerate` runs see them as intentional
+    # instead of drift to be dropped.
+    __table_args__ = (
+        CheckConstraint("tier IN (1, 2, 3)", name="alerts_tier_check"),
+        CheckConstraint(
+            "severity IN ('info', 'warning', 'critical')",
+            name="alerts_severity_check",
+        ),
+        Index(
+            "ix_alerts_user_unread", "user_id", "read_at",
+            postgresql_where=text("read_at IS NULL"),
+        ),
+    )
 
 
 class EarmarkedFund(Base):
