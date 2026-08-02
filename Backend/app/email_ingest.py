@@ -363,12 +363,32 @@ def _resolve_user_id(delivered_to: str, db: Session) -> Optional[str]:
 
 def poll_inbox() -> dict:
     """
-    Main entry point. Lists every message in the shared ingestion inbox not
-    yet tagged PROCESSED_LABEL, resolves each to a user via its +alias,
-    parses it, and creates a transaction. Always labels a message processed
-    after handling it — including unresolvable/unparseable ones — so nothing
-    is retried forever; only a mid-flight exception (DB down, etc.) leaves a
-    message unlabeled for a safe retry next run.
+    Main entry point. Lists recent messages in the shared ingestion inbox,
+    skips any that are already tagged PROCESSED_LABEL, resolves the rest to
+    a user via its +alias, parses it, and creates a transaction. Always
+    labels a message processed after handling it — including
+    unresolvable/unparseable ones — so nothing is retried forever; only a
+    mid-flight exception (DB down, etc.) leaves a message unlabeled for a
+    safe retry next run.
+
+    NOT using q=-label:"..." for the exclusion (confirmed broken live,
+    2026-08-02). Gmail's search index treats a custom label's presence as a
+    property of the whole conversation, not the individual message: once any
+    message in a thread carries PROCESSED_LABEL, a `-label:` search excludes
+    every message in that thread, including ones that arrive later and were
+    never actually labeled. Bancolombia's transaction emails land in the
+    same Gmail thread when the forward preserves subject/participants (a
+    "chained" email, in Cesar's words) — so a genuinely new, unprocessed
+    message was silently skipped forever because an earlier message in the
+    same thread already had the label. Re-running the poll didn't help
+    because the search excluded it every time, not just once.
+
+    Fix: list by a bounded recency window instead (`newer_than:7d` — plenty
+    of margin for the 20-minute cron plus any downtime, small enough to
+    keep the per-run message count sane), then check each message's own
+    `labelIds` field (authoritative per-message, unlike the search index)
+    to decide skip vs. process. Costs a few extra already-processed fetches
+    per run at this mailbox's volume — worth it for correctness.
 
     Field semantics (see Tracker.md "Known Gotchas"): email-imported
     transactions are real and complete the moment they're created —
@@ -377,13 +397,16 @@ def poll_inbox() -> dict:
     import_reminder alert (already built for csv_import) picks them up
     without any new alert logic.
     """
-    summary = {"processed": 0, "created": 0, "skipped": 0, "unresolved": 0, "errors": []}
+    summary = {
+        "processed": 0, "created": 0, "skipped": 0,
+        "already_labeled": 0, "unresolved": 0, "errors": [],
+    }
 
     service = _gmail_service()
     label_id = _get_or_create_label(service, PROCESSED_LABEL)
 
     resp = service.users().messages().list(
-        userId="me", q=f'-label:"{PROCESSED_LABEL}"',
+        userId="me", q="newer_than:7d",
     ).execute()
     message_refs = resp.get("messages", [])
 
@@ -398,6 +421,13 @@ def poll_inbox() -> dict:
                 full = service.users().messages().get(
                     userId="me", id=msg_id, format="full",
                 ).execute()
+
+                if label_id in (full.get("labelIds") or []):
+                    # Genuinely already processed (checked on the message's
+                    # own label list, not the thread-scoped search index).
+                    summary["already_labeled"] += 1
+                    continue
+
                 headers      = full["payload"]["headers"]
                 sender       = _header(headers, "From")
                 delivered_to = _header(headers, "Delivered-To") or _header(headers, "To")

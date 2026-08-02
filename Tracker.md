@@ -724,6 +724,17 @@ Found incidentally, not yet triaged into a numbered priority item.
   through Gmail's native Forwarding/Filter mechanism (not a manual "Forward" button, which would
   strip headers), so there's reason to expect it survives — needs confirming once the rule is
   live, not assumed. Not fixed — flagging so it isn't lost.
+- **Open design question — email-ingested transactions don't resolve open Bills.** Found
+  2026-08-02 by Cesar during real-world testing: when a bank email auto-creates a transaction via
+  item #6, it lands as a standalone `Transaction` (`source='email_import'`) — it never runs
+  through `entity_sync.py`, so a Bill that transaction happens to correspond to still shows
+  unpaid on the Bills page. Marking the bill paid separately would create a second, duplicate
+  transaction under the current design (that path creates its own linked draft transaction).
+  No decision yet on the right fix — options span a spectrum (fuzzy-match amount/date/description
+  against open bills at ingest time and auto-link; surface a "possible match" prompt in the UI for
+  the user to confirm instead of auto-linking; leave it fully manual and just make re-linking an
+  existing transaction to a bill easier). Cesar wants to brainstorm this properly before building
+  anything — not scoped to a fix yet, revisit as its own item when ready.
 
 ---
 
@@ -994,6 +1005,25 @@ working end-to-end on a real transaction. Known, accepted gaps for a future pass
 sender verification is domain-string-only, not DKIM-based (see "Known Bugs"); only Bancolombia is
 supported; banks that only send monthly statements (not per-transaction emails) aren't covered by
 this pipeline at all, per the original design note above.
+
+**Post-close bug found + fixed same day — "chained" emails silently never ingested.** Cesar tested
+a second real transaction later in the day; it never showed up in the app, and re-running the
+GitHub Actions poll didn't fix it. Root cause: `poll_inbox()` was listing candidate messages with
+`q=-label:"FinanceOS/Processed"`. Gmail's search index treats a custom label's presence as a
+property of the whole conversation, not the individual message — once any message in a Gmail
+thread carries `PROCESSED_LABEL`, a `-label:` search excludes every message in that thread,
+including ones that arrive later and were never actually labeled themselves. Bancolombia's
+transaction emails land in the same Gmail thread as Cesar's forward preserves subject/participants
+(the "chained" email he noticed) — so the first email in a thread got processed and labeled
+normally, and every subsequent email in that same thread was invisible to the poller forever
+after, no matter how many times it re-ran, because the exclusion was never really about that
+message's own label state. **Fixed:** `email_ingest.py`'s `poll_inbox()` now lists by a bounded
+recency window (`q="newer_than:7d"`) instead of the label search, then checks each message's own
+`labelIds` field (returned per-message on `messages().get()`, authoritative — unlike the search
+index) to decide skip vs. process. Slightly more API calls per run (re-fetches already-processed
+messages within the 7-day window just to check their labels) but correct at this mailbox's low
+volume. Not yet deployed/tested live — needs commit, push, and a real re-test with a chained email
+before this can be considered closed.
 
 ---
 
