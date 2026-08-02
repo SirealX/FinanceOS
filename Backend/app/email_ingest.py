@@ -339,9 +339,21 @@ def _decode_body(payload: dict) -> str:
     return _walk_html(payload) or ""
 
 
-def _resolve_user_id(to_address: str, db: Session) -> Optional[str]:
-    """Extracts the +alias token from the To header and looks up the owning user."""
-    match = _ALIAS_TOKEN_RE.search(to_address or "")
+def _resolve_user_id(delivered_to: str, db: Session) -> Optional[str]:
+    """
+    Extracts the +alias token from the message's actual delivery address and
+    looks up the owning user.
+
+    Deliberately takes the Delivered-To header, not To. Confirmed live
+    2026-08-02: Gmail's filter "Forward it to" preserves the original To:
+    header (the bank's own address to the user's personal inbox) and only
+    changes where the message is actually delivered — the +alias only shows
+    up in Delivered-To, which the receiving Gmail server (the shared
+    financeos.ingest@gmail.com inbox) stamps with the real envelope
+    recipient at final delivery, regardless of what To: says. Using To: here
+    silently resolved to nothing for every real forwarded email.
+    """
+    match = _ALIAS_TOKEN_RE.search(delivered_to or "")
     if not match:
         return None
     token = match.group(1)
@@ -386,15 +398,18 @@ def poll_inbox() -> dict:
                 full = service.users().messages().get(
                     userId="me", id=msg_id, format="full",
                 ).execute()
-                headers = full["payload"]["headers"]
-                sender  = _header(headers, "From")
-                to_addr = _header(headers, "To")
-                subject = _header(headers, "Subject")
-                body    = _decode_body(full["payload"])
+                headers      = full["payload"]["headers"]
+                sender       = _header(headers, "From")
+                delivered_to = _header(headers, "Delivered-To") or _header(headers, "To")
+                subject      = _header(headers, "Subject")
+                body         = _decode_body(full["payload"])
 
-                user_id = _resolve_user_id(to_addr, db)
+                user_id = _resolve_user_id(delivered_to, db)
                 if not user_id:
-                    log.warning("[email_ingest] Unresolvable alias on message %s (To: %s)", msg_id, to_addr)
+                    log.warning(
+                        "[email_ingest] Unresolvable alias on message %s (Delivered-To: %s)",
+                        msg_id, delivered_to,
+                    )
                     summary["unresolved"] += 1
                     _mark_processed(service, msg_id, label_id)
                     summary["processed"] += 1

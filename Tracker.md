@@ -935,13 +935,16 @@ run against it. Two real bugs found:**
   `Backend/.env` and Render's Environment tab with the new value. Also worth double-checking the
   Google Cloud OAuth consent screen (Step 3 of the original setup) lists `gmail.modify` as an
   available scope, not just `gmail.readonly`.
-- **Still unverified:** whether `_resolve_user_id()` actually finds the `+alias` token on a
-  real forwarded message. Gmail delivers a filter-forwarded copy to the new envelope recipient,
-  but it's not confirmed here whether the message's own `To:` header gets rewritten to that
-  address or still shows the original recipient (Cesar's personal address) — if the latter, alias
-  resolution would silently fail (`unresolved`, not a crash) even once the scope issue is fixed.
-  Worth checking the `unresolved` count specifically on the next real test, not just whether the
-  run succeeds.
+- [x] **Confirmed and fixed (2026-08-02) — the `To:` header hunch was right.** Once the scope fix
+  landed, the run got further and logged `Unresolvable alias on message … (To: <Cesar's personal
+  address>)`. Gmail's filter "Forward it to" preserves the original `To:` header (the bank's own
+  address to Cesar's personal inbox) — it only changes where the message is actually delivered.
+  The `+alias` never shows up in `To:` at all for a forwarded copy, only in `Delivered-To`, which
+  the receiving Gmail server (the shared `financeos.ingest@gmail.com` inbox) stamps with the real
+  envelope recipient at final delivery. **Fixed:** `poll_inbox()` now reads `Delivered-To` first
+  (falling back to `To` for the hypothetical case of someone emailing the alias directly, not via
+  a forward), and `_resolve_user_id()` renamed/re-documented to make that explicit rather than
+  implying `To:` was ever the right header. Not yet re-tested live — next run should tell us.
 
 ---
 
