@@ -1,0 +1,4 @@
+FROM: Bancolombia <alertasynotificaciones@an.notificacionesbancolombia.com>
+SUBJECT: ¡Listo! Todo salió bien con tus movimientos
+
+Bancolombia: Transferiste $18,000.00 desde tu cuenta 0000 a la cuenta *0000000000 el 01/08/2026 a las 17:54. ¿Dudas? Llamanos al 018000931987. Estamos cerca.

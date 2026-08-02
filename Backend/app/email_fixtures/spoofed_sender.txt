@@ -1,0 +1,4 @@
+FROM: Bancolombia <not-really-bancolombia@attacker-example.com>
+SUBJECT: ¡Listo! Todo salió bien con tus movimientos
+
+Bancolombia: NOMBRE APELLIDO EJEMPLO pagaste $14,500.00 por codigo QR desde tu cuenta *0000 a la llave 0000000000 el 01/08/2026 a las 01:57. Con codigo QR es facil y de una. Dudas al 018000912345.

@@ -1,0 +1,4 @@
+FROM: Bancolombia <alertasynotificaciones@an.notificacionesbancolombia.com>
+SUBJECT: ¡Listo! Todo salió bien con tus movimientos
+
+Bancolombia: Recibiste un pago de Nomina de EMPRESA EJEMPLO SAS por $641,734.00 en tu cuenta de Ahorros el 29/07/2026 a las 09:53. Si tienes dudas, llamanos al 018000931987. A tu lado siempre.

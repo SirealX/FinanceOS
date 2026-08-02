@@ -1,0 +1,4 @@
+FROM: Bancolombia <alertasynotificaciones@an.notificacionesbancolombia.com>
+SUBJECT: ¡Listo! Todo salió bien con tus movimientos
+
+Bancolombia: Compraste $30.777,69 en TIENDA ONLINE EJEMPLO con tu T.Deb *0000, el 24/07/2026 a las 18:59. Si tienes dudas, encuentranos aqui: 6045109095 o 018000931987. Estamos cerca.

@@ -40,7 +40,7 @@ import logging
 import os
 import re
 import uuid
-from datetime import date as date_type
+from datetime import date as date_type, datetime
 from typing import Optional
 
 from fastapi import APIRouter, Header, HTTPException
@@ -54,46 +54,175 @@ log = logging.getLogger(__name__)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Piece #1 — pure parser (STUB — blocked on a real fixture email)
+# Piece #1 — pure parser (Bancolombia, built from 5 real fixture emails —
+# see Backend/app/email_fixtures/ — 2026-08-02)
 # ─────────────────────────────────────────────────────────────────────────────
+#
+# Bancolombia sends four DIFFERENT transaction-notification templates, each
+# with its own phrasing, and — this bit is easy to miss and important — its
+# own NUMBER FORMAT. Card purchases use Colombian-style formatting
+# ("$30.777,69" — period thousands, comma decimal); QR/transfer/payroll use
+# US-style ("$14,500.00" — comma thousands, period decimal). Same bank, same
+# day, two different conventions depending on which system generated the
+# email. _parse_amount() below normalizes both by treating whichever
+# separator appears LAST as the decimal point, which handles both correctly
+# without needing to hardcode which template uses which format (a 5th
+# template someday using either convention would still parse right).
+#
+# A 5th sample email (marketing/bill-reminder, "Tenemos novedades") does NOT
+# describe a completed transaction — it's a heads-up that a registered bill
+# is ready to be paid, not money that has actually moved yet. It's excluded
+# by construction: none of the 4 patterns below match its wording, so it
+# falls through to the `return None` at the bottom, same as any other
+# non-transaction email. Deliberately not special-cased — the specificity of
+# the 4 real patterns is what filters it out, not name-matching this one
+# subject line (a robustness bet: any other Bancolombia marketing email
+# lands the same way).
+#
+# SENDER CHECK — baseline, not the full fix. Cesar's real notification
+# address is alertasynotificaciones@an.notificacionesbancolombia.com
+# (confirmed 2026-08-02). Requiring the domain match is a real improvement
+# over not checking at all, but it's still just string-matching the From:
+# header — a sending server could put arbitrary text in that header, this
+# doesn't cryptographically prove the mail is genuine. The stronger version
+# checks Gmail's own DKIM/SPF verification result (the "Authentication-
+# Results" header, stamped by Gmail itself on receipt — can't be forged by
+# the incoming message). Since the forward will go through Gmail's native
+# Forwarding/Filter mechanism (not a manual "Forward" button, which would
+# strip original headers), Gmail's ARC (Authenticated Received Chain) is
+# designed for exactly this — relayed mail should carry its authentication
+# provenance through. Worth confirming once the forward rule is live before
+# relying on it. Domain check below is the shipped baseline; DKIM/ARC
+# checking is tracked in Tracker.md "Known Bugs" as the still-open hardening
+# step.
+_SENDER_DOMAIN = "notificacionesbancolombia.com"
+
+_QR_RE = re.compile(
+    r'pagaste\s+\$?([\d.,]+)\s+por\s+c[oó]digo\s+QR\s+desde\s+tu\s+cuenta\s+\*?(\S+?)\s+'
+    r'a\s+la\s+llave\s+(\S+?)\s+el\s+(\d{2}/\d{2}/\d{4})',
+    re.IGNORECASE,
+)
+
+_TRANSFER_RE = re.compile(
+    r'Transferiste\s+\$?([\d.,]+)\s+desde\s+tu\s+cuenta\s+\*?(\S+?)\s+'
+    r'a\s+la\s+cuenta\s+\*?(\S+?)\s+el\s+(\d{2}/\d{2}/\d{4})',
+    re.IGNORECASE,
+)
+
+_CARD_PURCHASE_RE = re.compile(
+    r'Compraste\s+\$?([\d.,]+)\s+en\s+(.+?)\s+con\s+tu\s+T\.?\s?Deb\s+\*?(\S+?),?\s+'
+    r'el\s+(\d{2}/\d{2}/\d{4})',
+    re.IGNORECASE,
+)
+
+_PAYROLL_RE = re.compile(
+    r'Recibiste\s+un\s+pago\s+de\s+N[oó]mina\s+de\s+(.+?)\s+por\s+\$?([\d.,]+)\s+'
+    r'en\s+tu\s+cuenta.*?el\s+(\d{2}/\d{2}/\d{4})',
+    re.IGNORECASE,
+)
+
+
+def _parse_amount(raw: str) -> float:
+    """
+    Normalizes a Bancolombia amount string to a float regardless of which of
+    the two number formats it uses. Rule: whichever separator (comma or
+    period) appears LAST in the string is the decimal point; the other, if
+    present, is a thousands separator and gets stripped.
+        "14,500.00" -> 14500.00   (period last -> period is decimal)
+        "30.777,69" -> 30777.69   (comma last -> comma is decimal)
+        "500"       -> 500.0      (no separators)
+    """
+    raw = raw.strip().replace(" ", "")
+    has_comma, has_period = "," in raw, "." in raw
+
+    if has_comma and has_period:
+        if raw.rfind(",") > raw.rfind("."):
+            raw = raw.replace(".", "").replace(",", ".")
+        else:
+            raw = raw.replace(",", "")
+    elif has_comma:
+        head, _, tail = raw.rpartition(",")
+        raw = f"{head}.{tail}" if len(tail) == 2 else head + tail
+    elif has_period:
+        head, _, tail = raw.rpartition(".")
+        raw = f"{head}.{tail}" if len(tail) == 2 else head + tail
+
+    return float(raw)
+
+
+def _parse_date(raw: str) -> date_type:
+    """Bancolombia dates are DD/MM/YYYY — same convention as import_router.py's default."""
+    return datetime.strptime(raw, "%d/%m/%Y").date()
+
 
 def parse_bank_email(sender: str, subject: str, body: str) -> Optional[dict]:
     """
-    Parse a single bank transaction-notification email into transaction
-    fields. Pure function — no network calls, no DB access — so it can be
-    unit-tested against saved fixture emails (capture one real example per
-    bank once, reuse forever; no need to trigger real transactions to test).
+    Parse a single Bancolombia transaction-notification email into
+    transaction fields. Pure function — no network calls, no DB access — so
+    it's unit-tested against the saved fixtures in Backend/app/email_fixtures/
+    (test_email_ingest_parser.py) rather than against real mail.
 
-    Returns None if the email doesn't look like a transaction notification
-    at all (e.g. a marketing email that slipped through the forward rule) —
-    the poller treats None as "skip, not an error."
-
-    Expected return shape once implemented:
-        {
-            "date":            date,                    # transaction date
-            "amount":          float,                    # always positive
-            "description":     str,                       # merchant / narration
-            "type":            "income" | "expense",
-            "category":        str | None,                 # best-effort guess, None if unsure
-            "payment_method":  str | None,                  # None -> poller infers it
-        }
+    Returns None if the email doesn't match any known transaction pattern
+    (e.g. the marketing/bill-reminder template) — the poller treats None as
+    "skip, not an error," same as any transaction it doesn't recognize.
 
     Args:
-        sender:  the email's From header (used to confirm it's really from
-                 the bank, not just a message that landed in the inbox)
-        subject: the email's Subject header
+        sender:  the email's From header — must come from Bancolombia's
+                 notification domain (see the SENDER CHECK note above the
+                 regexes for what this does and doesn't prove)
+        subject: the email's Subject header (unused for Bancolombia — all
+                 four real transaction templates share one subject line, the
+                 body is what actually distinguishes them)
         body:    the email's plain-text body
-
-    STATUS: not yet implemented. Needs a real, redacted Bancolombia
-    transaction-notification email to build the actual regex/parsing logic
-    against — see Tracker.md "Email Ingestion Pipeline" for where this is
-    tracked. Raises deliberately instead of guessing a format, since a wrong
-    guess would silently create incorrect real transactions.
     """
-    raise NotImplementedError(
-        "parse_bank_email() is a stub — needs a real Bancolombia fixture "
-        "email before it can be written for real. See Tracker.md item #6."
-    )
+    if _SENDER_DOMAIN not in (sender or "").lower():
+        return None
+
+    if m := _QR_RE.search(body):
+        amount, account, llave, when = m.groups()
+        return {
+            "date":           _parse_date(when),
+            "amount":         _parse_amount(amount),
+            "description":    f"Pago QR — llave {llave}",
+            "type":           "expense",
+            "category":       None,
+            "payment_method": "QR",
+        }
+
+    if m := _TRANSFER_RE.search(body):
+        amount, from_acct, to_acct, when = m.groups()
+        return {
+            "date":           _parse_date(when),
+            "amount":         _parse_amount(amount),
+            "description":    f"Transferencia a cuenta *{to_acct}",
+            "type":           "expense",
+            "category":       None,
+            "payment_method": "Transfer",
+        }
+
+    if m := _CARD_PURCHASE_RE.search(body):
+        amount, merchant, card, when = m.groups()
+        return {
+            "date":           _parse_date(when),
+            "amount":         _parse_amount(amount),
+            "description":    merchant.strip(),
+            "type":           "expense",
+            "category":       None,
+            "payment_method": "Debit Card",
+        }
+
+    if m := _PAYROLL_RE.search(body):
+        employer, amount, when = m.groups()
+        return {
+            "date":           _parse_date(when),
+            "amount":         _parse_amount(amount),
+            "description":    f"Nómina — {employer.strip()}",
+            "type":           "income",
+            "category":       None,
+            "payment_method": "Transfer",
+        }
+
+    return None
 
 
 # ─────────────────────────────────────────────────────────────────────────────

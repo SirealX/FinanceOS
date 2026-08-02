@@ -1,0 +1,6 @@
+FROM: Bancolombia <alertasynotificaciones@an.notificacionesbancolombia.com>
+SUBJECT: ¡Te interesa! Tenemos novedades
+
+Buenas noticias: La factura que inscribiste SERVICIO EJEMPLO con referencia 0000000000 está lista para que la pagues. Vence el 11/08/2026. Si activaste el pago automático, lo haremos en la fecha programada. ¿Dudas? Llámanos al 6045109095 o 018000912345.
+
+Esto es un mensaje automático. Por favor, no contestes. Estamos para ti en nuestros canales de atención. Gracias por elegirnos.

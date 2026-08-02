@@ -25,7 +25,7 @@ don't skip ahead.**
 | 3 | **Codebase orphan/dead-code audit** — find unused fields, dead functions, stale logic (e.g. the `is_draft`/`reviewed` confusion, see "Known Gotchas") | ✅ **Done (2026-08-01)** | Full file-by-file pass done, then every finding that was actually #3's own scope was fixed the same day. See **"🔍 Codebase Audit — Findings & Fix Checklist (2026-08-01)"** below. What's *not* fixed was deliberately re-homed, not dropped: schema/column items (`planned_amt`, `auto_detected`, the missing Alembic baseline) move to item #5; stale-docs items move to item #4; `MonthEndReview` nav wiring stays a future alerts-item. |
 | 4 | **Docs overhaul** — bring every `.md` file in line with actual repo state | ✅ **Done (2026-08-01)** | `README.md`, `Backend/Requiremnets.md` (superseded banner), `frontend/Design_System.md` fixed and updated. All 8 legacy Finance-tracker docs stamped and status-reconciled, including a full item-by-item re-walk of the 26-issue `financial-logic-audit*.md` series. See **"📚 Item #4 Prep — Legacy Docs Reconciliation (2026-08-01)"** below for the full trail. Two real follow-ups this pass surfaced: variable-income support and the 3-month export cap/no-PDF-report — both added to the roadmap in `README.md`, neither urgent enough for their own numbered item yet |
 | 5 | **Database normalization + scalability** | ✅ **Done (2026-08-02)** | Worked collaboratively item-by-item — see **"🗄️ Item #5 — Database Normalization & Scalability (2026-08-02)"** below for the full trail. All 7 sub-items closed: Alembic baseline, `planned_amt`/`auto_detected` drops, FK index cleanup, `entity_sync.py` FK rework, `user_id` NOT NULL, `month_start` wiring, `GET /transactions` pagination. Two real follow-ups surfaced along the way, not fixed yet, added to "Known Bugs" below: the CC-charge debt-reversal gap, and the cashflow chart's month labels still being calendar-only |
-| 6 | **Email ingestion pipeline (bank-transaction automation)** | 🔄 In progress (2026-08-02) | Schema piece done (source enum + `ingest_token`); parser + poller blocked on a sample Bancolombia email and Gmail OAuth setup — see "Email Ingestion Pipeline" below |
+| 6 | **Email ingestion pipeline (bank-transaction automation)** | 🔄 Code-complete, not live (2026-08-02) | Schema, poller, and parser (5 real fixtures, all passing) all built. Not yet: commit/push, Render env vars, Cesar's local connection test, forward rule setup — see "Email Ingestion Pipeline" below |
 
 **Why this order:** reliability first because nothing else can be tested reliably while Supabase
 keeps pausing mid-session. Security Advisor before normalization because it's five minutes of
@@ -708,6 +708,22 @@ Found incidentally, not yet triaged into a numbered priority item.
   error. Low severity — pre-existing gap (the constraint has been live on production since April, this
   isn't new exposure, just newly documented), not urgent, but a real gap. Not fixed — flagging so it
   isn't lost.
+- **`email_ingest.py`'s `parse_bank_email()` only string-matches the sender domain, doesn't
+  cryptographically verify it.** Found 2026-08-02 while building item #6's parser; partially
+  addressed same day once Cesar confirmed his real notification address
+  (`alertasynotificaciones@an.notificacionesbancolombia.com`). Parser now rejects anything not
+  from the `notificacionesbancolombia.com` domain before even trying the transaction regexes —
+  tested against a `spoofed_sender.txt` fixture (real transaction wording, fake domain) to
+  confirm it actually rejects, not just exists unused. **Still not a full fix**: a From: header is
+  just text a sending server writes, not cryptographically bound to the real sender — this domain
+  check stops casual mistakes, not a deliberate spoof. Proper fix is checking Gmail's own
+  `Authentication-Results` header (DKIM/SPF, stamped by Gmail itself on receipt — can't be forged
+  by the incoming message). Not implemented because it's still unconfirmed whether Cesar's
+  forward rule (being set up now) preserves that header through the forward — Gmail's ARC
+  (Authenticated Received Chain) is designed for exactly this relay case and the forward is going
+  through Gmail's native Forwarding/Filter mechanism (not a manual "Forward" button, which would
+  strip headers), so there's reason to expect it survives — needs confirming once the rule is
+  live, not assumed. Not fixed — flagging so it isn't lost.
 
 ---
 
@@ -838,6 +854,61 @@ end-to-end.
   (same pattern as `PLAID_CLIENT_ID` in "Environment Variables" above, now actually filled in
   instead of on-hold). Then send the redacted Bancolombia sample email so `parse_bank_email()`
   can be written for real.
+
+**Update (2026-08-02, later still) — `parse_bank_email()` written and passing, from 5 real
+Bancolombia emails Cesar sent (redacted — his name replaced with a placeholder before committing,
+since the GitHub repo is public).**
+
+- [x] Fixtures saved to `Backend/app/email_fixtures/` (QR payment, transfer, card purchase,
+  payroll deposit, + one marketing/bill-reminder email that is deliberately NOT a transaction).
+- [x] **Real quirk found: Bancolombia uses two different number formats depending on which
+  template sent the email.** Card purchases are Colombian-style (`$30.777,69` — period
+  thousands, comma decimal); QR/transfer/payroll are US-style (`$14,500.00` — comma thousands,
+  period decimal). `_parse_amount()` normalizes both by treating whichever separator appears
+  LAST in the string as the decimal point — handles both conventions without hardcoding which
+  template uses which.
+- [x] The marketing/bill-reminder fixture ("Tenemos novedades" — a registered bill ready to be
+  paid, not money that's actually moved) is filtered out by construction: none of the 4 real
+  transaction regexes match its wording, so `parse_bank_email()` falls through to `return None`
+  for it — no special-casing needed, and the same fallthrough should catch other Bancolombia
+  marketing mail that slips through the forward rule.
+- [x] `Backend/app/test_email_ingest_parser.py` — standalone fixture regression test (same
+  "plain script, not pytest" pattern as the RISK-02 month_start check), all 5 cases pass.
+  Runnable via `python -m app.test_email_ingest_parser`.
+- ⚠️ **Known gap, not fixed — sender verification.** The parser's `sender` param is accepted but
+  not enforced. The 4 regexes require Bancolombia's exact transaction phrasing, which is a real
+  (if soft) filter against random mail, but there's no cryptographic check that a message
+  claiming "Bancolombia: Compraste..." actually came from Bancolombia — someone who obtained a
+  user's `ingest_token` could email fake transactions to their alias. Proper fix is checking
+  Gmail's own `Authentication-Results` header (DKIM/SPF, stamped by Gmail itself — can't be
+  forged by the incoming message) rather than trusting the From: header text, but it's not yet
+  confirmed whether Cesar's eventual forward rule preserves that header through the forward.
+  Added to "Known Bugs" below rather than guessed at.
+- **Item #6 status: code-complete, not yet live.** Same "not yet done" list as above still
+  applies — commit/push, Render env vars, and Cesar's local Gmail connection test — plus now
+  actually setting up the forward rule from wherever his Bancolombia notification emails land
+  today, to his `financeos.ingest+<token>@gmail.com` alias.
+
+**Forward rule setup checklist (personal Gmail → shared ingestion inbox):**
+
+1. Deploy first (commit/push + Render env vars, above) so `POST /preferences/ingest-email` is live.
+2. Get a Supabase JWT from the deployed frontend (log in normally, then either check
+   localStorage for the `sb-<project-ref>-auth-token` key, or the Network tab on any API call for
+   the `Authorization: Bearer …` header) and use it to call
+   `POST /preferences/ingest-email` via the Render backend's `/docs` Swagger UI (Authorize →
+   paste the token → try the endpoint). Response is the real
+   `financeos.ingest+<token>@gmail.com` address — this is per-user, not the bare shared inbox
+   address.
+3. In **personal** Gmail (where Bancolombia mail lands today) → Settings (gear) → See all
+   settings → **Forwarding and POP/IMAP** tab → Add a forwarding address → paste the address from
+   step 2. Gmail sends a confirmation email to it.
+4. Log into `financeos.ingest@gmail.com` (the shared inbox), find that confirmation email (it'll
+   land there since `+alias` mail is delivered to the base inbox), and confirm it — click the
+   link, or copy the code back into the personal Gmail's forwarding settings.
+5. Back in personal Gmail → Settings → **Filters and Blocked Addresses** → Create a new filter →
+   From: `alertasynotificaciones@an.notificacionesbancolombia.com` → Create filter → check
+   **"Forward it to"** → select the now-verified address from step 2 → Create Filter. Leave
+   "Skip the Inbox" unchecked so the emails still show up normally too — this is a copy, not a move.
 
 ---
 
@@ -1253,7 +1324,7 @@ linked payment. Flag any code still confusing the two during the codebase audit 
 | Codebase orphan/dead-code audit                 | ✅ Done (2026-08-01) — audit + in-scope fixes applied; schema items re-homed to #5, docs items to #4, see section above |
 | Docs overhaul                                    | ✅ Done (2026-08-01) — README, Requiremnets.md, Design_System.md updated; all 8 legacy docs reconciled |
 | Database normalization + scalability            | ✅ Done (2026-08-02) — 7 sub-items closed, see item #5 section     |
-| Email ingestion pipeline                        | 🔄 In progress (2026-08-02) — schema done, parser/poller blocked on sample email + Gmail OAuth setup |
+| Email ingestion pipeline                        | 🔄 Code-complete, not live (2026-08-02) — schema, poller, parser all built; needs commit/push, Render env vars, connection test, forward rule |
 
 ---
 
