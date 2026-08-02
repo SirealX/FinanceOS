@@ -19,22 +19,58 @@ router = APIRouter(tags=["summary"])
 VALID_PERIODS = {"this_month", "last_month", "last_3_months"}
 
 
-def _period_bounds(period: str):
+def _custom_month_start(anchor: date, month_start: int) -> date:
+    """
+    The date the user's current budgeting "month" began, given an anchor
+    date and the day-of-month it starts on (1-28, validated in
+    preferences.py -- capped at 28 specifically so this never has to
+    handle a start-day that doesn't exist in every month, e.g. Feb 30).
+    """
+    if anchor.day >= month_start:
+        return date(anchor.year, anchor.month, month_start)
+    month = anchor.month - 1
+    year  = anchor.year
+    if month == 0:
+        month = 12
+        year -= 1
+    return date(year, month, month_start)
+
+
+def _shift_months(d: date, n: int) -> date:
+    """d's (year, month) shifted back n calendar months, same day."""
+    month = d.month - n
+    year  = d.year
+    while month <= 0:
+        month += 12
+        year  -= 1
+    return date(year, month, d.day)
+
+
+def _period_bounds(period: str, month_start: int = 1):
+    """
+    RISK-02 fix (item #5, 2026-08-02): month_start used to be accepted and
+    persisted (Settings.jsx has a working 1-28 picker) but silently ignored
+    here -- every period was calendar-month-aligned regardless of what the
+    user set. Now the KPI summary and expense breakdown actually use it.
+    Defaults to 1 (plain calendar month) so every call site that doesn't
+    pass a value keeps its old behavior.
+
+    NOTE: _month_range() below (used only for get_cashflow's chart month
+    labels) is NOT wired to month_start -- reworking chart bucket
+    boundaries to a custom cycle is a separate, bigger design question.
+    Flagged in Tracker.md, not done here.
+    """
     today = date.today()
     if period == "this_month":
-        return today.replace(day=1), today
+        return _custom_month_start(today, month_start), today
     if period == "last_month":
-        first_this = today.replace(day=1)
-        end = first_this - timedelta(days=1)
-        return end.replace(day=1), end
+        this_start = _custom_month_start(today, month_start)
+        end = this_start - timedelta(days=1)
+        return _shift_months(this_start, 1), end
     if period == "last_3_months":
-        month = today.month - 2
-        year  = today.year
-        if month <= 0:
-            month += 12
-            year  -= 1
-        return date(year, month, 1), today
-    return today.replace(day=1), today
+        this_start = _custom_month_start(today, month_start)
+        return _shift_months(this_start, 2), today
+    return _custom_month_start(today, month_start), today
 
 
 def _month_range(period: str) -> List[tuple]:
@@ -224,7 +260,9 @@ def get_summary(
 ):
     _validate_period(period)
 
-    start, end = _period_bounds(period)
+    prefs = db.query(Preferences).filter(Preferences.user_id == current_user).first()
+    month_start = prefs.month_start if prefs else 1
+    start, end = _period_bounds(period, month_start)
 
     # ── Queries ────────────────────────────────────────────────────────────────
     # 6 queries: 4 type-totals + 2 cc_charge adjustments
@@ -266,7 +304,6 @@ def get_summary(
     # It is only applied in Mode B (no bank anchor) — in Mode A the projected
     # bank balance already captures reality, so adding initial_balance again
     # would shift the projection incorrectly for existing anchored users.
-    prefs = db.query(Preferences).filter(Preferences.user_id == current_user).first()
     initial_balance = float(prefs.initial_balance or 0) if prefs else 0.0
     has_anchor      = prefs is not None and prefs.balance_anchor_app is not None
     balance_offset  = initial_balance if not has_anchor else 0.0
@@ -425,7 +462,9 @@ def get_expense_breakdown(
 ):
     _validate_period(period)
 
-    start, end = _period_bounds(period)
+    prefs = db.query(Preferences).filter(Preferences.user_id == current_user).first()
+    month_start = prefs.month_start if prefs else 1
+    start, end = _period_bounds(period, month_start)
 
     # Include expense (cash only — exclude cc_charge which hits the CC balance,
     # not the bank account), debt_payment, and savings so the donut shows the

@@ -24,7 +24,7 @@ don't skip ahead.**
 | 2 | **Supabase Security Advisor review** — check Database → Advisors for actual RLS/security warnings | ✅ Done (2026-07-30) | RLS enabled on all 12 public tables, no policies (not needed — see "Supabase Security Advisor Review" below) |
 | 3 | **Codebase orphan/dead-code audit** — find unused fields, dead functions, stale logic (e.g. the `is_draft`/`reviewed` confusion, see "Known Gotchas") | ✅ **Done (2026-08-01)** | Full file-by-file pass done, then every finding that was actually #3's own scope was fixed the same day. See **"🔍 Codebase Audit — Findings & Fix Checklist (2026-08-01)"** below. What's *not* fixed was deliberately re-homed, not dropped: schema/column items (`planned_amt`, `auto_detected`, the missing Alembic baseline) move to item #5; stale-docs items move to item #4; `MonthEndReview` nav wiring stays a future alerts-item. |
 | 4 | **Docs overhaul** — bring every `.md` file in line with actual repo state | ✅ **Done (2026-08-01)** | `README.md`, `Backend/Requiremnets.md` (superseded banner), `frontend/Design_System.md` fixed and updated. All 8 legacy Finance-tracker docs stamped and status-reconciled, including a full item-by-item re-walk of the 26-issue `financial-logic-audit*.md` series. See **"📚 Item #4 Prep — Legacy Docs Reconciliation (2026-08-01)"** below for the full trail. Two real follow-ups this pass surfaced: variable-income support and the 3-month export cap/no-PDF-report — both added to the roadmap in `README.md`, neither urgent enough for their own numbered item yet |
-| 5 | **Database normalization + scalability** | ⬜ Not started | Tied to Cesar's coursework — do this collaboratively, explain reasoning, don't just hand over a schema diff. **Also fold in:** unindexed FK / unused index cleanup from Security Advisor (2026-07-30) — see below; **from the item #3 audit (2026-08-01):** the missing Alembic baseline migration (prerequisite, do first), plus the `Transaction.planned_amt` / `Bill.auto_detected` dead-column decisions; **and from the item #4 prep pass (2026-08-01):** `entity_sync.py`'s name-based entity lookups (fragile/collision-prone within a user's own records), plus the three still-open items from the April `AUDIT_REPORT.md` risk list — `user_id` nullable on data tables, unused `Preferences.month_start`, no pagination on `GET /transactions` — all reconfirmed still open this pass, see below |
+| 5 | **Database normalization + scalability** | ✅ **Done (2026-08-02)** | Worked collaboratively item-by-item — see **"🗄️ Item #5 — Database Normalization & Scalability (2026-08-02)"** below for the full trail. All 7 sub-items closed: Alembic baseline, `planned_amt`/`auto_detected` drops, FK index cleanup, `entity_sync.py` FK rework, `user_id` NOT NULL, `month_start` wiring, `GET /transactions` pagination. Two real follow-ups surfaced along the way, not fixed yet, added to "Known Bugs" below: the CC-charge debt-reversal gap, and the cashflow chart's month labels still being calendar-only |
 | 6 | **Email ingestion pipeline (bank-transaction automation)** | ⬜ Design agreed, not built | See "Email Ingestion Pipeline" below — build after the schema settles |
 
 **Why this order:** reliability first because nothing else can be tested reliably while Supabase
@@ -481,9 +481,13 @@ code rather than assumed:
 
 - **RISK-01 — `user_id` nullable on data tables.** Still `nullable=True` on `Transaction`,
   `BudgetCategory`, and most other user-data tables in `models.py`. Folded into item #5 above.
-- **RISK-02 — `Preferences.month_start` unused.** Confirmed still true — `month_start` is a full,
-  validated preference field (`preferences.py`), but `summary.py`'s `_period_bounds()` still
-  hardcodes `today.replace(day=1)` and never reads it. Folded into item #5 above.
+- **RISK-02 — `Preferences.month_start` unused.** ✅ **Fixed 2026-08-02.** `_period_bounds()` in
+  `summary.py` now takes `month_start` and computes custom-cycle boundaries instead of hardcoding
+  `today.replace(day=1)` — covers the KPI summary (`/summary`) and expense-breakdown donut
+  (`/expenses/breakdown`). Verified with a standalone regression test (month_start=1 matches old
+  behavior exactly across a range of dates including leap years) plus sanity checks at
+  month_start=15 and the month_start=28 Feb edge case. `_month_range()` (cashflow chart month
+  labels only) deliberately NOT wired — see "Known Bugs" above.
 - **RISK-03 — no pagination on `GET /transactions`.** Confirmed still true — no `limit`/`offset`
   params on the endpoint. Folded into item #5 above (lower urgency than the other two until the
   user base actually grows).
@@ -533,6 +537,80 @@ dead code for a future cleanup pass, not as missing UI to build.
 
 ---
 
+## 🗄️ Item #5 — Database Normalization & Scalability (2026-08-02)
+
+Worked item-by-item, collaboratively, with local verification (a throwaway Postgres instance, not
+just autogenerate-and-hope) before anything touched production. All migrations chain off the new
+baseline below; each was tested with a real upgrade+downgrade round-trip and a fresh-empty-DB
+base-to-head run before being committed.
+
+1. **Alembic baseline migration (prerequisite).** The missing pre-history (8 uncommitted early
+   migrations, see item #3's structural find) is confirmed unrecoverable. Replaced the whole broken
+   chain with one clean baseline (`966113aa8a57_baseline_current_schema.py`), autogenerated against
+   an empty Postgres from current `models.py`. Old 19-file chain moved to
+   `Backend/alembic/legacy_pre_baseline/` for reference, no longer active. Along the way found a
+   second structural problem the earlier audit missed: **two unmerged Alembic heads** (`f13c72052aba`
+   from the alerts work, `m2_debt_restructure_columns` from the debt restructure) — resolved by the
+   same baseline replacement. Also found the naive autogenerated file couldn't actually run against
+   an empty DB: `transactions` and `budget_categories` have a genuine circular FK (each references
+   the other). Fixed mechanically — both constraints added via `ALTER TABLE` after both tables exist,
+   current bidirectional design preserved as-is. Production stamped at `966113aa8a57` (not upgraded —
+   the live schema already matched).
+2. **`Transaction.planned_amt` — dropped.** Confirmed dead (zero reads/writes anywhere).
+   Budget-vs-actual is fully handled via `Category.planned_amount` instead.
+3. **`Bill.auto_detected` — dropped.** Confirmed write-only (hardcoded `False` at creation, never
+   read). Orphaned relative to both the old banking-API plan and the new email-ingestion plan.
+4. **Unindexed FK / unused index cleanup.** Added indexes on the 6 FK columns Security Advisor
+   flagged (`bills.transaction_id`, `bills.budget_category_id`, `debts.linked_transaction_id`,
+   `debts.recurring_transaction_id`, `transactions.budget_category_id`,
+   `budget_categories.transaction_id`). Advisor's "unused `ix_*_user_id` indexes" deliberately left
+   alone — that's runtime stats (`idx_scan = 0`), not a code check; those indexes are correct for a
+   per-user-scoped app and simply haven't been exercised yet at today's low row counts. Dropping them
+   would hurt the exact scalability this item is about.
+5. **`entity_sync.py` name-based lookups → real FKs.** The old code resolved Bill/Debt/SavingsGoal by
+   parsing `BudgetCategory.type` (e.g. `"Debt: Car Loan"`) and matching by name — broke silently on
+   rename, picked an arbitrary match on duplicate names. Cardinality turned out to matter: Bills are
+   1 hub row per bill (reused across cycles), so `Bill.budget_category_id` already existed as a real
+   FK and just wasn't being used — no schema change needed, just fixed the query. Debts and savings
+   goals get a NEW hub row per payment/contribution event (many hub rows → one entity), so the FK had
+   to go on `BudgetCategory` instead: new `debt_id` / `savings_goal_id` columns. Existing production
+   rows backfilled via a one-time migration doing the old name-match, with a safety guard — only
+   auto-links when the name is unique per user; genuine duplicates left `NULL` rather than guessed
+   (query to find any left over is in the migration's docstring). Tested against synthetic data
+   including a deliberate duplicate-name case.
+6. **`user_id` NOT NULL (RISK-01).** Applied to the 8 tables where NULL was never a legitimate state
+   (`transactions`, `budget_categories`, `bills`, `debts`, `savings_goals`, `preferences`,
+   `earmarked_funds`, `recurring_transactions`). **`categories.user_id` deliberately excluded** — NULL
+   there means "system category, shared across all users," a real intentional use, not the same gap.
+   Migration pre-checks every table for existing NULL rows and raises a clear, specific error naming
+   the table and row count if any are found, instead of a generic mid-migration Postgres failure —
+   tested both the clean-pass and the fail-with-orphaned-row paths.
+7. **`Preferences.month_start` (RISK-02).** Was a fully-built, user-facing feature (working 1–28 day
+   picker in Settings, saves and persists) that silently did nothing — `summary.py`'s
+   `_period_bounds()` hardcoded calendar months regardless. Now wired in for the KPI summary
+   (`/summary`) and expense-breakdown donut (`/expenses/breakdown`). Verified with a standalone
+   regression test (`month_start=1` matches the old hardcoded behavior exactly, zero diffs, across
+   dates including leap years) plus sanity checks at `month_start=15` and the `month_start=28`
+   Feb edge case. `_month_range()` (cashflow chart month labels only) deliberately left
+   calendar-only — reworking chart bucket boundaries to a custom cycle is a separate, bigger
+   chart-design question. No migration needed — pure application logic.
+8. **`GET /transactions` pagination (RISK-03).** Added optional `limit`/`offset` query params.
+   Backend-only, additive — default behavior unchanged (still returns everything if unspecified),
+   since the frontend doesn't call it with these yet and a real cap without a frontend change to page
+   through the rest would have silently hidden older transactions. Also added a secondary sort key
+   (`id DESC` after `date DESC`) so pages stay stable when many transactions share a date — verified
+   with a seeded dataset with heavy date ties (25 rows, 5 distinct dates): no gaps, no duplicates
+   across pages.
+
+**Two real follow-ups surfaced this pass, not fixed, added to "Known Bugs" below:** the
+credit-card-charge hub rows that `entity_sync.py` still can't reverse (different bug than #5 above —
+those rows never used the name-lookup path at all), and the cashflow chart's month labels still being
+calendar-only (deliberately out of scope for #7 above).
+
+**✅ Item #5 closed (2026-08-02).** Next up: item #6 (email ingestion pipeline).
+
+---
+
 ## 🐛 Known Bugs — Backlog (unscheduled)
 
 Found incidentally, not yet triaged into a numbered priority item.
@@ -547,6 +625,25 @@ Found incidentally, not yet triaged into a numbered priority item.
   stops showing data even though it's supposed to always look populated. Needs demo data generated
   relative to the current date instead of fixed calendar dates. Not urgent, not tied to current
   priorities — just don't forget it.
+- **Deleting a credit-card-charge transaction doesn't restore the CC balance.** Found 2026-08-02
+  during the item #5 `entity_sync.py` rework. `charge_credit_card()` in `debts.py` creates its
+  `budget_categories` hub row linked to the debt only via `transaction_payment_method = debt.name`
+  (a display string, not a real reference) — `type` is set to the expense category (e.g.
+  "Groceries"), not a "Debt: " prefix, so `entity_sync.py`'s Bill/Debt/Savings branches never match
+  it at all. Reversing/deleting one of these transactions silently does nothing to the debt balance
+  it originally increased. Separate bug from the name-based-lookup fix just shipped (that fix only
+  covered hub rows created by `record_debt_payment`, which do use the "Debt: " prefix) — this one
+  needs its own fix: give `charge_credit_card`'s hub row a real `debt_id` (same column added this
+  pass) and teach `entity_sync.py` to reverse a CC-charge-linked debt increase, not just a payment
+  decrease. Not fixed yet — flagging so it isn't lost.
+- **Cashflow chart's month labels still ignore `month_start`.** Fixed 2026-08-02: `_period_bounds()`
+  in `summary.py` (KPI summary + expense-breakdown donut) now respects the user's `month_start`
+  preference instead of hardcoding calendar months — see "RISK-02" below. But `_month_range()`, used
+  only by `get_cashflow()` to build the chart's month bucket labels (e.g. "Jan/Feb/Mar" for
+  `last_3_months`), is still calendar-month-only on purpose — reworking chart bucket boundaries to a
+  custom cycle (weekly buckets within a custom-start month, x-axis label alignment) is a bigger,
+  separate chart-design question, not a quick fix. Cesar's call (2026-08-02) to leave it for now.
+  Not fixed yet — flagging so it isn't lost.
 
 ---
 
@@ -988,7 +1085,7 @@ linked payment. Flag any code still confusing the two during the codebase audit 
 | Supabase Security Advisor review                | ✅ Done (2026-07-30) — RLS enabled on all 12 tables, no policies needed |
 | Codebase orphan/dead-code audit                 | ✅ Done (2026-08-01) — audit + in-scope fixes applied; schema items re-homed to #5, docs items to #4, see section above |
 | Docs overhaul                                    | ✅ Done (2026-08-01) — README, Requiremnets.md, Design_System.md updated; all 8 legacy docs reconciled |
-| Database normalization + scalability            | ⬜ Not started — own session, tied to coursework                  |
+| Database normalization + scalability            | ✅ Done (2026-08-02) — 7 sub-items closed, see item #5 section     |
 | Email ingestion pipeline                        | 🔄 Designed, not built                                            |
 
 ---
@@ -1010,10 +1107,10 @@ Then name the specific item from "Current Priorities," e.g.:
   fix applied. `AUDIT_FINDINGS.md` in the repo root has the full detailed reasoning behind every
   finding if more context is needed.
 - Item #4 (docs overhaul) is fully done as of 2026-08-01 — legacy docs reconciled, `README.md` /
-  `Backend/Requiremnets.md` / `frontend/Design_System.md` updated. Next up is #5 (database
-  normalization) — see "Current Priorities" at the top, it now carries several extra items folded
-  in from both the #3 audit and the #4 reconciliation pass.
-- "Let's work on database normalization — I want to actually understand the reasoning, not just get a diff"
+  `Backend/Requiremnets.md` / `frontend/Design_System.md` updated.
+- Item #5 (database normalization + scalability) is fully done as of 2026-08-02 — see "🗄️ Item #5"
+  below for the full trail. Next up is #6 (email ingestion pipeline) — see "Current Priorities" at
+  the top.
 - "Let's build the email ingestion pipeline"
 
 **Keep each conversation scoped to one item.** Don't let a session drift into a second workstream

@@ -8,14 +8,13 @@ from .database import Base
 class Transaction(Base):
     __tablename__ = "transactions"
     id                 = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    user_id            = Column(UUID(as_uuid=True), nullable=True, index=True)
+    user_id            = Column(UUID(as_uuid=True), nullable=False, index=True)
     date               = Column(Date, nullable=False)
     description        = Column(String(255))
     category           = Column(String(100))
     type               = Column(Enum("income", "expense", "savings", "debt_payment", "transfer",
                                      name="transaction_type"))
     amount             = Column(Numeric(10, 2))
-    planned_amt        = Column(Numeric(10, 2))
     payment_method     = Column(String(50))
     source             = Column(Enum(
                              "manual", "import", "api_sync",
@@ -32,6 +31,7 @@ class Transaction(Base):
         UUID(as_uuid=True),
         ForeignKey("budget_categories.id", ondelete="SET NULL"),
         nullable=True,
+        index=True,
     )
 
 
@@ -49,10 +49,25 @@ class BudgetCategory(Base):
     __tablename__ = "budget_categories"
     id                         = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     # ── AUTH ──────────────────────────────────────────────────────────────────
-    user_id                    = Column(UUID(as_uuid=True), nullable=True, index=True)
+    user_id                    = Column(UUID(as_uuid=True), nullable=False, index=True)
     transaction_id             = Column(UUID(as_uuid=True),
                                         ForeignKey("transactions.id", ondelete="SET NULL"),
-                                        nullable=True)
+                                        nullable=True, index=True)
+    # ── Entity back-references (item #5, 2026-08-02) ────────────────────────
+    # Bills are 1 hub row per bill (reused across payment cycles), so Bill
+    # already carries its own budget_category_id pointing here -- no column
+    # needed on this side for bills.
+    # Debts and savings goals create a NEW hub row per payment/contribution
+    # event (many hub rows -> one debt/goal), so the FK has to live here
+    # instead. Replaces the old approach of parsing `type` (e.g. "Debt: Car
+    # Loan") and looking the entity up by name, which silently breaks on
+    # rename and picks arbitrarily if two entities share a name.
+    debt_id                    = Column(UUID(as_uuid=True),
+                                        ForeignKey("debts.id", ondelete="SET NULL"),
+                                        nullable=True, index=True)
+    savings_goal_id            = Column(UUID(as_uuid=True),
+                                        ForeignKey("savings_goals.id", ondelete="SET NULL"),
+                                        nullable=True, index=True)
     transaction_name           = Column(String(255), nullable=False)
     transaction_payment_method = Column(String(50), nullable=True)
     categories_name            = Column(String(100), nullable=False)
@@ -65,27 +80,26 @@ class Bill(Base):
     __tablename__ = "bills"
     id                 = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     # ── AUTH ──────────────────────────────────────────────────────────────────
-    user_id            = Column(UUID(as_uuid=True), nullable=True, index=True)
+    user_id            = Column(UUID(as_uuid=True), nullable=False, index=True)
     name               = Column(String(100))
     amount             = Column(Numeric(10, 2))
     due_date           = Column(Date)
     frequency          = Column(String(50))
     category           = Column(String(100))
     status             = Column(Enum("paid", "unpaid", name="bill_status"))
-    auto_detected      = Column(Boolean, default=False)
     transaction_id     = Column(UUID(as_uuid=True),
                                 ForeignKey("transactions.id", ondelete="SET NULL"),
-                                nullable=True)
+                                nullable=True, index=True)
     budget_category_id = Column(UUID(as_uuid=True),
                                 ForeignKey("budget_categories.id", ondelete="SET NULL"),
-                                nullable=True)
+                                nullable=True, index=True)
 
 
 class Debt(Base):
     __tablename__ = "debts"
     id               = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     # ── AUTH ──────────────────────────────────────────────────────────────────
-    user_id          = Column(UUID(as_uuid=True), nullable=True, index=True)
+    user_id          = Column(UUID(as_uuid=True), nullable=False, index=True)
     name             = Column(String(100))
     balance          = Column(Numeric(10, 2))
     original_balance = Column(Numeric(10, 2), nullable=True)  # tracks starting balance
@@ -123,6 +137,7 @@ class Debt(Base):
         UUID(as_uuid=True),
         ForeignKey("transactions.id", ondelete="SET NULL"),
         nullable=True,
+        index=True,
     )
     total_installments      = Column(Integer, nullable=True)
     installments_paid       = Column(Integer, nullable=False, default=0)
@@ -133,6 +148,7 @@ class Debt(Base):
         UUID(as_uuid=True),
         ForeignKey("recurring_transactions.id", ondelete="SET NULL"),
         nullable=True,
+        index=True,
     )
 
 
@@ -140,7 +156,7 @@ class SavingsGoal(Base):
     __tablename__ = "savings_goals"
     id             = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     # ── AUTH ──────────────────────────────────────────────────────────────────
-    user_id        = Column(UUID(as_uuid=True), nullable=True, index=True)
+    user_id        = Column(UUID(as_uuid=True), nullable=False, index=True)
     goal_name      = Column(String(100))
     target_amount  = Column(Numeric(10, 2))
     current_amount = Column(Numeric(10, 2))
@@ -188,7 +204,7 @@ class Preferences(Base):
     __tablename__ = "preferences"
     id           = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     # ── AUTH ──────────────────────────────────────────────────────────────────
-    user_id      = Column(UUID(as_uuid=True), nullable=True, unique=True, index=True)
+    user_id      = Column(UUID(as_uuid=True), nullable=False, unique=True, index=True)
     display_name = Column(String(100), nullable=True)   # user's chosen first name / display name
     currency     = Column(String(10),  nullable=False, default="USD")
     date_format  = Column(String(20),  nullable=False, default="MMM D, YYYY")
@@ -247,7 +263,7 @@ class EarmarkedFund(Base):
     """
     __tablename__ = "earmarked_funds"
     id         = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    user_id    = Column(UUID(as_uuid=True), nullable=True, index=True)
+    user_id    = Column(UUID(as_uuid=True), nullable=False, index=True)
     name       = Column(String(100), nullable=False)
     amount     = Column(Numeric(10, 2), nullable=False)
     due_date   = Column(Date, nullable=True)
@@ -262,7 +278,7 @@ class RecurringTransaction(Base):
     """
     __tablename__ = "recurring_transactions"
     id          = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    user_id     = Column(UUID(as_uuid=True), nullable=True, index=True)
+    user_id     = Column(UUID(as_uuid=True), nullable=False, index=True)
     description = Column(String(255), nullable=False)
     amount      = Column(Numeric(10, 2), nullable=False)
     category    = Column(String(100), nullable=True)

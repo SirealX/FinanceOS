@@ -224,7 +224,6 @@ def create_bill(
         frequency=data.frequency,
         category=data.category,
         status=data.status.lower(),
-        auto_detected=False,
         budget_category_id=budget_cat.id,
     )
     db.add(bill)

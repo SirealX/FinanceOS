@@ -475,6 +475,7 @@ def record_debt_payment(
     hub = BudgetCategory(
         user_id                    = current_user,
         transaction_id             = None,
+        debt_id                    = debt.id,
         transaction_name           = f"Debt: {debt.name}",
         transaction_payment_method = data.payment_method,
         categories_name            = "Debt Payments",

@@ -68,6 +68,7 @@ def create_goal(
         hub = BudgetCategory(
             user_id=current_user,
             transaction_id=None,
+            savings_goal_id=goal.id,
             transaction_name=f"Contribution: {data.goal_name}",
             transaction_payment_method=None,
             categories_name="Savings",
@@ -151,6 +152,7 @@ def log_contribution(
     hub = BudgetCategory(
         user_id=current_user,
         transaction_id=None,
+        savings_goal_id=goal.id,
         transaction_name=f"Contribution: {goal.goal_name}",
         transaction_payment_method=None,
         categories_name="Savings",

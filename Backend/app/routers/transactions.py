@@ -62,6 +62,10 @@ def get_transactions(
     date_from: Optional[DataType] = Query(None),
     date_to:   Optional[DataType] = Query(None),
     search:    Optional[str]      = Query(None),
+    limit:     Optional[int]      = Query(None, ge=1, le=1000,
+                   description="Max rows to return. Omit for unpaged (current default "
+                                "frontend behavior — RISK-03 fix is additive, opt-in)."),
+    offset:    int                = Query(0, ge=0),
     current_user: str = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -74,7 +78,16 @@ def get_transactions(
     if date_to:               q = q.filter(Transaction.date <= date_to)
     if search:                q = q.filter(Transaction.description.ilike(f"%{search}%"))
 
-    txs = q.order_by(Transaction.date.desc()).all()
+    # Secondary sort key so rows sharing a date still get a stable, repeatable
+    # order across pages (date.desc() alone can reshuffle ties between calls).
+    q = q.order_by(Transaction.date.desc(), Transaction.id.desc())
+
+    if offset:
+        q = q.offset(offset)
+    if limit is not None:
+        q = q.limit(limit)
+
+    txs = q.all()
 
     result = []
     for tx in txs:

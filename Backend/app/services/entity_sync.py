@@ -1,14 +1,25 @@
 """
 services/entity_sync.py
 ─────────────────────────────────────────────────────────────────────────────
-AUTH UPDATE
-  All entity lookups (Bill, Debt, SavingsGoal) now filter by user_id taken
-  from the hub row. This prevents a bug where two users with identically
-  named bills/debts/goals could accidentally affect each other's records
-  during sync operations.
+FK UPDATE (item #5, 2026-08-02)
+  Entity lookups (Bill, Debt, SavingsGoal) now resolve via real foreign
+  keys instead of parsing `BudgetCategory.type` (e.g. "Debt: Car Loan")
+  and matching by name. The old approach broke silently if the entity was
+  renamed after the hub row was created, and picked an arbitrary match if
+  a user had two entities of the same kind sharing a name.
 
-  The hub row always carries user_id (set at creation time in the router),
-  so it is the authoritative source of ownership for every sync call.
+    - Bills are 1 hub row per bill, reused across payment cycles, so
+      Bill.budget_category_id (already existed) is the link -- looked up
+      here as Bill.budget_category_id == hub.id.
+    - Debts and savings goals get a NEW hub row per payment/contribution
+      event, so the FK lives on the hub instead: hub.debt_id /
+      hub.savings_goal_id, set at creation time in debts.py / savings.py.
+
+  `hub.type`'s "Bill:"/"Debt:"/"Savings:" prefix is still used to route to
+  the right branch below (that part was never the bug -- it's a label set
+  once at creation, not a lookup key) -- only the entity lookup itself
+  changed. user_id filters are kept on every query as a defense-in-depth
+  ownership check, not as the lookup mechanism.
 
 Three sync functions:
 
@@ -81,10 +92,8 @@ def transaction_to_entity(
     if hub.type.startswith("Bill:"):
         hub.categories_name = tx.category
 
-        bill_name = hub.type[len("Bill: "):]
-        # AUTH: scope lookup to this user — prevents cross-user name collision
         bill = db.query(Bill).filter(
-            Bill.name == bill_name,
+            Bill.budget_category_id == hub.id,
             Bill.user_id == hub.user_id,
         ).first()
         if bill:
@@ -125,10 +134,8 @@ def reverse_transaction(tx: Transaction, db: Session) -> None:
     amount = float(tx.amount)
 
     if hub.type.startswith("Bill:"):
-        bill_name = hub.type[len("Bill: "):]
-        # AUTH: scope to user
         bill = db.query(Bill).filter(
-            Bill.name == bill_name,
+            Bill.budget_category_id == hub.id,
             Bill.user_id == hub.user_id,
         ).first()
         if bill:
@@ -140,10 +147,8 @@ def reverse_transaction(tx: Transaction, db: Session) -> None:
         db.commit()
 
     elif hub.type.startswith("Debt:"):
-        debt_name = hub.type[len("Debt: "):]
-        # AUTH: scope to user
         debt = db.query(Debt).filter(
-            Debt.name == debt_name,
+            Debt.id == hub.debt_id,
             Debt.user_id == hub.user_id,
         ).first()
         if debt:
@@ -172,10 +177,8 @@ def reverse_transaction(tx: Transaction, db: Session) -> None:
             sync_debt_minimums_to_budget(hub.user_id, db)
 
     elif hub.type.startswith("Savings:"):
-        goal_name = hub.type[len("Savings: "):]
-        # AUTH: scope to user
         goal = db.query(SavingsGoal).filter(
-            SavingsGoal.goal_name == goal_name,
+            SavingsGoal.id == hub.savings_goal_id,
             SavingsGoal.user_id == hub.user_id,
         ).first()
         if goal:
@@ -196,10 +199,8 @@ def _adjust_debt(
     new_amount: float,
     db: Session,
 ) -> None:
-    debt_name = hub.type[len("Debt: "):]
-    # AUTH: scope to user
     debt = db.query(Debt).filter(
-        Debt.name == debt_name,
+        Debt.id == hub.debt_id,
         Debt.user_id == hub.user_id,
     ).first()
     if not debt:
@@ -216,10 +217,8 @@ def _adjust_savings(
     new_amount: float,
     db: Session,
 ) -> None:
-    goal_name = hub.type[len("Savings: "):]
-    # AUTH: scope to user
     goal = db.query(SavingsGoal).filter(
-        SavingsGoal.goal_name == goal_name,
+        SavingsGoal.id == hub.savings_goal_id,
         SavingsGoal.user_id == hub.user_id,
     ).first()
     if not goal:
