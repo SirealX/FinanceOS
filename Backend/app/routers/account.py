@@ -41,9 +41,13 @@ from ..models import (
     EarmarkedFund,
     RecurringTransaction,
     Alert,
+<<<<<<< HEAD
     Category,
 )
 from ..services.entity_sync import reverse_transaction
+=======
+)
+>>>>>>> 09fba98087161f5e2aa32117b7407b44bbff5a40
 
 router = APIRouter(prefix="/account", tags=["account"])
 
@@ -86,6 +90,7 @@ def reset_my_data(
 
     db.commit()
     return {"deleted": counts}
+<<<<<<< HEAD
 
 
 @router.post("/clear-transactions")
@@ -150,3 +155,5 @@ def reset_all_budgets(
     )
     db.commit()
     return {"updated": updated}
+=======
+>>>>>>> 09fba98087161f5e2aa32117b7407b44bbff5a40

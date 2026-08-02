@@ -41,6 +41,7 @@ export const updatePreferences = (data) => client.put("/preferences/", data);
 //   Wipes this user's transactions/bills/debts/savings/budget/alerts/
 //   recurring/earmarked. Keeps login, Preferences, AlertPreferences, and
 //   Category rows — see Backend/app/routers/account.py for the full contract.
+<<<<<<< HEAD
 //
 //   clearAllTransactions()        → POST /account/clear-transactions
 //   Removes only transactions (bills/debts/savings goals survive) — each one
@@ -56,3 +57,7 @@ export const resetMyData = () => client.post("/account/reset");
 export const clearAllTransactions = () => client.post("/account/clear-transactions");
 
 export const resetAllBudgets = () => client.post("/account/reset-budgets");
+=======
+
+export const resetMyData = () => client.post("/account/reset");
+>>>>>>> 09fba98087161f5e2aa32117b7407b44bbff5a40

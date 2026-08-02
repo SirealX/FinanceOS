@@ -755,12 +755,19 @@ testers' real data in it from the multi-user trial, so there is no "reset everyo
   Zone, still silently do nothing when clicked. Wasn't asked to fix those, but a dead button next
   to a working one is confusing — worth wiring for real or removing at some point. Flagged, not
   actioned.
+<<<<<<< HEAD
 - [x] **Committed, pushed, deployed, and tested live (2026-08-02) — confirmed working.** Commit
   `09fba98 "reset button"`, on `origin/main`. Cesar ran it against the live production account —
   Settings → Danger Zone → "Reset My Data" clears transactions/bills/debts/savings/budget/
   recurring/alerts and reloads to a clean, still-logged-in, still-configured account.
 
 **✅ Reset My Data closed (2026-08-02).**
+=======
+- **Not yet committed/pushed** — `Backend/app/routers/account.py` (new),
+  `Backend/app/main.py`, `frontend/src/api/settings.axios.js`, `frontend/src/api/Settings.js`,
+  `frontend/src/context/SettingsContext.jsx`. Needs both a Render redeploy (backend) and a Vercel
+  redeploy (frontend) before the button works.
+>>>>>>> 09fba98087161f5e2aa32117b7407b44bbff5a40
 
 ---
 
