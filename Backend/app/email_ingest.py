@@ -97,27 +97,54 @@ log = logging.getLogger(__name__)
 # step.
 _SENDER_DOMAIN = "notificacionesbancolombia.com"
 
+# Shared date fragment — Bancolombia mostly uses DD/MM/YYYY but the
+# correspondent-deposit template uses DD/MM/YY (found live 2026-08-02).
+# IMPORTANT: \d{4} must come BEFORE \d{2} in the alternation. Regex
+# alternation tries options left-to-right and stops at the first one that
+# lets the overall match succeed — it does NOT prefer the longer match.
+# With \d{2} listed first, "2026" would match just "20" (2 digits) and stop
+# right there, since nothing after this group forces a re-try — silently
+# truncating every 4-digit year to its first 2 digits. Caught this the hard
+# way: an early version with the order reversed parsed "29/07/2026" as
+# "29/07/20" -> year 2020, 6 years off, no error raised anywhere. Order
+# matters here, not a style choice.
+_DATE = r'\d{2}/\d{2}/(?:\d{4}|\d{2})'
+
 _QR_RE = re.compile(
     r'pagaste\s+\$?([\d.,]+)\s+por\s+c[oó]digo\s+QR\s+desde\s+tu\s+cuenta\s+\*?(\S+?)\s+'
-    r'a\s+la\s+llave\s+(\S+?)\s+el\s+(\d{2}/\d{2}/\d{4})',
+    rf'a\s+la\s+llave\s+(\S+?)\s+el\s+({_DATE})',
     re.IGNORECASE,
 )
 
 _TRANSFER_RE = re.compile(
     r'Transferiste\s+\$?([\d.,]+)\s+desde\s+tu\s+cuenta\s+\*?(\S+?)\s+'
-    r'a\s+la\s+cuenta\s+\*?(\S+?)\s+el\s+(\d{2}/\d{2}/\d{4})',
+    rf'a\s+la\s+cuenta\s+\*?(\S+?)\s+el\s+({_DATE})',
     re.IGNORECASE,
 )
 
 _CARD_PURCHASE_RE = re.compile(
     r'Compraste\s+\$?([\d.,]+)\s+en\s+(.+?)\s+con\s+tu\s+T\.?\s?Deb\s+\*?(\S+?),?\s+'
-    r'el\s+(\d{2}/\d{2}/\d{4})',
+    rf'el\s+({_DATE})',
     re.IGNORECASE,
 )
 
 _PAYROLL_RE = re.compile(
     r'Recibiste\s+un\s+pago\s+de\s+N[oó]mina\s+de\s+(.+?)\s+por\s+\$?([\d.,]+)\s+'
-    r'en\s+tu\s+cuenta.*?el\s+(\d{2}/\d{2}/\d{4})',
+    rf'en\s+tu\s+cuenta.*?el\s+({_DATE})',
+    re.IGNORECASE,
+)
+
+# Cash deposit made at a banking correspondent/agent ("corresponsal
+# bancario" — a physical third-party location, e.g. a corner store, that
+# acts as a bank agent for deposits/withdrawals). Found live 2026-08-02 —
+# a real transaction (someone paying Cesar this way) hit the inbox, didn't
+# match any of the 4 patterns above, and silently fell through as "not
+# recognized" (logged, no error, just no transaction created). Also the
+# template that surfaced the 2-digit-year quirk documented above — there's
+# no "a las" before the time either, but the regex doesn't need the time.
+_CORRESPONDENT_DEPOSIT_RE = re.compile(
+    r'Recibiste\s+una\s+consignaci[oó]n\s+por\s+\$?([\d.,]+)\s+desde\s+el\s+corresponsal\s+'
+    rf'(.+?)\s+en\s+(.+?),\s+el\s+({_DATE})',
     re.IGNORECASE,
 )
 
@@ -151,8 +178,18 @@ def _parse_amount(raw: str) -> float:
 
 
 def _parse_date(raw: str) -> date_type:
-    """Bancolombia dates are DD/MM/YYYY — same convention as import_router.py's default."""
-    return datetime.strptime(raw, "%d/%m/%Y").date()
+    """
+    Bancolombia dates are DD/MM/YYYY — same convention as import_router.py's
+    default — except the correspondent-deposit template uses a 2-digit year
+    (DD/MM/YY, found live 2026-08-02). Tries both; %y's century pivot
+    (00-68 -> 2000s) is correct for any date this app will ever see.
+    """
+    for fmt in ("%d/%m/%Y", "%d/%m/%y"):
+        try:
+            return datetime.strptime(raw, fmt).date()
+        except ValueError:
+            continue
+    raise ValueError(f"Unrecognized Bancolombia date format: {raw!r}")
 
 
 def parse_bank_email(sender: str, subject: str, body: str) -> Optional[dict]:
@@ -220,6 +257,17 @@ def parse_bank_email(sender: str, subject: str, body: str) -> Optional[dict]:
             "type":           "income",
             "category":       None,
             "payment_method": "Transfer",
+        }
+
+    if m := _CORRESPONDENT_DEPOSIT_RE.search(body):
+        amount, correspondent, city, when = m.groups()
+        return {
+            "date":           _parse_date(when),
+            "amount":         _parse_amount(amount),
+            "description":    f"Consignación — {correspondent.strip()} ({city.strip()})",
+            "type":           "income",
+            "category":       None,
+            "payment_method": "Cash",
         }
 
     return None

@@ -1006,6 +1006,33 @@ sender verification is domain-string-only, not DKIM-based (see "Known Bugs"); on
 supported; banks that only send monthly statements (not per-transaction emails) aren't covered by
 this pipeline at all, per the original design note above.
 
+**Addendum (2026-08-02, same day) — 5th Bancolombia template found live, plus a real regex bug
+caught before it shipped.**
+
+- **New template: correspondent-agent cash deposit** ("consignación... desde el corresponsal...").
+  Someone paid Cesar this way in real life; the email hit the inbox, didn't match any of the 4
+  known patterns, and silently fell through as "not recognized" — logged, `200 OK`, no error, just
+  no transaction created. This is expected/by-design behavior for an unrecognized template (see
+  the parser's docstring), not a crash, but it meant a real transaction went missing from the app
+  with no visible failure. **Fixed:** added `_CORRESPONDENT_DEPOSIT_RE`, new fixture
+  `correspondent_deposit.txt`, `type='income'`, `payment_method='Cash'`.
+- **Real quirk in this template:** date sometimes uses a 2-digit year (`03/08/26`, not
+  `03/08/2026`) and drops "a las" before the time. `_parse_date()` now tries both `%d/%m/%Y` and
+  `%d/%m/%y`.
+- **Regex bug caught by the fixture suite before deploying:** the first version of the 2-digit-year
+  fix used `(?:\d{2}|\d{4})` — alternation tries left-to-right and stops at the first option that
+  lets the match succeed, it does NOT prefer the longer match. With `\d{2}` listed first, a 4-digit
+  year like "2026" matched just the first 2 digits ("20") and stopped, since nothing after that
+  group forced a retry. Silent truncation, no exception anywhere. `income_nomina.txt`'s test
+  actually caught this: expected `2026-07-29`, got `2020-07-29` — 6 years off. **Fixed properly:**
+  reordered to `(?:\d{4}|\d{2})` and factored into one shared `_DATE` pattern fragment used by all
+  5 regexes now, so this exact class of bug can't reappear in just one of them later. This is
+  exactly why the fixture suite exists — this would have shipped silently wrong otherwise, same
+  category of bug as the original consignación miss, just quieter (wrong data instead of no data).
+- **Not yet deployed** — needs commit + push + Render redeploy, then the specific consignación
+  email needs its `FinanceOS/Processed` label removed (same manual step as before) so it gets
+  reprocessed, since it's already tagged from the failed first pass.
+
 **Post-close bug found + fixed same day — "chained" emails silently never ingested.** Cesar tested
 a second real transaction later in the day; it never showed up in the app, and re-running the
 GitHub Actions poll didn't fix it. Root cause: `poll_inbox()` was listing candidate messages with

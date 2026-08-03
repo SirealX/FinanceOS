@@ -1,0 +1,4 @@
+FROM: Bancolombia <alertasynotificaciones@an.notificacionesbancolombia.com>
+SUBJECT: ¡Listo! Todo salió bien con tus movimientos
+
+Bancolombia: Recibiste una consignacion por $800,000 desde el corresponsal CORRESPONSAL EJEMPLO en CIUDAD EJEMPLO, el 03/08/26 11:52. Si tienes dudas, llamanos: 018000931987. A tu lado siempre.
