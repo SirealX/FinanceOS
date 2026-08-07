@@ -221,7 +221,16 @@ def get_budget_actuals(
             Transaction.category.isnot(None),
             Transaction.type.isnot(None),
             Transaction.is_draft == False,
-            Transaction.source   != "cc_charge",  # BUG-08 fix: CC charges hit the CC balance, not cash
+            # NOTE: cc_charge transactions are intentionally INCLUDED here.
+            # This is a per-category commitment view (did the money go where it
+            # was planned to go?), not a cash-flow view. A tuition bill paid by
+            # credit card still counts against the "Education" category the
+            # moment it's spent -- excluding it made credit-funded essential
+            # spending invisible from its real category, only to reappear later
+            # as a generic "Debt Payments" line with no link back to why the
+            # balance rose. Cash/liquidity impact is handled separately in
+            # summary.py (cash_expenses = expenses - cc_charges), which is
+            # unaffected by this endpoint.
         )
     )
 
