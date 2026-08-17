@@ -164,6 +164,8 @@ curl -X POST http://localhost:8000/categories/seed
 | `VAPID_PUBLIC_KEY` | After running `npx web-push generate-vapid-keys` (optional) |
 | `VAPID_PRIVATE_KEY` | Server-side only — never expose to frontend |
 | `VAPID_CONTACT_EMAIL` | Contact email for VAPID auth |
+| `GMAIL_ADDRESS` | Shared email-ingestion inbox address (e.g. `financeos.ingest@gmail.com`) |
+| `GMAIL_APP_PASSWORD` | App Password for that inbox — generate at myaccount.google.com/apppasswords (requires 2-Step Verification). Powers IMAP-based email ingestion, no OAuth |
 
 ### Frontend (Vercel environment variables in production)
 

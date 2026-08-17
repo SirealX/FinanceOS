@@ -15,32 +15,40 @@ for:
 
   1. parse_bank_email(sender, subject, body) -> dict | None
      Pure function, no network calls, no DB. Unit-testable against a saved
-     fixture email captured once per bank. **STUB — see below.**
+     fixture email captured once per bank.
 
   2. poll_inbox(db) / the /email/poll HTTP endpoint
-     Talks to the Gmail API, resolves each message's +alias to a user_id,
-     hands the body to the parser, creates the transaction. Safe to build
-     and test independently of #1 since it only depends on the parser's
-     *contract*, not its internals.
+     Talks to the inbox over IMAP, resolves each message's +alias to a
+     user_id, hands the body to the parser, creates the transaction. Safe to
+     build and test independently of #1 since it only depends on the
+     parser's *contract*, not its internals.
 
-STATUS (2026-08-02): piece #2 (poller) is real and wired up. Piece #1
-(parser) is a deliberate NotImplementedError stub — building fake Bancolombia
-parsing logic without a real sample email risks silently creating wrong
-transactions once real mail arrives, which is worse than not building it yet.
-Fill in parse_bank_email() from a real fixture before turning the GitHub
-Actions poller cron on for real.
+MIGRATED FROM THE GMAIL API TO PLAIN IMAP (2026-08-12) — see Tracker.md
+"Email Ingestion Pipeline" for the full incident writeup. Short version: the
+Gmail API's OAuth flow requires the app to be either in "Testing" publishing
+status (refresh tokens silently expire every 7 days, discovered the hard way
+2026-08-09) or "In production" (triggers Google's brand-verification review —
+domain ownership proof, a homepage describing the app, name matching — dead
+weight for a tool only Cesar uses, and the domain-ownership check can't even
+pass on a shared `vercel.app` subdomain). IMAP + a Gmail App Password sidesteps
+all of it: no Cloud Console project, no consent screen, no expiry, no review.
+Only requires GMAIL_ADDRESS + GMAIL_APP_PASSWORD (2-Step Verification must be
+on for financeos.ingest@gmail.com to generate one).
 
 RUNNING LOCALLY FOR TESTING
   python -m app.email_ingest
 ─────────────────────────────────────────────────────────────────────────────
 """
 
-import base64
+import imaplib
+import email
+import email.policy
 import logging
 import os
 import re
 import uuid
 from datetime import date as date_type, datetime
+from email.message import EmailMessage
 from typing import Optional
 
 from fastapi import APIRouter, Header, HTTPException
@@ -274,117 +282,61 @@ def parse_bank_email(sender: str, subject: str, body: str) -> Optional[dict]:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Piece #2 — Gmail poller
+# Piece #2 — IMAP poller
 # ─────────────────────────────────────────────────────────────────────────────
 
-PROCESSED_LABEL = "FinanceOS/Processed"
+_IMAP_HOST = "imap.gmail.com"
 
 # Matches the local-part of an address like
 # "financeos.ingest+8f3a1c2b9e4d5f60712a@gmail.com" -> "8f3a1c2b9e4d5f60712a"
 _ALIAS_TOKEN_RE = re.compile(r'\+([^@]+)@')
 
 
-def _gmail_service():
+def _imap_connect() -> imaplib.IMAP4_SSL:
     """
-    Builds an authenticated Gmail API client from the refresh token minted
-    during the one-time OAuth setup (see Tracker.md "Email Ingestion
-    Pipeline" for the setup checklist). Imports are local so the rest of the
-    module (and its tests) don't require the Gmail packages to be installed.
+    Logs into the shared ingestion inbox over IMAP using a Gmail App
+    Password — no OAuth, no Cloud Console project, no consent screen. See
+    Tracker.md "Email Ingestion Pipeline" for why this replaced the Gmail
+    API approach (2026-08-12) and the one-time setup steps (enable 2-Step
+    Verification on financeos.ingest@gmail.com, generate an app password at
+    myaccount.google.com/apppasswords).
 
-    Scope is gmail.modify, not gmail.readonly (confirmed the hard way,
-    2026-08-02 — the first live run 403'd on labels.create/messages.modify
-    with "Insufficient Permission"). readonly only covers reading; creating
-    the PROCESSED_LABEL and tagging messages with it are both writes.
-    gmail.modify is the narrowest scope that covers both without granting
-    permanent delete or send — see the SCOPE note above PROCESSED_LABEL.
+    App Passwords are a Google-supported mechanism for exactly this case —
+    a client that speaks plain IMAP/SMTP and can't do an OAuth handshake —
+    and unlike OAuth refresh tokens for an app in "Testing" status, they
+    don't expire on a timer; they're valid until revoked.
     """
-    from google.oauth2.credentials import Credentials
-    from googleapiclient.discovery import build
+    address = os.getenv("GMAIL_ADDRESS", "")
+    app_password = os.getenv("GMAIL_APP_PASSWORD", "")
 
-    client_id     = os.getenv("GMAIL_CLIENT_ID", "")
-    client_secret = os.getenv("GMAIL_CLIENT_SECRET", "")
-    refresh_token = os.getenv("GMAIL_REFRESH_TOKEN", "")
-
-    if not (client_id and client_secret and refresh_token):
+    if not (address and app_password):
         raise RuntimeError(
-            "GMAIL_CLIENT_ID / GMAIL_CLIENT_SECRET / GMAIL_REFRESH_TOKEN "
-            "must all be set — see Tracker.md 'Email Ingestion Pipeline' "
-            "setup checklist."
+            "GMAIL_ADDRESS / GMAIL_APP_PASSWORD must both be set — see "
+            "Tracker.md 'Email Ingestion Pipeline' setup checklist."
         )
 
-    creds = Credentials(
-        token=None,
-        refresh_token=refresh_token,
-        client_id=client_id,
-        client_secret=client_secret,
-        token_uri="https://oauth2.googleapis.com/token",
-        scopes=["https://www.googleapis.com/auth/gmail.modify"],
-    )
-    return build("gmail", "v1", credentials=creds, cache_discovery=False)
+    imap = imaplib.IMAP4_SSL(_IMAP_HOST)
+    imap.login(address, app_password)
+    imap.select("INBOX")
+    return imap
 
 
-def _get_or_create_label(service, name: str) -> str:
-    """Returns the label ID for `name`, creating it on the inbox if missing."""
-    labels = service.users().labels().list(userId="me").execute().get("labels", [])
-    for label in labels:
-        if label["name"] == name:
-            return label["id"]
+def _decode_body(msg: EmailMessage) -> str:
+    """
+    Walks the message looking for the best text/plain part (falls back to
+    text/html stripped of tags if that's all there is — some banks only
+    send HTML notifications). `email.policy.default` gives an EmailMessage
+    with charset-aware decoding built in via get_content().
+    """
+    body_part = msg.get_body(preferencelist=("plain",))
+    if body_part is not None:
+        return body_part.get_content()
 
-    created = service.users().labels().create(
-        userId="me",
-        body={
-            "name": name,
-            "labelListVisibility": "labelHide",
-            "messageListVisibility": "hide",
-        },
-    ).execute()
-    return created["id"]
+    html_part = msg.get_body(preferencelist=("html",))
+    if html_part is not None:
+        return re.sub(r"<[^>]+>", " ", html_part.get_content())
 
-
-def _header(headers: list, name: str) -> str:
-    for h in headers:
-        if h["name"].lower() == name.lower():
-            return h["value"]
     return ""
-
-
-def _decode_body(payload: dict) -> str:
-    """
-    Gmail messages are a MIME tree. Walks it looking for the first
-    text/plain part (falls back to text/html stripped of tags if that's all
-    there is — some banks only send HTML notifications).
-    """
-    def _b64(data: str) -> str:
-        return base64.urlsafe_b64decode(data.encode("utf-8") + b"===").decode("utf-8", errors="replace")
-
-    def _walk(part: dict) -> Optional[str]:
-        mime = part.get("mimeType", "")
-        body_data = part.get("body", {}).get("data")
-        if mime == "text/plain" and body_data:
-            return _b64(body_data)
-        for sub in part.get("parts", []) or []:
-            found = _walk(sub)
-            if found:
-                return found
-        return None
-
-    text = _walk(payload)
-    if text:
-        return text
-
-    # Fallback: strip tags out of text/html if no plain-text part exists.
-    def _walk_html(part: dict) -> Optional[str]:
-        mime = part.get("mimeType", "")
-        body_data = part.get("body", {}).get("data")
-        if mime == "text/html" and body_data:
-            return re.sub(r"<[^>]+>", " ", _b64(body_data))
-        for sub in part.get("parts", []) or []:
-            found = _walk_html(sub)
-            if found:
-                return found
-        return None
-
-    return _walk_html(payload) or ""
 
 
 def _resolve_user_id(delivered_to: str, db: Session) -> Optional[str]:
@@ -411,32 +363,21 @@ def _resolve_user_id(delivered_to: str, db: Session) -> Optional[str]:
 
 def poll_inbox() -> dict:
     """
-    Main entry point. Lists recent messages in the shared ingestion inbox,
-    skips any that are already tagged PROCESSED_LABEL, resolves the rest to
-    a user via its +alias, parses it, and creates a transaction. Always
-    labels a message processed after handling it — including
-    unresolvable/unparseable ones — so nothing is retried forever; only a
-    mid-flight exception (DB down, etc.) leaves a message unlabeled for a
-    safe retry next run.
+    Main entry point. Searches the shared ingestion inbox for UNSEEN
+    messages, resolves each to a user via its +alias, parses it, and
+    creates a transaction. Always marks a message \\Seen after handling it —
+    including unresolvable/unparseable ones — so nothing is retried
+    forever; only a mid-flight exception (DB down, etc.) leaves a message
+    unread for a safe retry next run.
 
-    NOT using q=-label:"..." for the exclusion (confirmed broken live,
-    2026-08-02). Gmail's search index treats a custom label's presence as a
-    property of the whole conversation, not the individual message: once any
-    message in a thread carries PROCESSED_LABEL, a `-label:` search excludes
-    every message in that thread, including ones that arrive later and were
-    never actually labeled. Bancolombia's transaction emails land in the
-    same Gmail thread when the forward preserves subject/participants (a
-    "chained" email, in Cesar's words) — so a genuinely new, unprocessed
-    message was silently skipped forever because an earlier message in the
-    same thread already had the label. Re-running the poll didn't help
-    because the search excluded it every time, not just once.
-
-    Fix: list by a bounded recency window instead (`newer_than:7d` — plenty
-    of margin for the 20-minute cron plus any downtime, small enough to
-    keep the per-run message count sane), then check each message's own
-    `labelIds` field (authoritative per-message, unlike the search index)
-    to decide skip vs. process. Costs a few extra already-processed fetches
-    per run at this mailbox's volume — worth it for correctness.
+    Using the \\Seen flag instead of a Gmail label (as the old Gmail-API
+    version did) is a deliberate improvement, not just a side effect of the
+    IMAP migration: it fixes a real bug found live 2026-08-02, where
+    Gmail's search index treated a custom label's presence as a property of
+    the whole *conversation*, not the individual message — a genuinely new
+    message in an already-labeled thread was silently invisible to the
+    poller forever ("chained" emails). IMAP flags are set per-message by
+    the protocol itself, so the same class of bug isn't possible here.
 
     Field semantics (see Tracker.md "Known Gotchas"): email-imported
     transactions are real and complete the moment they're created —
@@ -446,102 +387,101 @@ def poll_inbox() -> dict:
     without any new alert logic.
     """
     summary = {
-        "processed": 0, "created": 0, "skipped": 0,
-        "already_labeled": 0, "unresolved": 0, "errors": [],
+        "processed": 0, "created": 0, "skipped": 0, "unresolved": 0, "errors": [],
     }
 
-    service = _gmail_service()
-    label_id = _get_or_create_label(service, PROCESSED_LABEL)
-
-    resp = service.users().messages().list(
-        userId="me", q="newer_than:7d",
-    ).execute()
-    message_refs = resp.get("messages", [])
-
-    if not message_refs:
-        return summary
-
-    db = SessionLocal()
+    imap = _imap_connect()
     try:
-        for ref in message_refs:
-            msg_id = ref["id"]
-            try:
-                full = service.users().messages().get(
-                    userId="me", id=msg_id, format="full",
-                ).execute()
+        status, data = imap.uid("search", None, "UNSEEN")
+        if status != "OK":
+            raise RuntimeError(f"IMAP search failed: {status}")
+        uids = data[0].split()
 
-                if label_id in (full.get("labelIds") or []):
-                    # Genuinely already processed (checked on the message's
-                    # own label list, not the thread-scoped search index).
-                    summary["already_labeled"] += 1
-                    continue
+        if not uids:
+            return summary
 
-                headers      = full["payload"]["headers"]
-                sender       = _header(headers, "From")
-                delivered_to = _header(headers, "Delivered-To") or _header(headers, "To")
-                subject      = _header(headers, "Subject")
-                body         = _decode_body(full["payload"])
+        db = SessionLocal()
+        try:
+            for uid in uids:
+                try:
+                    status, msg_data = imap.uid("fetch", uid, "(RFC822)")
+                    if status != "OK" or not msg_data or msg_data[0] is None:
+                        raise RuntimeError(f"IMAP fetch failed for uid {uid!r}: {status}")
 
-                user_id = _resolve_user_id(delivered_to, db)
-                if not user_id:
-                    log.warning(
-                        "[email_ingest] Unresolvable alias on message %s (Delivered-To: %s)",
-                        msg_id, delivered_to,
+                    raw = msg_data[0][1]
+                    msg: EmailMessage = email.message_from_bytes(raw, policy=email.policy.default)
+
+                    sender       = msg.get("From", "")
+                    delivered_to = msg.get("Delivered-To", "") or msg.get("To", "")
+                    subject      = msg.get("Subject", "")
+                    body         = _decode_body(msg)
+
+                    user_id = _resolve_user_id(delivered_to, db)
+                    if not user_id:
+                        log.warning(
+                            "[email_ingest] Unresolvable alias on message uid %s (Delivered-To: %s)",
+                            uid, delivered_to,
+                        )
+                        summary["unresolved"] += 1
+                        _mark_processed(imap, uid)
+                        summary["processed"] += 1
+                        continue
+
+                    parsed = parse_bank_email(sender, subject, body)
+                    if not parsed:
+                        summary["skipped"] += 1
+                        _mark_processed(imap, uid)
+                        summary["processed"] += 1
+                        continue
+
+                    payment_method = parsed.get("payment_method") or infer_payment_method(parsed.get("description", ""))
+                    tx = Transaction(
+                        id=uuid.uuid4(),
+                        user_id=user_id,
+                        date=parsed["date"],
+                        description=(parsed.get("description") or "").strip(),
+                        category=parsed.get("category"),
+                        type=parsed["type"],
+                        amount=parsed["amount"],
+                        payment_method=payment_method,
+                        source="email_import",
+                        is_draft=False,
+                        reviewed=False,
                     )
-                    summary["unresolved"] += 1
-                    _mark_processed(service, msg_id, label_id)
+                    db.add(tx)
+                    db.commit()
+                    summary["created"] += 1
+
+                    _mark_processed(imap, uid)
                     summary["processed"] += 1
-                    continue
 
-                parsed = parse_bank_email(sender, subject, body)
-                if not parsed:
-                    summary["skipped"] += 1
-                    _mark_processed(service, msg_id, label_id)
-                    summary["processed"] += 1
-                    continue
+                except NotImplementedError:
+                    # Parser stub not filled in yet — don't mark processed,
+                    # don't spin through every message pretending to succeed.
+                    raise
+                except Exception as exc:
+                    db.rollback()
+                    log.error("[email_ingest] Error processing message uid %s: %s", uid, exc)
+                    summary["errors"].append({"message_id": uid.decode(), "error": str(exc)})
+                    # Deliberately NOT marked \Seen — safe to retry next poll.
 
-                payment_method = parsed.get("payment_method") or infer_payment_method(parsed.get("description", ""))
-                tx = Transaction(
-                    id=uuid.uuid4(),
-                    user_id=user_id,
-                    date=parsed["date"],
-                    description=(parsed.get("description") or "").strip(),
-                    category=parsed.get("category"),
-                    type=parsed["type"],
-                    amount=parsed["amount"],
-                    payment_method=payment_method,
-                    source="email_import",
-                    is_draft=False,
-                    reviewed=False,
-                )
-                db.add(tx)
-                db.commit()
-                summary["created"] += 1
-
-                _mark_processed(service, msg_id, label_id)
-                summary["processed"] += 1
-
-            except NotImplementedError:
-                # Parser stub not filled in yet — don't label as processed,
-                # don't spin through every message pretending to succeed.
-                raise
-            except Exception as exc:
-                db.rollback()
-                log.error("[email_ingest] Error processing message %s: %s", msg_id, exc)
-                summary["errors"].append({"message_id": msg_id, "error": str(exc)})
-                # Deliberately NOT labeled processed — safe to retry next poll.
-
+        finally:
+            db.close()
     finally:
-        db.close()
+        try:
+            imap.close()
+        except Exception:
+            pass
+        imap.logout()
 
     log.info("[email_ingest] Done. %s", summary)
     return summary
 
 
-def _mark_processed(service, msg_id: str, label_id: str) -> None:
-    service.users().messages().modify(
-        userId="me", id=msg_id, body={"addLabelIds": [label_id]},
-    ).execute()
+def _mark_processed(imap: imaplib.IMAP4_SSL, uid: bytes) -> None:
+    status, _ = imap.uid("store", uid, "+FLAGS", "\\Seen")
+    if status != "OK":
+        raise RuntimeError(f"IMAP store (\\Seen) failed for uid {uid!r}: {status}")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -564,7 +504,7 @@ def trigger_poll(x_cron_secret: str = Header(default="")):
     prints whatever the response body says, and Render's own generic 500
     page says nothing useful ("Internal Server Error", no detail) when an
     exception escapes uncaught. The first real run surfaced exactly that —
-    a bare 500 with no way to tell GMAIL_* env vars missing from a Gmail API
+    a bare 500 with no way to tell GMAIL_* env vars missing from an IMAP
     error from a DB error without digging through Render's log dashboard.
     This makes future failures self-diagnosing from the Actions run alone.
     """
@@ -575,6 +515,24 @@ def trigger_poll(x_cron_secret: str = Header(default="")):
         return poll_inbox()
     except NotImplementedError as exc:
         raise HTTPException(status_code=501, detail=str(exc))
+    except imaplib.IMAP4.error as exc:
+        # Almost always an auth failure — wrong/revoked GMAIL_APP_PASSWORD,
+        # or 2-Step Verification got turned off on financeos.ingest@gmail.com
+        # (required for app passwords to keep working). Distinguishing this
+        # from a generic 500 so it's diagnosable from the GitHub Actions run
+        # alone, same reasoning as the comment above.
+        log.exception("[email_ingest] /email/poll failed — IMAP login/command error")
+        raise HTTPException(
+            status_code=502,
+            detail=(
+                f"{type(exc).__name__}: {exc} — GMAIL_ADDRESS/GMAIL_APP_PASSWORD "
+                "rejected by imap.gmail.com. Re-generate the app password at "
+                "myaccount.google.com/apppasswords (requires 2-Step Verification "
+                "still enabled on the account) and update GMAIL_APP_PASSWORD in "
+                "Backend/.env + Render. See Tracker.md 'Email Ingestion Pipeline' "
+                "for the full setup."
+            ),
+        )
     except Exception as exc:
         log.exception("[email_ingest] /email/poll failed")
         raise HTTPException(status_code=500, detail=f"{type(exc).__name__}: {exc}")

@@ -47,6 +47,12 @@ services:
         sync: false
       - key: VAPID_CONTACT_EMAIL
         sync: false
+      - key: GMAIL_ADDRESS
+        sync: false           # the shared ingestion inbox, e.g. financeos.ingest@gmail.com
+      - key: GMAIL_APP_PASSWORD
+        sync: false           # generated at myaccount.google.com/apppasswords — requires
+                               # 2-Step Verification on GMAIL_ADDRESS. Powers IMAP email
+                               # ingestion (app/email_ingest.py) — no OAuth involved.
 
   # ── Cron job — REMOVED 2026-07-30 ────────────────────────────────────────────
   # Render Cron Jobs have no free tier (start at $1/mo) — this block never actually

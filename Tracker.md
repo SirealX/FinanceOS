@@ -18,14 +18,14 @@ don't skip ahead.**
 > Render's `DATABASE_URL` updated, `Tracker.md` redacted and pushed, gitleaks pre-commit hook
 > installed. Full checklist under "Environment Variables." Next up: item #1 below.
 
-| # | Item | Status | Details |
-|---|------|--------|---------|
-| 1 | **Reliability fix** — replace broken cron, stop Supabase pausing | ✅ Done (2026-07-30) | Confirmed end-to-end via manual Actions trigger — see "Reliability & Ops" below |
-| 2 | **Supabase Security Advisor review** — check Database → Advisors for actual RLS/security warnings | ✅ Done (2026-07-30) | RLS enabled on all 12 public tables, no policies (not needed — see "Supabase Security Advisor Review" below) |
-| 3 | **Codebase orphan/dead-code audit** — find unused fields, dead functions, stale logic (e.g. the `is_draft`/`reviewed` confusion, see "Known Gotchas") | ✅ **Done (2026-08-01)** | Full file-by-file pass done, then every finding that was actually #3's own scope was fixed the same day. See **"🔍 Codebase Audit — Findings & Fix Checklist (2026-08-01)"** below. What's *not* fixed was deliberately re-homed, not dropped: schema/column items (`planned_amt`, `auto_detected`, the missing Alembic baseline) move to item #5; stale-docs items move to item #4; `MonthEndReview` nav wiring stays a future alerts-item. |
-| 4 | **Docs overhaul** — bring every `.md` file in line with actual repo state | ✅ **Done (2026-08-01)** | `README.md`, `Backend/Requiremnets.md` (superseded banner), `frontend/Design_System.md` fixed and updated. All 8 legacy Finance-tracker docs stamped and status-reconciled, including a full item-by-item re-walk of the 26-issue `financial-logic-audit*.md` series. See **"📚 Item #4 Prep — Legacy Docs Reconciliation (2026-08-01)"** below for the full trail. Two real follow-ups this pass surfaced: variable-income support and the 3-month export cap/no-PDF-report — both added to the roadmap in `README.md`, neither urgent enough for their own numbered item yet |
-| 5 | **Database normalization + scalability** | ✅ **Done (2026-08-02)** | Worked collaboratively item-by-item — see **"🗄️ Item #5 — Database Normalization & Scalability (2026-08-02)"** below for the full trail. All 7 sub-items closed: Alembic baseline, `planned_amt`/`auto_detected` drops, FK index cleanup, `entity_sync.py` FK rework, `user_id` NOT NULL, `month_start` wiring, `GET /transactions` pagination. Two real follow-ups surfaced along the way, not fixed yet, added to "Known Bugs" below: the CC-charge debt-reversal gap, and the cashflow chart's month labels still being calendar-only |
-| 6 | **Email ingestion pipeline (bank-transaction automation)** | ✅ **Done (2026-08-02)** | Deployed and confirmed working end-to-end on a real transaction — see "Email Ingestion Pipeline" below |
+| #   | Item                                                                                                                                                  | Status                   | Details                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| --- | ----------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 1   | **Reliability fix** — replace broken cron, stop Supabase pausing                                                                                      | ✅ Done (2026-07-30)     | Confirmed end-to-end via manual Actions trigger — see "Reliability & Ops" below                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| 2   | **Supabase Security Advisor review** — check Database → Advisors for actual RLS/security warnings                                                     | ✅ Done (2026-07-30)     | RLS enabled on all 12 public tables, no policies (not needed — see "Supabase Security Advisor Review" below)                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| 3   | **Codebase orphan/dead-code audit** — find unused fields, dead functions, stale logic (e.g. the `is_draft`/`reviewed` confusion, see "Known Gotchas") | ✅ **Done (2026-08-01)** | Full file-by-file pass done, then every finding that was actually #3's own scope was fixed the same day. See **"🔍 Codebase Audit — Findings & Fix Checklist (2026-08-01)"** below. What's _not_ fixed was deliberately re-homed, not dropped: schema/column items (`planned_amt`, `auto_detected`, the missing Alembic baseline) move to item #5; stale-docs items move to item #4; `MonthEndReview` nav wiring stays a future alerts-item.                                                                                                                                   |
+| 4   | **Docs overhaul** — bring every `.md` file in line with actual repo state                                                                             | ✅ **Done (2026-08-01)** | `README.md`, `Backend/Requiremnets.md` (superseded banner), `frontend/Design_System.md` fixed and updated. All 8 legacy Finance-tracker docs stamped and status-reconciled, including a full item-by-item re-walk of the 26-issue `financial-logic-audit*.md` series. See **"📚 Item #4 Prep — Legacy Docs Reconciliation (2026-08-01)"** below for the full trail. Two real follow-ups this pass surfaced: variable-income support and the 3-month export cap/no-PDF-report — both added to the roadmap in `README.md`, neither urgent enough for their own numbered item yet |
+| 5   | **Database normalization + scalability**                                                                                                              | ✅ **Done (2026-08-02)** | Worked collaboratively item-by-item — see **"🗄️ Item #5 — Database Normalization & Scalability (2026-08-02)"** below for the full trail. All 7 sub-items closed: Alembic baseline, `planned_amt`/`auto_detected` drops, FK index cleanup, `entity_sync.py` FK rework, `user_id` NOT NULL, `month_start` wiring, `GET /transactions` pagination. Two real follow-ups surfaced along the way, not fixed yet, added to "Known Bugs" below: the CC-charge debt-reversal gap, and the cashflow chart's month labels still being calendar-only                                       |
+| 6   | **Email ingestion pipeline (bank-transaction automation)**                                                                                            | ✅ **Done (2026-08-02)** | Deployed and confirmed working end-to-end on a real transaction — see "Email Ingestion Pipeline" below                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 
 **Why this order:** reliability first because nothing else can be tested reliably while Supabase
 keeps pausing mid-session. Security Advisor before normalization because it's five minutes of
@@ -39,6 +39,7 @@ shape.
 ## 🚀 Deployment Checklist (Render + Vercel)
 
 ### Step 1 — Push to GitHub
+
 Commit all changes and push to your GitHub repo. Both Render and Vercel deploy from Git.
 
 > ⚠️ Confirm `.env` files are NOT committed — both `.gitignore` files exclude them.
@@ -52,10 +53,10 @@ Commit all changes and push to your GitHub repo. Both Render and Vercel deploy f
 5. Start command: `uvicorn app.main:app --host 0.0.0.0 --port $PORT`
 6. Set these **Environment Variables** in the Render dashboard:
 
-| Variable              | Value                                                        |
-| --------------------- | ------------------------------------------------------------ |
-| `DATABASE_URL`        | *(copy from Render dashboard — **do not paste real credentials into this file**; see note below)* |
-| `SUPABASE_URL`        | `https://nbbxpozqrzbxyealvpxs.supabase.co`                  |
+| Variable       | Value                                                                                             |
+| -------------- | ------------------------------------------------------------------------------------------------- |
+| `DATABASE_URL` | _(copy from Render dashboard — **do not paste real credentials into this file**; see note below)_ |
+| `SUPABASE_URL` | `https://nbbxpozqrzbxyealvpxs.supabase.co`                                                        |
 
 > ⚠️ **Security incident (2026-07-29) — leaked DB password. Do this FIRST next session, before
 > anything else on the priorities list. Checklist:**
@@ -77,7 +78,7 @@ Commit all changes and push to your GitHub repo. Both Render and Vercel deploy f
 >       ever going to catch this automatically. Rotation is still the only real fix.
 > - [x] **Redacted `Tracker.md` and pushed (2026-07-29)** — commit `4c2ff0f "updated tracker leak"`.
 >       Current HEAD on GitHub no longer contains the plaintext password.
-> - [ ] *(Skipped, by decision 2026-07-29)* Scrub git history with `git filter-repo` — old password is
+> - [ ] _(Skipped, by decision 2026-07-29)_ Scrub git history with `git filter-repo` — old password is
 >       dead once rotated, and a force-push would break other local clones. Not worth it. The password
 >       stays visible in old commits but is inert.
 > - [x] **Prevent recurrence (2026-07-29)** — `gitleaks` pre-commit hook installed at
@@ -90,9 +91,9 @@ Commit all changes and push to your GitHub repo. Both Render and Vercel deploy f
 >
 > **✅ Security incident closed (2026-07-29).** Password rotated, Render updated, leak removed from
 > HEAD, prevention hook in place. Ready to move to item #1 (Reliability fix) next.
-| `SUPABASE_JWT_SECRET` | *(copy from Backend/.env)*                                   |
-| `ALLOWED_ORIGINS`     | *(leave blank for now — add Vercel URL in Step 4)*           |
-| `CRON_SECRET`         | *(any random string, e.g. generate one at random.org)*       |
+> | `SUPABASE_JWT_SECRET` | _(copy from Backend/.env)_ |
+> | `ALLOWED_ORIGINS` | _(leave blank for now — add Vercel URL in Step 4)_ |
+> | `CRON_SECRET` | _(any random string, e.g. generate one at random.org)_ |
 
 7. Deploy → copy the URL once live (e.g. `https://financeos.onrender.com`)
 
@@ -103,11 +104,11 @@ Commit all changes and push to your GitHub repo. Both Render and Vercel deploy f
 3. Framework will auto-detect as Vite ✅
 4. Set these **Environment Variables** in the Vercel dashboard:
 
-| Variable               | Value                                                                 |
-| ---------------------- | --------------------------------------------------------------------- |
-| `VITE_API_URL`         | `https://financeos.onrender.com` ← your Render URL from Step 2       |
-| `VITE_SUPABASE_URL`    | `https://nbbxpozqrzbxyealvpxs.supabase.co`                           |
-| `VITE_SUPABASE_ANON_KEY` | *(copy from frontend/.env)*                                         |
+| Variable                 | Value                                                          |
+| ------------------------ | -------------------------------------------------------------- |
+| `VITE_API_URL`           | `https://financeos.onrender.com` ← your Render URL from Step 2 |
+| `VITE_SUPABASE_URL`      | `https://nbbxpozqrzbxyealvpxs.supabase.co`                     |
+| `VITE_SUPABASE_ANON_KEY` | _(copy from frontend/.env)_                                    |
 
 5. Deploy → copy the URL once live (e.g. `https://financeos.vercel.app`)
 
@@ -127,36 +128,38 @@ Commit all changes and push to your GitHub repo. Both Render and Vercel deploy f
 ### Step 6 — Run Alembic migrations (if not already done)
 
 If you haven't run `alembic upgrade head` since the Phase 5 alert migrations:
+
 ```bash
 cd Backend
 alembic upgrade head
 ```
+
 The Supabase DB is shared between local and production so this only needs running once.
 
 ---
 
 ## Environment Variables
 
-| Variable                 | Location                                    | Status                                                        |
-| ------------------------ | ------------------------------------------- | ------------------------------------------------------------- |
-| `DATABASE_URL`           | Backend `.env` + Render                     | ✅ Set                                                        |
-| `SUPABASE_URL`           | Backend `.env` + Render                     | ✅ Set                                                        |
-| `SUPABASE_JWT_SECRET`    | Backend `.env` + Render                     | ✅ Set                                                        |
-| `ALLOWED_ORIGINS`        | Render only                                 | ⬜ Set to your Vercel URL after frontend is deployed          |
-| `VITE_API_URL`           | Vercel only (not in .env file)              | ⬜ Set to your Render URL after backend is deployed           |
-| `VITE_SUPABASE_URL`      | frontend `.env` + Vercel                    | ✅ Set                                                        |
-| `VITE_SUPABASE_ANON_KEY` | frontend `.env` + Vercel                    | ✅ Set                                                        |
+| Variable                 | Location                                    | Status                                                                                                                                                                                                                                                                                                      |
+| ------------------------ | ------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `DATABASE_URL`           | Backend `.env` + Render                     | ✅ Set                                                                                                                                                                                                                                                                                                      |
+| `SUPABASE_URL`           | Backend `.env` + Render                     | ✅ Set                                                                                                                                                                                                                                                                                                      |
+| `SUPABASE_JWT_SECRET`    | Backend `.env` + Render                     | ✅ Set                                                                                                                                                                                                                                                                                                      |
+| `ALLOWED_ORIGINS`        | Render only                                 | ⬜ Set to your Vercel URL after frontend is deployed                                                                                                                                                                                                                                                        |
+| `VITE_API_URL`           | Vercel only (not in .env file)              | ⬜ Set to your Render URL after backend is deployed                                                                                                                                                                                                                                                         |
+| `VITE_SUPABASE_URL`      | frontend `.env` + Vercel                    | ✅ Set                                                                                                                                                                                                                                                                                                      |
+| `VITE_SUPABASE_ANON_KEY` | frontend `.env` + Vercel                    | ✅ Set                                                                                                                                                                                                                                                                                                      |
 | `CRON_SECRET`            | Backend `.env` + Render                     | ❌ **Corrected 2026-07-30** — variable existed on Render but value was empty, meaning `/scheduler/run` had zero auth protection (`alert_scheduler.py` skips the check when the secret is falsy). Fresh value generated and set 2026-07-30 — also added as a GitHub Actions repo secret with the same value. |
-| `BACKEND_URL`            | Render cron service only                    | ❌ **Missing** — cron's `startCommand` falls back to `http://localhost:8000`, which resolves to nothing inside the cron container. Likely cause of "zero notifications since the one test." |
-| `PLAID_CLIENT_ID`        | Backend `.env` + Render                     | ⬜ On hold — bank sync path blocked, see "Banking API Sync"   |
-| `PLAID_SECRET`           | Backend `.env` + Render                     | ⬜ On hold — same as above                                    |
-| `TELEGRAM_BOT_TOKEN`     | Backend `.env` + Render                     | ✅ Set on Render (confirmed 2026-07-29) — value not yet verified as working end-to-end |
-| `VAPID_PUBLIC_KEY`       | Backend `.env` + Render + frontend + Vercel | ⬜ Not yet generated                                          |
-| `VAPID_PRIVATE_KEY`      | Backend `.env` + Render only                | ⬜ Never expose to frontend                                   |
-| `VAPID_CONTACT_EMAIL`    | Backend `.env` + Render only                | ⬜ After VAPID key generation                                 |
-| `GMAIL_CLIENT_ID`        | Backend `.env` + Render                     | ✅ Set on both, confirmed working (2026-08-02)                |
-| `GMAIL_CLIENT_SECRET`    | Backend `.env` + Render                     | ✅ Set on both, confirmed working (2026-08-02)                |
-| `GMAIL_REFRESH_TOKEN`    | Backend `.env` + Render                     | ✅ Set on both, confirmed working (2026-08-02) — regenerated once with `gmail.modify` scope after the readonly-scope 403, see item #6. Test-user token, doesn't expire on its own. |
+| `BACKEND_URL`            | Render cron service only                    | ❌ **Missing** — cron's `startCommand` falls back to `http://localhost:8000`, which resolves to nothing inside the cron container. Likely cause of "zero notifications since the one test."                                                                                                                 |
+| `PLAID_CLIENT_ID`        | Backend `.env` + Render                     | ⬜ On hold — bank sync path blocked, see "Banking API Sync"                                                                                                                                                                                                                                                 |
+| `PLAID_SECRET`           | Backend `.env` + Render                     | ⬜ On hold — same as above                                                                                                                                                                                                                                                                                  |
+| `TELEGRAM_BOT_TOKEN`     | Backend `.env` + Render                     | ✅ Set on Render (confirmed 2026-07-29) — value not yet verified as working end-to-end                                                                                                                                                                                                                      |
+| `VAPID_PUBLIC_KEY`       | Backend `.env` + Render + frontend + Vercel | ⬜ Not yet generated                                                                                                                                                                                                                                                                                        |
+| `VAPID_PRIVATE_KEY`      | Backend `.env` + Render only                | ⬜ Never expose to frontend                                                                                                                                                                                                                                                                                 |
+| `VAPID_CONTACT_EMAIL`    | Backend `.env` + Render only                | ⬜ After VAPID key generation                                                                                                                                                                                                                                                                               |
+| `GMAIL_CLIENT_ID`        | Backend `.env` + Render                     | ✅ Set on both, confirmed working (2026-08-02)                                                                                                                                                                                                                                                              |
+| `GMAIL_CLIENT_SECRET`    | Backend `.env` + Render                     | ✅ Set on both, confirmed working (2026-08-02)                                                                                                                                                                                                                                                              |
+| `GMAIL_REFRESH_TOKEN`    | Backend `.env` + Render                     | ✅ Set on both, confirmed working (2026-08-02) — regenerated once with `gmail.modify` scope after the readonly-scope 403, see item #6. Test-user token, doesn't expire on its own.                                                                                                                          |
 
 > Note: `ALERTS_SPEC.md` and `INTERCONNECTION_ADR.md` are referenced throughout this file (and in
 > code comments) but do not currently exist in the repo. Either they were never committed or were
@@ -178,7 +181,7 @@ doesn't depend on the cron at all.
 **Problem 2 — Supabase keeps "closing."** Confirmed: Supabase free-tier projects pause after 7
 days of zero API activity — this is a project-wide pause, not just a dropped connection, and nothing
 works again until it's manually restored. The existing UptimeRobot ping only hits Render's `/ping`
-to keep the *web service* warm; it never touches Supabase, so the 7-day timer runs independently
+to keep the _web service_ warm; it never touches Supabase, so the 7-day timer runs independently
 and unaffected.
 
 **Fix (staying on the free tier, per decision on 2026-07-29):** replace the Render Cron Job with a
@@ -189,19 +192,20 @@ pause timer), and it's the same code path that dispatches Telegram/digest alerts
 trigger also fixes the notification silence.
 
 **Implementation status (2026-07-30):**
+
 1. [x] Added `.github/workflows/daily-scheduler.yml` — scheduled (08:00 UTC daily) + manually
-   triggerable (`workflow_dispatch`, for testing) `curl` POST to `${{ secrets.BACKEND_URL }}/scheduler/run`
-   with header `x-cron-secret: ${{ secrets.CRON_SECRET }}`. Retries 6x with 15s delay on any error
-   (`--retry-all-errors`) to ride out Render's free-tier cold start.
+       triggerable (`workflow_dispatch`, for testing) `curl` POST to `${{ secrets.BACKEND_URL }}/scheduler/run`
+       with header `x-cron-secret: ${{ secrets.CRON_SECRET }}`. Retries 6x with 15s delay on any error
+       (`--retry-all-errors`) to ride out Render's free-tier cold start.
 2. [x] `BACKEND_URL` and `CRON_SECRET` set as GitHub repo secrets (2026-07-30) — same values as Render.
-   Along the way found `CRON_SECRET` on Render was set but **empty** (zero auth on `/scheduler/run`
-   until fixed) — generated a fresh value, set on both Render and GitHub.
+       Along the way found `CRON_SECRET` on Render was set but **empty** (zero auth on `/scheduler/run`
+       until fixed) — generated a fresh value, set on both Render and GitHub.
 3. [x] Removed the `cron:` block from `Backend/render.yaml` (replaced with a comment pointing to
-   the GitHub Actions workflow) — it never deployed anyway since Render Cron has no free tier.
+       the GitHub Actions workflow) — it never deployed anyway since Render Cron has no free tier.
 4. [x] Added `BACKEND_URL` to Render (both the `render.yaml` reference and the actual dashboard value).
 5. [x] **Manually triggered the GitHub Actions workflow (2026-07-30) — confirmed working end-to-end.**
-   Render woke up, `run_daily_checks()` ran, Telegram messages arrived. This is also the real-world
-   test for Step 11 below — closing that out too.
+       Render woke up, `run_daily_checks()` ran, Telegram messages arrived. This is also the real-world
+       test for Step 11 below — closing that out too.
 
 **🟢 Reliability fix confirmed working (2026-07-30).** Daily automatic run (08:00 UTC) is now live via
 GitHub Actions. Moving to item #2 (Supabase Security Advisor review) next.
@@ -230,8 +234,8 @@ through the PostgREST endpoint — completely bypassing FastAPI's JWT auth and `
 - [x] Re-ran the Advisor after enabling RLS — confirmed clear.
 
 **WARN — Leaked Password Protection disabled.** Separate issue from the 2026-07-29 DB password leak
-incident (that was *our* Supabase connection string being exposed on GitHub, already resolved). This
-is a different Supabase Auth feature — checks *end-user* signup passwords against HaveIBeenPwned.
+incident (that was _our_ Supabase connection string being exposed on GitHub, already resolved). This
+is a different Supabase Auth feature — checks _end-user_ signup passwords against HaveIBeenPwned.
 Still off. Low priority (WARN, not ERROR) — revisit later, toggle lives in Auth → Settings.
 
 **INFO (performance, not security)** — unindexed FKs on `bills` (×2), `debts` (×2), `transactions`,
@@ -289,8 +293,7 @@ instead of being forced into #3 — see the "Re-homed" subsections below.
       just not reachable from any UI right now. Building the actual
       create/edit/delete UI is now its own future feature item, not part
       of closing #3.
-- [x] **Tailwind CSS → removed (Cesar's call).** Uninstalled `tailwindcss`
-      + `@tailwindcss/vite` from `frontend/package.json`, removed the
+- [x] **Tailwind CSS → removed (Cesar's call).** Uninstalled `tailwindcss` + `@tailwindcss/vite` from `frontend/package.json`, removed the
       plugin from `vite.config.js`, removed `@import "tailwindcss"` from
       `global.css` and converted the `@theme {}` token block to a plain
       `:root {}` custom-properties block (tokens are consumed via
@@ -300,7 +303,7 @@ instead of being forced into #3 — see the "Re-homed" subsections below.
 
 ### Not part of #3 — stays a future item
 
-- [ ] **Wire `MonthEndReview.jsx` into `App.jsx`'s nav.** This *is* the
+- [ ] **Wire `MonthEndReview.jsx` into `App.jsx`'s nav.** This _is_ the
       Type 2 notification content — a real, working month-end scorecard
       (score ring, budget category table, bills, debt snapshot,
       auto-generated insights via `buildInsights()`), reading live data
@@ -337,7 +340,7 @@ the missing-baseline-migration fix that #5 already needs as a prerequisite
 
 - [ ] **The Alembic migration history is missing its own foundation — 8
       migrations were never committed to git**, including the original
-      `create_initial_tables` migration. Nothing in the *tracked* history
+      `create_initial_tables` migration. Nothing in the _tracked_ history
       creates `transactions`, `bills`, `debts`, `savings_goals`,
       `categories`, `preferences`, or `budget_categories` — only compiled
       `.pyc` leftovers in a local `__pycache__` folder prove these
@@ -418,15 +421,15 @@ same way `AUDIT_FINDINGS.md` already works for item #3.
 
 ### Legacy docs index (Finance-tracker folder — historical only, not updated going forward)
 
-| File | Covers | Status |
-|---|---|---|
-| `AUDIT_REPORT.md` | Backend-only audit, April 2026 — 5 bugs, 3 missing features, 3 risks | Mostly resolved — see reconciliation below for the 2 items still open |
-| `AUDIT_FINDINGS.md` | Full item #3 codebase audit detail (2026-08-01) | Already the backing doc for item #3 above, current |
-| `audit_update.md` | "Safe batch" + "risky batch" fixes, April 28 | Fully superseded — all 10 safe-batch + all 4 risky-batch items confirmed shipped |
-| `financial-logic-audit.md` (+ Part 2, Part 3) | 26 conceptual/financial-logic gaps, April 26 | Largely resolved — most map to features built since (recurring, earmarked, month-end review, liquid balance, savings rate fix, onboarding wizard). Not re-walked item-by-item — flagged as a real item #4 subtask below |
-| `DEBT_RESTRUCTURE_PLAN.md` | Credit card / loan / BNPL debt restructure design, May | Shipped — migrations `m1_extend_enums_for_debt.py` / `m2_debt_restructure_columns.py` are the last two in `alembic/versions/` |
-| `FinanceOS_How_It_Works.md` | Intended product behavior, narrative form | Held up well — reads accurate to current behavior on every section spot-checked. Good base doc for the overhaul rather than a from-scratch rewrite |
-| `UI_UX_REDESIGN_PLAN.md` | Dashboard declutter + mobile layout plan, May | Decision recorded below — current dashboard state is the intended final state |
+| File                                          | Covers                                                               | Status                                                                                                                                                                                                                  |
+| --------------------------------------------- | -------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `AUDIT_REPORT.md`                             | Backend-only audit, April 2026 — 5 bugs, 3 missing features, 3 risks | Mostly resolved — see reconciliation below for the 2 items still open                                                                                                                                                   |
+| `AUDIT_FINDINGS.md`                           | Full item #3 codebase audit detail (2026-08-01)                      | Already the backing doc for item #3 above, current                                                                                                                                                                      |
+| `audit_update.md`                             | "Safe batch" + "risky batch" fixes, April 28                         | Fully superseded — all 10 safe-batch + all 4 risky-batch items confirmed shipped                                                                                                                                        |
+| `financial-logic-audit.md` (+ Part 2, Part 3) | 26 conceptual/financial-logic gaps, April 26                         | Largely resolved — most map to features built since (recurring, earmarked, month-end review, liquid balance, savings rate fix, onboarding wizard). Not re-walked item-by-item — flagged as a real item #4 subtask below |
+| `DEBT_RESTRUCTURE_PLAN.md`                    | Credit card / loan / BNPL debt restructure design, May               | Shipped — migrations `m1_extend_enums_for_debt.py` / `m2_debt_restructure_columns.py` are the last two in `alembic/versions/`                                                                                           |
+| `FinanceOS_How_It_Works.md`                   | Intended product behavior, narrative form                            | Held up well — reads accurate to current behavior on every section spot-checked. Good base doc for the overhaul rather than a from-scratch rewrite                                                                      |
+| `UI_UX_REDESIGN_PLAN.md`                      | Dashboard declutter + mobile layout plan, May                        | Decision recorded below — current dashboard state is the intended final state                                                                                                                                           |
 
 ### The bigger finding — three undocumented fix-tracking series live only in code comments
 
@@ -436,28 +439,28 @@ write-up anywhere** — not in this file, not in any Finance-tracker doc. Catalo
 **`BUG-01` – `BUG-20`** (backend + frontend, only `BUG-01` – `BUG-05` trace back to
 `AUDIT_REPORT.md`'s original five):
 
-| Tag | File | What it fixed |
-|---|---|---|
-| BUG-01 | `alert_engine.py` | Debt-overdue check reads `type == "debt_payment"`, was `"expense"` |
-| BUG-02 | `alert_engine.py` | `budget_exceeded` reads `Category.planned_amount`, not `BudgetCategory`; excludes `cc_charge`, includes `debt_payment` in spend checks |
-| BUG-03a/b | `alert_engine.py` | Periodic-review dedup key includes month suffix so the alert re-fires each cycle |
-| BUG-04 | `savings.py` | Pre-filled `current_amount` on goal creation now writes a real ledger transaction |
-| BUG-05 | `entity_sync.py` | Restoring a payment on a paid-off debt un-marks it paid-off + reactivates its recurring template |
-| BUG-06 | `savings.py` | Goal deletion cleans up orphaned hub rows + linked transactions |
-| BUG-07 | `savings.py` | `current_amount` removed from the update schema — only changeable via `/contribute` |
-| BUG-08 | `budget.py` | `cc_charge` transactions excluded from cash budget actuals |
-| BUG-09 | `alert_engine.py` | `cc_charge` excluded from spending-spike calc |
-| BUG-10 | `bills.py` | Bill-paid transaction uses the bill's `due_date`, not today's date |
-| BUG-11 | `Debt.js` | Delete now triggers a full server refetch instead of local state mutation (kept `creditCards`/`budgetSurplus` stale before) |
-| BUG-12 | `recurring.py` | `debt_payment` recurring logs carry `source="debt_payment"` |
-| BUG-13 | `Alert.js` | Fixed a stale-closure bug capturing `wasUnread` before state update |
-| BUG-14 | `Dshboard.js` | Donut chart tooltip uses the currency-aware formatter, not hardcoded `$` |
-| BUG-15 | `Debt.js` / `Saving.js` | Deprecated the hardcoded-`$` formatter helper in favor of `formatAmount` |
-| BUG-16 | `Dshboard.js` | Dashboard budget panel merges `debt_payment` categories in, not just expense |
-| BUG-17 | `bills.py` | Bill frequency check is now case-insensitive (`"Monthly"` vs `"monthly"`) |
-| BUG-18 | `alert_engine.py` | Initialized a variable before conditional branches to avoid `UnboundLocalError` |
-| BUG-19 | `summary.py` | Added `is_draft == False` filter to income/expense summary queries (drafts were being counted) |
-| BUG-20 | `Saving.js` | Payload builder drops a nonexistent `emoji` field and stops re-sending `current_amount` on edit |
+| Tag       | File                    | What it fixed                                                                                                                          |
+| --------- | ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| BUG-01    | `alert_engine.py`       | Debt-overdue check reads `type == "debt_payment"`, was `"expense"`                                                                     |
+| BUG-02    | `alert_engine.py`       | `budget_exceeded` reads `Category.planned_amount`, not `BudgetCategory`; excludes `cc_charge`, includes `debt_payment` in spend checks |
+| BUG-03a/b | `alert_engine.py`       | Periodic-review dedup key includes month suffix so the alert re-fires each cycle                                                       |
+| BUG-04    | `savings.py`            | Pre-filled `current_amount` on goal creation now writes a real ledger transaction                                                      |
+| BUG-05    | `entity_sync.py`        | Restoring a payment on a paid-off debt un-marks it paid-off + reactivates its recurring template                                       |
+| BUG-06    | `savings.py`            | Goal deletion cleans up orphaned hub rows + linked transactions                                                                        |
+| BUG-07    | `savings.py`            | `current_amount` removed from the update schema — only changeable via `/contribute`                                                    |
+| BUG-08    | `budget.py`             | `cc_charge` transactions excluded from cash budget actuals                                                                             |
+| BUG-09    | `alert_engine.py`       | `cc_charge` excluded from spending-spike calc                                                                                          |
+| BUG-10    | `bills.py`              | Bill-paid transaction uses the bill's `due_date`, not today's date                                                                     |
+| BUG-11    | `Debt.js`               | Delete now triggers a full server refetch instead of local state mutation (kept `creditCards`/`budgetSurplus` stale before)            |
+| BUG-12    | `recurring.py`          | `debt_payment` recurring logs carry `source="debt_payment"`                                                                            |
+| BUG-13    | `Alert.js`              | Fixed a stale-closure bug capturing `wasUnread` before state update                                                                    |
+| BUG-14    | `Dshboard.js`           | Donut chart tooltip uses the currency-aware formatter, not hardcoded `$`                                                               |
+| BUG-15    | `Debt.js` / `Saving.js` | Deprecated the hardcoded-`$` formatter helper in favor of `formatAmount`                                                               |
+| BUG-16    | `Dshboard.js`           | Dashboard budget panel merges `debt_payment` categories in, not just expense                                                           |
+| BUG-17    | `bills.py`              | Bill frequency check is now case-insensitive (`"Monthly"` vs `"monthly"`)                                                              |
+| BUG-18    | `alert_engine.py`       | Initialized a variable before conditional branches to avoid `UnboundLocalError`                                                        |
+| BUG-19    | `summary.py`            | Added `is_draft == False` filter to income/expense summary queries (drafts were being counted)                                         |
+| BUG-20    | `Saving.js`             | Payload builder drops a nonexistent `emoji` field and stops re-sending `current_amount` on edit                                        |
 
 **`ARCH-02` – `ARCH-04`** (no `ARCH-01` found tagged anywhere — worth checking if it ever
 existed): `ARCH-02` = CC-charge detection extracted into one shared `apply_cc_charge()` helper
@@ -466,7 +469,7 @@ validators added consistently across `transactions.py`/`savings.py`/`debts.py`/`
 `ARCH-04` = TTL-aware JWKS cache in `dependencies.py` (Supabase rotates keys ~6h; the old
 fetch-once-at-startup approach would lock out all users on rotation).
 
-**`FIX #N`** — a *separate*, per-file numbering (not one global sequence) found in `Bill.js`/
+**`FIX #N`** — a _separate_, per-file numbering (not one global sequence) found in `Bill.js`/
 `Bills.jsx` (#1–#2, live categories/colors from `SettingsContext`), `Dshboard.js` (#5 budget-row
 filtering, #10 parallelized API calls), `Debt.js` (#6 currency-aware simulator slider, #7 verified
 avalanche/snowball logic is correct), and a few more not fully cataloged this pass
@@ -767,9 +770,9 @@ testers' real data in it from the multi-user trial, so there is no "reset everyo
   to a working one is confusing — worth wiring for real or removing at some point. Flagged, not
   actioned.
 - [x] **Committed, pushed, deployed, and tested live (2026-08-02) — confirmed working.** Commit
-  `09fba98 "reset button"`, on `origin/main`. Cesar ran it against the live production account —
-  Settings → Danger Zone → "Reset My Data" clears transactions/bills/debts/savings/budget/
-  recurring/alerts and reloads to a clean, still-logged-in, still-configured account.
+      `09fba98 "reset button"`, on `origin/main`. Cesar ran it against the live production account —
+      Settings → Danger Zone → "Reset My Data" clears transactions/bills/debts/savings/budget/
+      recurring/alerts and reloads to a clean, still-logged-in, still-configured account.
 
 **✅ Reset My Data closed (2026-08-02).**
 
@@ -784,6 +787,7 @@ unfamiliar third party that testers (friends/family, not just Cesar) weren't com
 authorizing. Decision: don't keep chasing aggregator coverage — build a bridge instead.
 
 **Design:**
+
 - One dedicated Gmail inbox, using Gmail's `+alias` addressing so every user gets a unique
   ingestion address (`financeos.ingest+<token>@gmail.com`) without needing separate mailboxes or
   per-user credentials. Each user sets a one-time forward rule from their bank's transaction email
@@ -796,7 +800,7 @@ authorizing. Decision: don't keep chasing aggregator coverage — build a bridge
      authenticates to the Gmail inbox via the Gmail API, resolves the `+alias` to a `user_id`,
      hands the body to the parser, and creates the transaction.
 - **Field semantics (see "Known Gotchas" below):** email-imported transactions are created as
-  *real, complete* transactions immediately — `is_draft=False` (the money already left the
+  _real, complete_ transactions immediately — `is_draft=False` (the money already left the
   account; the email is the bank's own confirmation) — with `source='email_import'` (needs adding
   to the `source` enum in `models.py`) and `reviewed=False`. This reuses the existing
   `import_reminder` alert machinery already built for CSV imports — no new mechanism needed.
@@ -823,15 +827,17 @@ authorizing. Decision: don't keep chasing aggregator coverage — build a bridge
   `GMAIL_REFRESH_TOKEN` exist.
 
 **Done this session (unblocked, schema-only):**
+
 - [x] `email_import` added to `Transaction.source` enum — migration `648b41c29881`.
 - [x] `Preferences.ingest_token` column added — migration `70819a409406`.
 - [x] `GET /preferences/` now also returns `ingest_email` (`null` until generated); new
-  `POST /preferences/ingest-email` generates it idempotently.
+      `POST /preferences/ingest-email` generates it idempotently.
 - [x] `google-api-python-client` / `google-auth` added to `Backend/requirements.txt`
-  (`google-auth-oauthlib` deliberately NOT added — it's only needed for the one-time local
-  refresh-token generation script below, not for the running service).
+      (`google-auth-oauthlib` deliberately NOT added — it's only needed for the one-time local
+      refresh-token generation script below, not for the running service).
 
 **Blocked — needs Cesar to do manually before the poller can be built/tested:**
+
 1. Create the Gmail account (e.g. `financeos.ingest@gmail.com` — must match
    `INGEST_LOCAL_PART`/`INGEST_DOMAIN` in `preferences.py` if a different address is used).
 2. [console.cloud.google.com](https://console.cloud.google.com) → new project → APIs & Services →
@@ -873,24 +879,24 @@ end-to-end.
 **Update (2026-08-02, later same day) — Gmail credentials received, poller built.**
 
 - [x] Cesar completed the Gmail account + Google Cloud OAuth setup and generated a refresh token.
-  `GMAIL_CLIENT_ID` / `GMAIL_CLIENT_SECRET` / `GMAIL_REFRESH_TOKEN` set in `Backend/.env`
-  (gitignored — confirmed, same as every other secret in that file).
+      `GMAIL_CLIENT_ID` / `GMAIL_CLIENT_SECRET` / `GMAIL_REFRESH_TOKEN` set in `Backend/.env`
+      (gitignored — confirmed, same as every other secret in that file).
 - [x] **`Backend/app/email_ingest.py` built** — the poller half (piece #2) is real:
-  authenticates to the Gmail API, lists messages not yet tagged with a `FinanceOS/Processed`
-  label, resolves each message's `+alias` to a `user_id` via `Preferences.ingest_token`, and
-  (once the parser below exists) creates the transaction with `is_draft=False`,
-  `source='email_import'`, `reviewed=False` — reuses `import_reminder` and
-  `payment_utils.infer_payment_method()` exactly as designed, no new alert mechanism needed.
-  Exposed as `POST /email/poll`, protected by the same `CRON_SECRET` header pattern as
-  `/scheduler/run`. Registered in `main.py`.
+      authenticates to the Gmail API, lists messages not yet tagged with a `FinanceOS/Processed`
+      label, resolves each message's `+alias` to a `user_id` via `Preferences.ingest_token`, and
+      (once the parser below exists) creates the transaction with `is_draft=False`,
+      `source='email_import'`, `reviewed=False` — reuses `import_reminder` and
+      `payment_utils.infer_payment_method()` exactly as designed, no new alert mechanism needed.
+      Exposed as `POST /email/poll`, protected by the same `CRON_SECRET` header pattern as
+      `/scheduler/run`. Registered in `main.py`.
 - [x] **`parse_bank_email()` (piece #1) is a deliberate stub, not a guess.** Raises
-  `NotImplementedError` rather than inventing Bancolombia parsing logic without a real fixture —
-  a wrong guess would silently create incorrect real transactions, worse than not building it
-  yet. `poll_inbox()` propagates that error cleanly (doesn't mislabel messages as processed when
-  the parser isn't ready) rather than pretending to succeed.
+      `NotImplementedError` rather than inventing Bancolombia parsing logic without a real fixture —
+      a wrong guess would silently create incorrect real transactions, worse than not building it
+      yet. `poll_inbox()` propagates that error cleanly (doesn't mislabel messages as processed when
+      the parser isn't ready) rather than pretending to succeed.
 - [x] `.github/workflows/email-poller.yml` added — every 20 min, same `BACKEND_URL`/`CRON_SECRET`
-  pattern as `daily-scheduler.yml`. No new GitHub secrets needed — the workflow just hits the
-  Render endpoint; Render is what talks to Gmail.
+      pattern as `daily-scheduler.yml`. No new GitHub secrets needed — the workflow just hits the
+      Render endpoint; Render is what talks to Gmail.
 - ⚠️ **Could not test the live Gmail connection from this session** — the sandbox's network
   egress blocks `googleapis.com` (confirmed: `curl https://oauth2.googleapis.com` →
   `403 Forbidden` from the sandbox's own proxy, while `pypi.org` succeeds — a sandbox allowlist
@@ -908,21 +914,21 @@ Bancolombia emails Cesar sent (redacted — his name replaced with a placeholder
 since the GitHub repo is public).**
 
 - [x] Fixtures saved to `Backend/app/email_fixtures/` (QR payment, transfer, card purchase,
-  payroll deposit, + one marketing/bill-reminder email that is deliberately NOT a transaction).
+      payroll deposit, + one marketing/bill-reminder email that is deliberately NOT a transaction).
 - [x] **Real quirk found: Bancolombia uses two different number formats depending on which
-  template sent the email.** Card purchases are Colombian-style (`$30.777,69` — period
-  thousands, comma decimal); QR/transfer/payroll are US-style (`$14,500.00` — comma thousands,
-  period decimal). `_parse_amount()` normalizes both by treating whichever separator appears
-  LAST in the string as the decimal point — handles both conventions without hardcoding which
-  template uses which.
+      template sent the email.** Card purchases are Colombian-style (`$30.777,69` — period
+      thousands, comma decimal); QR/transfer/payroll are US-style (`$14,500.00` — comma thousands,
+      period decimal). `_parse_amount()` normalizes both by treating whichever separator appears
+      LAST in the string as the decimal point — handles both conventions without hardcoding which
+      template uses which.
 - [x] The marketing/bill-reminder fixture ("Tenemos novedades" — a registered bill ready to be
-  paid, not money that's actually moved) is filtered out by construction: none of the 4 real
-  transaction regexes match its wording, so `parse_bank_email()` falls through to `return None`
-  for it — no special-casing needed, and the same fallthrough should catch other Bancolombia
-  marketing mail that slips through the forward rule.
+      paid, not money that's actually moved) is filtered out by construction: none of the 4 real
+      transaction regexes match its wording, so `parse_bank_email()` falls through to `return None`
+      for it — no special-casing needed, and the same fallthrough should catch other Bancolombia
+      marketing mail that slips through the forward rule.
 - [x] `Backend/app/test_email_ingest_parser.py` — standalone fixture regression test (same
-  "plain script, not pytest" pattern as the RISK-02 month_start check), all 5 cases pass.
-  Runnable via `python -m app.test_email_ingest_parser`.
+      "plain script, not pytest" pattern as the RISK-02 month_start check), all 5 cases pass.
+      Runnable via `python -m app.test_email_ingest_parser`.
 - ⚠️ **Known gap, not fixed — sender verification.** The parser's `sender` param is accepted but
   not enforced. The 4 regexes require Bancolombia's exact transaction phrasing, which is a real
   (if soft) filter against random mail, but there's no cryptographic check that a message
@@ -962,19 +968,19 @@ since the GitHub repo is public).**
 run against it. Two real bugs found:**
 
 - [x] **First run: bare 500, no detail.** Root cause turned out to be a Gmail scope error (below),
-  but the actual exception wasn't visible anywhere useful — `trigger_poll()` only caught
-  `NotImplementedError`, so anything else escaped to FastAPI's default handler and Render/curl
-  just showed generic "Internal Server Error" (21 bytes, no detail). **Fixed:** broad
-  `except Exception` added, returns `{type}: {message}` in the response body — GitHub Actions'
-  `--fail-with-body` curl now prints the real error directly in the Action log, no more digging
-  through Render's log dashboard for every future failure.
+      but the actual exception wasn't visible anywhere useful — `trigger_poll()` only caught
+      `NotImplementedError`, so anything else escaped to FastAPI's default handler and Render/curl
+      just showed generic "Internal Server Error" (21 bytes, no detail). **Fixed:** broad
+      `except Exception` added, returns `{type}: {message}` in the response body — GitHub Actions'
+      `--fail-with-body` curl now prints the real error directly in the Action log, no more digging
+      through Render's log dashboard for every future failure.
 - [x] **Real cause, once visible: wrong OAuth scope.** `googleapiclient.errors.HttpError: 403
-  ... "Insufficient Permission" ... insufficientPermissions` on `labels.create`. The setup
-  checklist above requested `gmail.readonly`, but creating the `FinanceOS/Processed` label and
-  tagging messages with it (`_get_or_create_label()`, `_mark_processed()`) are both *writes* —
-  readonly never covered them, this was wrong from the start, not a regression.
-  **Fixed:** scope changed to `gmail.modify` in `_gmail_service()` (narrowest scope that covers
-  read + label management + tagging messages, without granting permanent delete or send).
+... "Insufficient Permission" ... insufficientPermissions` on `labels.create`. The setup
+      checklist above requested `gmail.readonly`, but creating the `FinanceOS/Processed` label and
+      tagging messages with it (`_get_or_create_label()`, `_mark_processed()`) are both _writes_ —
+      readonly never covered them, this was wrong from the start, not a regression.
+      **Fixed:** scope changed to `gmail.modify` in `_gmail_service()` (narrowest scope that covers
+      read + label management + tagging messages, without granting permanent delete or send).
 - ⚠️ **Not yet done: the refresh token in `Backend/.env` (and wherever it's set on Render) is
   STALE** — it was minted under the old `gmail.readonly` scope and can't be silently upgraded.
   Needs regenerating: re-run the same local `InstalledAppFlow` script from the original setup,
@@ -984,21 +990,21 @@ run against it. Two real bugs found:**
   Google Cloud OAuth consent screen (Step 3 of the original setup) lists `gmail.modify` as an
   available scope, not just `gmail.readonly`.
 - [x] **Confirmed and fixed (2026-08-02) — the `To:` header hunch was right.** Once the scope fix
-  landed, the run got further and logged `Unresolvable alias on message … (To: <Cesar's personal
-  address>)`. Gmail's filter "Forward it to" preserves the original `To:` header (the bank's own
-  address to Cesar's personal inbox) — it only changes where the message is actually delivered.
-  The `+alias` never shows up in `To:` at all for a forwarded copy, only in `Delivered-To`, which
-  the receiving Gmail server (the shared `financeos.ingest@gmail.com` inbox) stamps with the real
-  envelope recipient at final delivery. **Fixed:** `poll_inbox()` now reads `Delivered-To` first
-  (falling back to `To` for the hypothetical case of someone emailing the alias directly, not via
-  a forward), and `_resolve_user_id()` renamed/re-documented to make that explicit rather than
-  implying `To:` was ever the right header.
+      landed, the run got further and logged `Unresolvable alias on message … (To: <Cesar's personal
+address>)`. Gmail's filter "Forward it to" preserves the original `To:` header (the bank's own
+      address to Cesar's personal inbox) — it only changes where the message is actually delivered.
+      The `+alias` never shows up in `To:` at all for a forwarded copy, only in `Delivered-To`, which
+      the receiving Gmail server (the shared `financeos.ingest@gmail.com` inbox) stamps with the real
+      envelope recipient at final delivery. **Fixed:** `poll_inbox()` now reads `Delivered-To` first
+      (falling back to `To` for the hypothetical case of someone emailing the alias directly, not via
+      a forward), and `_resolve_user_id()` renamed/re-documented to make that explicit rather than
+      implying `To:` was ever the right header.
 - [x] **Confirmed live (2026-08-02) — end-to-end, real transaction.** Re-ran the GitHub Action
-  after the `Delivered-To` fix: alias resolved correctly, `parse_bank_email()` parsed the real
-  forwarded Bancolombia email, and a real transaction was created (`source='email_import'`,
-  `is_draft=False`, `reviewed=False`) from Cesar's own real transfer. Full pipeline — Gmail OAuth,
-  scope, sender-domain check, alias resolution, parsing, transaction creation — verified working
-  against production, not just fixtures.
+      after the `Delivered-To` fix: alias resolved correctly, `parse_bank_email()` parsed the real
+      forwarded Bancolombia email, and a real transaction was created (`source='email_import'`,
+      `is_draft=False`, `reviewed=False`) from Cesar's own real transfer. Full pipeline — Gmail OAuth,
+      scope, sender-domain check, alias resolution, parsing, transaction creation — verified working
+      against production, not just fixtures.
 
 **✅ Item #6 (email ingestion pipeline) closed (2026-08-02).** Built, deployed, and confirmed
 working end-to-end on a real transaction. Known, accepted gaps for a future pass (not blocking):
@@ -1252,7 +1258,7 @@ Tested locally with `VITE_DEMO_MODE=false` against live Supabase. All flows veri
 
 ## ✅ Resolved — CSV Import & Savings Mapping (2026-08-02, was "IMPORTANT FUTURE DECISION")
 
-This used to frame a pending decision covering both CSV import *and* banking API sync. Banking
+This used to frame a pending decision covering both CSV import _and_ banking API sync. Banking
 API is dead — attempted, blocked, formally decided paused 2026-07-29 (see "Banking API Sync —
 attempted, blocked, pivoted" below) — nothing in this section applies to it anymore. Stale
 reference removed.
@@ -1284,35 +1290,36 @@ More powerful but more complex to build.
 
 ### Smart Alerts — Steps 1–7 complete ✅
 
-| File                                  | Status  | Notes                                                                                        |
-| ------------------------------------- | ------- | -------------------------------------------------------------------------------------------- |
-| `backend/alembic/versions/a1b2…`      | ✅ Done | Migration: source enum + reviewed + last_seen_at                                             |
-| `backend/alembic/versions/b2c3…`      | ✅ Done | Migration: alerts + alert_preferences tables                                                 |
-| `backend/app/models.py`               | ✅ Done | Alert + AlertPreferences models added; Transaction.reviewed + Preferences.last_seen_at added |
-| `backend/app/alert_engine.py`         | ✅ Done | Actually 14 rule types now, not 8 — see item #3 audit section above; source-aware routing; Tier 1 immediate dispatch stub |
-| `backend/app/alert_scheduler.py`      | ✅ Done | Daily cron runner + POST /scheduler/run HTTP trigger                                         |
-| `backend/app/notifications.py`        | ✅ Done | Stub — functions defined, no-ops until Step 9 (TELEGRAM_BOT_TOKEN + VAPID keys)             |
-| `backend/app/routers/alerts.py`       | ✅ Done | GET /alerts, unread-count, PUT read/read-all, DELETE, GET/PUT preferences, Telegram, PWA    |
-| `frontend/src/api/alerts.js`          | ✅ Done | Axios wrappers (lowercase)                                                                   |
-| `frontend/src/api/Alerts.js`          | ✅ Done | useAlerts() hook, formatRelativeTime, getSeverityConfig, getAlertIcon, fetchUnreadCount      |
-| `frontend/src/pages/Alerts.jsx`       | ✅ Done | Section 1: live feed (unread first). Section 2: channel cards + thresholds + digest settings |
-| `frontend/src/App.jsx`                | ✅ Done | Sidebar badge wired to live unread count (polls every 30s)                                   |
-| `frontend/src/data/MockData.js`       | ✅ Done | DEMO_ALERT_FEED + DEMO_ALERT_PREFERENCES added                                               |
+| File                             | Status  | Notes                                                                                                                     |
+| -------------------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `backend/alembic/versions/a1b2…` | ✅ Done | Migration: source enum + reviewed + last_seen_at                                                                          |
+| `backend/alembic/versions/b2c3…` | ✅ Done | Migration: alerts + alert_preferences tables                                                                              |
+| `backend/app/models.py`          | ✅ Done | Alert + AlertPreferences models added; Transaction.reviewed + Preferences.last_seen_at added                              |
+| `backend/app/alert_engine.py`    | ✅ Done | Actually 14 rule types now, not 8 — see item #3 audit section above; source-aware routing; Tier 1 immediate dispatch stub |
+| `backend/app/alert_scheduler.py` | ✅ Done | Daily cron runner + POST /scheduler/run HTTP trigger                                                                      |
+| `backend/app/notifications.py`   | ✅ Done | Stub — functions defined, no-ops until Step 9 (TELEGRAM_BOT_TOKEN + VAPID keys)                                           |
+| `backend/app/routers/alerts.py`  | ✅ Done | GET /alerts, unread-count, PUT read/read-all, DELETE, GET/PUT preferences, Telegram, PWA                                  |
+| `frontend/src/api/alerts.js`     | ✅ Done | Axios wrappers (lowercase)                                                                                                |
+| `frontend/src/api/Alerts.js`     | ✅ Done | useAlerts() hook, formatRelativeTime, getSeverityConfig, getAlertIcon, fetchUnreadCount                                   |
+| `frontend/src/pages/Alerts.jsx`  | ✅ Done | Section 1: live feed (unread first). Section 2: channel cards + thresholds + digest settings                              |
+| `frontend/src/App.jsx`           | ✅ Done | Sidebar badge wired to live unread count (polls every 30s)                                                                |
+| `frontend/src/data/MockData.js`  | ✅ Done | DEMO_ALERT_FEED + DEMO_ALERT_PREFERENCES added                                                                            |
 
 **Status as of 2026-07-29** (corrected — `notifications.py` and channel routing are actually
-already implemented in code; what's missing is the *trigger*, not the dispatch logic):
+already implemented in code; what's missing is the _trigger_, not the dispatch logic):
 
-| Step | What | Status |
-| ---- | ---- | ------ |
-| 8A | Create Telegram bot via @BotFather → add TELEGRAM_BOT_TOKEN | ✅ Done — confirmed set on Render 2026-07-29 |
-| 8B | Run `npx web-push generate-vapid-keys` → add VAPID keys | ⬜ Not done — PWA push untested |
-| 9  | `notifications.py` (Telegram + PWA push) | ✅ Already implemented — not a stub |
-| 10 | Notifications wired into `alert_engine.py` channel routing (`_dispatch_immediate`) | ✅ Already implemented |
-| 11 | Telegram end-to-end test | ✅ Done (2026-07-30) — automatic dispatch confirmed via manual GitHub Actions trigger, messages received |
-| 12 | PWA Push service worker (`frontend/public/sw.js`) | ⬜ Not done |
-| 13 | Telegram categorization assistant | ⬜ On hold — depends on the email ingestion pipeline instead of "bank API" now |
+| Step | What                                                                               | Status                                                                                                   |
+| ---- | ---------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| 8A   | Create Telegram bot via @BotFather → add TELEGRAM_BOT_TOKEN                        | ✅ Done — confirmed set on Render 2026-07-29                                                             |
+| 8B   | Run `npx web-push generate-vapid-keys` → add VAPID keys                            | ⬜ Not done — PWA push untested                                                                          |
+| 9    | `notifications.py` (Telegram + PWA push)                                           | ✅ Already implemented — not a stub                                                                      |
+| 10   | Notifications wired into `alert_engine.py` channel routing (`_dispatch_immediate`) | ✅ Already implemented                                                                                   |
+| 11   | Telegram end-to-end test                                                           | ✅ Done (2026-07-30) — automatic dispatch confirmed via manual GitHub Actions trigger, messages received |
+| 12   | PWA Push service worker (`frontend/public/sw.js`)                                  | ⬜ Not done                                                                                              |
+| 13   | Telegram categorization assistant                                                  | ⬜ On hold — depends on the email ingestion pipeline instead of "bank API" now                           |
 
 **Run migrations before testing:**
+
 ```
 alembic upgrade head
 ```
@@ -1350,6 +1357,7 @@ See the item #3 audit section above for the fix-checklist entry.
 
 Remaining open design questions, now scoped down to what's actually missing (not a from-scratch
 build):
+
 - Cadence: currently only a "Last Month / This Month" toggle — no monthly/quarterly/semester
   selection, no preference field. Confirmed it does NOT reuse `periodic_review_freq` (good — avoids
   the conflation flagged below), but doesn't have any broader cadence concept yet either.
@@ -1363,6 +1371,7 @@ build):
 three fixed cadences, no custom period for users with bigger/different budgeting cycles.
 
 **Next steps (not scheduled yet — revisit when alerts come back up as a work item):**
+
 - Wire `MonthEndReview.jsx` into `App.jsx` nav, then design the remaining gaps properly (cadence
   field beyond this/last month; decide whether to fold in Type 1 alerts) — see item #3 audit
   section above, it's mostly built already, not a from-scratch design.
@@ -1374,6 +1383,7 @@ three fixed cadences, no custom period for users with bigger/different budgeting
 ### Banking API Sync — attempted, blocked, pivoted (corrected 2026-07-29)
 
 **This was not simply "not started."** It was attempted during Phase 6 and hit real walls:
+
 1. Direct bank API access was requested and refused outright by the bank(s) in question.
 2. Plaid / GoCardless / TrueLayer were evaluated as aggregator alternatives. Result: some didn't
    support the specific banks in use (coverage gap), and where they did, testers (friends/family,
@@ -1384,26 +1394,26 @@ three fixed cadences, no custom period for users with bigger/different budgeting
 pipeline instead (see section above) as a lower-trust-barrier, zero-cost bridge. Live bank sync
 stays on the table as a future revisit, not abandoned, just not the near-term path.
 
-| File                             | Status              | Notes                                                       |
-| --------------------------------- | -------------------- | ----------------------------------------------------------- |
-| `backend/app/routers/sync.py`    | ⬜ On hold           | Superseded near-term by the email ingestion pipeline         |
-| `backend/app/categorization.py`  | ⬜ On hold           | Rules engine — relevant to the email ingestion parser too    |
-| Cron job on Render                | ❌ Replacing         | Render Cron has no free tier — moving to GitHub Actions (see Reliability & Ops) |
-| Banking API decision              | ✅ Decided (paused)  | Plaid/GoCardless/TrueLayer ruled out for now — see history above |
+| File                            | Status              | Notes                                                                           |
+| ------------------------------- | ------------------- | ------------------------------------------------------------------------------- |
+| `backend/app/routers/sync.py`   | ⬜ On hold          | Superseded near-term by the email ingestion pipeline                            |
+| `backend/app/categorization.py` | ⬜ On hold          | Rules engine — relevant to the email ingestion parser too                       |
+| Cron job on Render              | ❌ Replacing        | Render Cron has no free tier — moving to GitHub Actions (see Reliability & Ops) |
+| Banking API decision            | ✅ Decided (paused) | Plaid/GoCardless/TrueLayer ruled out for now — see history above                |
 
 ### Export + Notifications
 
-| File                            | Status     | Notes                                                                      |
-| ------------------------------- | ---------- | -------------------------------------------------------------------------- |
-| `backend/app/routers/export.py` | ✅ Done    | Exists in repo (`export.py`) — GET /transactions/export, GET /reports/monthly |
-| `backend/app/notifications.py`  | ✅ Done    | Telegram + PWA push implemented. Twilio WhatsApp/SMS still not built        |
+| File                            | Status  | Notes                                                                         |
+| ------------------------------- | ------- | ----------------------------------------------------------------------------- |
+| `backend/app/routers/export.py` | ✅ Done | Exists in repo (`export.py`) — GET /transactions/export, GET /reports/monthly |
+| `backend/app/notifications.py`  | ✅ Done | Telegram + PWA push implemented. Twilio WhatsApp/SMS still not built          |
 
 ### CSV / Excel Import
 
-| File                                   | Status     | Notes                                                                 |
-| ---------------------------------------- | ---------- | --------------------------------------------------------------------- |
-| `backend/app/routers/import_router.py` | ✅ Done    | Exists in repo — actual filename is `import_router.py`, not `import.py` |
-| Frontend import modal                    | ✅ Done    | Per Phase 5 status summary — reverify during codebase audit           |
+| File                                   | Status  | Notes                                                                   |
+| -------------------------------------- | ------- | ----------------------------------------------------------------------- |
+| `backend/app/routers/import_router.py` | ✅ Done | Exists in repo — actual filename is `import_router.py`, not `import.py` |
+| Frontend import modal                  | ✅ Done | Per Phase 5 status summary — reverify during codebase audit             |
 
 ---
 
@@ -1411,15 +1421,15 @@ stays on the table as a future revisit, not abandoned, just not the near-term pa
 
 Auth is fully implemented. No further work needed for multi-user testing.
 
-| Task                                       | Status     | Notes                                                          |
-| ------------------------------------------ | ---------- | -------------------------------------------------------------- |
-| Choose auth strategy                       | ✅ Done    | Supabase Auth (email/password) — no custom auth server needed  |
-| Login / register UI                        | ✅ Done    | `frontend/src/pages/Login.jsx` — sign in + sign up + demo mode |
-| JWT sent on every API call                 | ✅ Done    | `frontend/src/api/client.js` — Axios request interceptor       |
-| Backend JWT verification                   | ✅ Done    | `backend/app/dependencies.py` — ES256 via JWKS + HS256 fallback|
-| All FastAPI routes protected               | ✅ Done    | `Depends(get_current_user)` on every endpoint                  |
-| `user_id` FK on all tables                 | ✅ Done    | All models have `user_id` column — data is fully user-scoped   |
-| Demo mode (no auth)                        | ✅ Done    | `isDemo` flag in AuthContext — uses MockData, no API calls     |
+| Task                         | Status  | Notes                                                           |
+| ---------------------------- | ------- | --------------------------------------------------------------- |
+| Choose auth strategy         | ✅ Done | Supabase Auth (email/password) — no custom auth server needed   |
+| Login / register UI          | ✅ Done | `frontend/src/pages/Login.jsx` — sign in + sign up + demo mode  |
+| JWT sent on every API call   | ✅ Done | `frontend/src/api/client.js` — Axios request interceptor        |
+| Backend JWT verification     | ✅ Done | `backend/app/dependencies.py` — ES256 via JWKS + HS256 fallback |
+| All FastAPI routes protected | ✅ Done | `Depends(get_current_user)` on every endpoint                   |
+| `user_id` FK on all tables   | ✅ Done | All models have `user_id` column — data is fully user-scoped    |
+| Demo mode (no auth)          | ✅ Done | `isDemo` flag in AuthContext — uses MockData, no API calls      |
 
 ---
 
@@ -1431,7 +1441,7 @@ similar but solve unrelated problems:
 - **`is_draft`** — scoped to the bill/debt/savings entity-linking flow in `entity_sync.py`. A bill
   marked "paid" creates a linked transaction that stays a draft until the payment method is
   confirmed; clearing it drives balance/debt/goal updates on the linked entity. Default `False`.
-- **`reviewed`** — for transactions whose *data* needs a second look, not their existence. Default
+- **`reviewed`** — for transactions whose _data_ needs a second look, not their existence. Default
   `True` for manual entries; set `False` for `csv_import` (and should be set `False` for the
   planned `email_import` source too). The existing `import_reminder` alert already watches for
   `reviewed == False`.
@@ -1446,28 +1456,28 @@ linked payment. Flag any code still confusing the two during the codebase audit 
 
 ## Quick Status Summary
 
-| Item                                          | Status                                                          |
-| ---------------------------------------------- | ----------------------------------------------------------------- |
-| 1 · DB Foundation                              | ✅ Done                                                           |
-| 2 · Transactions                               | ✅ Done                                                           |
-| 3 · Bills / Budget / Debts / Savings           | ✅ Done                                                           |
-| 4 · Settings + Dashboard                       | ✅ Done                                                           |
-| Auth (Supabase JWT)                            | ✅ Done                                                           |
-| Single-user testing                            | ✅ Done                                                           |
-| 5 · Alerts (Steps 1–7)                         | ✅ Done                                                           |
-| 5 · Export (CSV + XML)                         | ✅ Done                                                           |
-| 5 · CSV/XLSX Import wizard                     | ✅ Done                                                           |
-| Deployment (Render + Vercel)                   | ✅ Live — small-group testing ran for ~1 month                    |
-| Multi-user live testing                        | 🔄 Ran, surfaced the reliability + friction issues tracked above  |
-| 6 · Banking API Sync (Plaid/GoCardless/TrueLayer) | ❌ Attempted, blocked — see "Banking API Sync" — pivoted to email ingestion |
-| Notifications (Telegram + PWA)                 | ✅ Telegram confirmed firing automatically (2026-07-30); PWA push still untested (VAPID keys not generated) |
-| Reliability fix (cron → GitHub Actions)         | ✅ Done (2026-07-30) — confirmed end-to-end                       |
-| Supabase Security Advisor review                | ✅ Done (2026-07-30) — RLS enabled on all 12 tables, no policies needed |
-| Codebase orphan/dead-code audit                 | ✅ Done (2026-08-01) — audit + in-scope fixes applied; schema items re-homed to #5, docs items to #4, see section above |
-| Docs overhaul                                    | ✅ Done (2026-08-01) — README, Requiremnets.md, Design_System.md updated; all 8 legacy docs reconciled |
-| Database normalization + scalability            | ✅ Done (2026-08-02) — 7 sub-items closed, see item #5 section     |
-| Email ingestion pipeline                        | ✅ Done (2026-08-02) — deployed, confirmed working end-to-end on a real transaction |
-| Reset My Data (Danger Zone)                     | ✅ Done (2026-08-02) — self-service data wipe, scoped per-user, tested live            |
+| Item                                              | Status                                                                                                                  |
+| ------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| 1 · DB Foundation                                 | ✅ Done                                                                                                                 |
+| 2 · Transactions                                  | ✅ Done                                                                                                                 |
+| 3 · Bills / Budget / Debts / Savings              | ✅ Done                                                                                                                 |
+| 4 · Settings + Dashboard                          | ✅ Done                                                                                                                 |
+| Auth (Supabase JWT)                               | ✅ Done                                                                                                                 |
+| Single-user testing                               | ✅ Done                                                                                                                 |
+| 5 · Alerts (Steps 1–7)                            | ✅ Done                                                                                                                 |
+| 5 · Export (CSV + XML)                            | ✅ Done                                                                                                                 |
+| 5 · CSV/XLSX Import wizard                        | ✅ Done                                                                                                                 |
+| Deployment (Render + Vercel)                      | ✅ Live — small-group testing ran for ~1 month                                                                          |
+| Multi-user live testing                           | 🔄 Ran, surfaced the reliability + friction issues tracked above                                                        |
+| 6 · Banking API Sync (Plaid/GoCardless/TrueLayer) | ❌ Attempted, blocked — see "Banking API Sync" — pivoted to email ingestion                                             |
+| Notifications (Telegram + PWA)                    | ✅ Telegram confirmed firing automatically (2026-07-30); PWA push still untested (VAPID keys not generated)             |
+| Reliability fix (cron → GitHub Actions)           | ✅ Done (2026-07-30) — confirmed end-to-end                                                                             |
+| Supabase Security Advisor review                  | ✅ Done (2026-07-30) — RLS enabled on all 12 tables, no policies needed                                                 |
+| Codebase orphan/dead-code audit                   | ✅ Done (2026-08-01) — audit + in-scope fixes applied; schema items re-homed to #5, docs items to #4, see section above |
+| Docs overhaul                                     | ✅ Done (2026-08-01) — README, Requiremnets.md, Design_System.md updated; all 8 legacy docs reconciled                  |
+| Database normalization + scalability              | ✅ Done (2026-08-02) — 7 sub-items closed, see item #5 section                                                          |
+| Email ingestion pipeline                          | ✅ Done (2026-08-02) — deployed, confirmed working end-to-end on a real transaction                                     |
+| Reset My Data (Danger Zone)                       | ✅ Done (2026-08-02) — self-service data wipe, scoped per-user, tested live                                             |
 
 ---
 
