@@ -2,7 +2,7 @@
 
 A full-stack personal finance and budgeting application. Track income, expenses, bills, debts, and savings goals — with a rule-based alert engine, CSV/XLSX bank-statement import, and a debt payoff simulator.
 
-I built it to replace the Excel sheet I was using to track my own money by hand. It is live, in daily use, and still actively developed.
+I built it to replace the Excel sheet I was using to track my own money by hand. The app is live and works end to end (89 commits, April–October 2026). Active development is paused: without automatic bank capture, logging every transaction cost more effort than it saved. That lesson — a tool has to remove work, not add it — now shapes my next project.
 
 **Live demo:** [project-financeos.vercel.app](https://project-financeos.vercel.app) (demo mode, no sign-up needed)
 
@@ -52,10 +52,11 @@ without being deducted from cash twice.
 
 ### Why there is no live bank sync
 
-The original plan was direct bank connection. Banks in my region did not allow direct access,
-and the aggregator options (Plaid, GoCardless, TrueLayer) were either unavailable or did not meet
-the security bar I wanted for financial data. The app uses statement import (CSV/XLSX) instead,
-and an email-ingestion pipeline is designed as the next automation step.
+The original plan was direct bank connection. In Colombia, legitimate open-banking access is
+closed to individuals, and the aggregators that are available work by scraping notifications,
+which didn't meet the security bar I wanted for financial data. I also tried Plaid, GoCardless
+and TrueLayer and was blocked by their access limits. The app uses statement import (CSV/XLSX)
+instead, and I designed an email-ingestion pipeline as a fallback.
 
 ### Non-destructive schema changes
 
